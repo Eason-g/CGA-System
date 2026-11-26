@@ -223,6 +223,22 @@ export function getStudentWeekLoggedHours(db, studentId, weekNo) {
     .reduce((sum, t) => sum + Number(t.hours || 0), 0)
 }
 
+// 学籍状态（P2 B.2）：必须为“在读”，硬性条件不可特批；未登记按在读处理（与后端 RuleEngine 一致）
+export const ENROLLMENT_ACTIVE = '在读'
+export const ENROLLMENT_STATUSES = ['在读', '休学', '毕业']
+
+export function enrollmentStatusOf(student) {
+  const s = student?.enrollmentStatus
+  return s && String(s).trim() ? String(s).trim() : ENROLLMENT_ACTIVE
+}
+
+// 在读返回 null，否则返回拦截文案
+export function checkEnrollment(student) {
+  const s = enrollmentStatusOf(student)
+  if (s === ENROLLMENT_ACTIVE) return null
+  return `当前学籍状态为「${s}」，仅在读学生可申请三助岗位（硬性条件，不可特批）`
+}
+
 export function validateStudentApplication(db, student, job) {
   const checks = []
   // 提示性检查项（不影响 passed、不参与特批判断）
@@ -236,6 +252,18 @@ export function validateStudentApplication(db, student, job) {
   const jobHours = Number(job.weeklyHours || 0)
   const projectedHours = currentHours + jobHours
   const maxHours = getMaxWeeklyHours(db, student)
+
+  // 0. 学籍状态：在读时不额外列出，保持原有校验项顺序
+  const enrollmentError = checkEnrollment(student)
+  if (enrollmentError) {
+    checks.push({
+      key: 'enrollment',
+      label: '学籍状态校验（在读）',
+      passed: false,
+      overridable: false,
+      detail: enrollmentError
+    })
+  }
 
   // overridable: false 表示硬性条件，不允许通过特批绕过
   if (student.isInternational) {
@@ -351,6 +379,10 @@ export function validateHire(db, app, job, student) {
   }
   if (Number(job.hiredCount || 0) >= Number(job.quota || 0)) {
     errors.push('该岗位招聘名额已满，无法继续录用')
+  }
+  // 学籍状态必须为在读（硬性条件，特批也不能放行）
+  if (checkEnrollment(student)) {
+    errors.push(`该学生当前学籍状态为「${enrollmentStatusOf(student)}」，仅在读学生可录用（不可特批）`)
   }
   if (student.isInternational) {
     if (!(student.visaValid && student.visaType)) errors.push('该国际生无有效学习类居留许可，不能录用')

@@ -19,7 +19,7 @@
             <FluentIcon name="campus" :size="18" />
           </div>
           <div class="min-w-0 flex-1">
-            <div class="fw-600 text-sm truncate">{{ store.currentUniversity.name }}</div>
+            <div class="fw-600 text-sm truncate">{{ store.schoolName }}</div>
             <div class="text-xs text-subtle truncate">三助平台 · {{ scopeLabel }}</div>
           </div>
           <button type="button" class="f-btn f-btn-subtle f-btn-sm mobile-close" @click="mobileNavOpen = false">

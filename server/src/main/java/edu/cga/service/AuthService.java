@@ -52,6 +52,20 @@ public class AuthService {
         throw new BizException(401, LOGIN_FAILED);
     }
 
+    /**
+     * 统一身份认证登录入口（P2 B.1）：票据已由 SsoProvider 校验，这里只按学工号（用户名或学号，不区分大小写）
+     * 映射本系统用户并签发 JWT；匹配不到返回 403。审计日志由调用方 SsoService 记录。
+     */
+    public LoginResult loginBySso(String uid) {
+        String q = uid == null ? "" : uid.trim().toLowerCase();
+        User user = q.isEmpty() ? null : userMapper.selectOne(new QueryWrapper<User>()
+                .apply("(LOWER(username) = {0} OR LOWER(student_no) = {1})", q, q).last("LIMIT 1"));
+        if (user == null) {
+            throw BizException.forbidden("统一认证账号未在本系统开通");
+        }
+        return new LoginResult(jwtService.issue(user), user);
+    }
+
     public User currentUser(String userId) {
         User user = userMapper.selectById(userId);
         if (user == null) {

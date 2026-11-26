@@ -99,7 +99,7 @@ parts.push(insert('users', db.users, {
   columns: [
     'id', 'username', 'password_hash', 'name', 'role', 'role_label', 'portal', 'preset', 'preset_desc', 'dept_id',
     'is_international', 'visa_type', 'visa_valid', 'visa_expiry', 'language_cert', 'language_level', 'language_valid',
-    'max_weekly_hours', 'student_no', 'degree', 'major', 'gpa', 'skills', 'email', 'phone', 'title', 'bio'
+    'max_weekly_hours', 'student_no', 'enrollment_status', 'degree', 'major', 'gpa', 'skills', 'email', 'phone', 'title', 'bio'
   ],
   jsonColumns: ['skills'],
   overrides: { password_hash: () => null },

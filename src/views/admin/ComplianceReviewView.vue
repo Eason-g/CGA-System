@@ -13,6 +13,9 @@
       </div>
     </header>
 
+    <!-- P2 B.2：学籍系统同步（模拟） -->
+    <SisSyncPanel />
+
     <div v-if="!isHttpMode" class="f-banner caution">
       <FluentIcon name="alert" :size="16" />
       <span>该功能需要连接后端</span>
@@ -143,6 +146,7 @@ import { isHttpMode } from '@/services/http'
 import { materialFinanceApi, ATTACHMENT_KIND_MAP } from '@/services/materialFinanceApi'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import SisSyncPanel from '@/components/SisSyncPanel.vue'
 
 const store = useAppStore()
 const statusFilter = ref('PENDING')

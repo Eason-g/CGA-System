@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { initDB, getSavedUserId, saveUserId, UNIVERSITY_LIST, getSavedUniversityId, saveUniversityId } from '@/mock/mockDB'
+import { initDB, getSavedUserId, saveUserId } from '@/mock/mockDB'
 import { api } from '@/services/api'
+import { integrationApi, DEFAULT_SITE, ssoServiceUrl } from '@/services/integrationApi'
 import { isHttpMode, DEMO_PASSWORD, getToken, setToken } from '@/services/http'
 import { setTodayStr, localDateStr } from '@/services/ruleEngine'
 import { createSeedData } from '@/mock/seedData'
@@ -53,19 +54,23 @@ export const useAppStore = defineStore('app', () => {
   const sessionUser = ref(null)
   const lastLoginError = ref('')
   let restorePromise = null
-  const currentUniversityId = ref(getSavedUniversityId())
   const loadingCount = ref(0)
   const toasts = ref([])
   const archiveContractId = ref(null)
 
-  const universities = UNIVERSITY_LIST
-  const currentUniversity = computed(() => {
-    return universities.find((u) => u.id === currentUniversityId.value) || universities[universities.length - 1]
-  })
+  // P2 B.4：校名与统一认证开关来自后端配置（GET /api/public/site），不再在前端维护高校名单
+  const site = ref(DEFAULT_SITE)
+  const schoolName = computed(() => site.value?.schoolName || DEFAULT_SITE.schoolName)
+  let sitePromise = null
 
-  function setUniversity(univId) {
-    currentUniversityId.value = univId
-    saveUniversityId(univId)
+  function loadSite() {
+    if (sitePromise) return sitePromise
+    sitePromise = integrationApi.getSite().then((res) => {
+      if (res.code === 200 && res.data) site.value = { ...DEFAULT_SITE, ...res.data }
+      else sitePromise = null
+      return site.value
+    })
+    return sitePromise
   }
 
   const isLoading = computed(() => loadingCount.value > 0)
@@ -178,6 +183,20 @@ export const useAppStore = defineStore('app', () => {
       return res.data.user
     }
     lastLoginError.value = res.message || '认证失败'
+    notify(lastLoginError.value, 'error')
+    return null
+  }
+
+  // P2 B.1：统一身份认证回跳后用 ticket 换取本系统 JWT；失败返回 null 并把后端文案写入 lastLoginError
+  async function loginWithSsoTicket(ticket) {
+    lastLoginError.value = ''
+    const res = await withLoading(() => integrationApi.exchangeSsoTicket({ ticket, service: ssoServiceUrl() }))
+    if (res.code === 200 && res.data?.token && res.data?.user) {
+      await startSession(res.data.token, res.data.user)
+      notify(res.message || `欢迎回来，${res.data.user.name}`, 'success')
+      return res.data.user
+    }
+    lastLoginError.value = res.message || '统一身份认证失败'
     notify(lastLoginError.value, 'error')
     return null
   }
@@ -298,10 +317,10 @@ export const useAppStore = defineStore('app', () => {
     db,
     currentUserId,
     currentUser,
-    universities,
-    currentUniversityId,
-    currentUniversity,
-    setUniversity,
+    site,
+    schoolName,
+    loadSite,
+    loginWithSsoTicket,
     presetUsers,
     isLoading,
     toasts,

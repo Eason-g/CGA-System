@@ -1,0 +1,7 @@
+[
+  { "studentNo": "2025210891", "name": "Alex Chen", "enrollmentStatus": "在读", "visaType": "X1学习居留许可", "visaExpiry": "2027-07-31", "languageCerts": ["IELTS 7.0"] },
+  { "studentNo": "2023011420", "name": "林致远", "enrollmentStatus": "在读", "visaType": null, "visaExpiry": null, "languageCerts": ["CET-6 586"] },
+  { "studentNo": "2024110305", "name": "苏雨桐", "enrollmentStatus": "休学", "visaType": null, "visaExpiry": null, "languageCerts": ["TOEFL 104"] },
+  { "studentNo": "2025220418", "name": "Elena Rossi", "enrollmentStatus": "在读", "visaType": "X1学习居留许可", "visaExpiry": "2028-06-30", "languageCerts": ["IELTS 6.0"] },
+  { "studentNo": "2026990001", "name": "新入学演示学生", "enrollmentStatus": "在读", "visaType": null, "visaExpiry": null, "languageCerts": [] }
+]

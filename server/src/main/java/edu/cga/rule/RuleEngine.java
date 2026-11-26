@@ -313,6 +313,12 @@ public final class RuleEngine {
         int projectedHours = currentHours + jobHours;
         int maxHours = getMaxWeeklyHours(globalRules, student);
 
+        // 0. 学籍状态（P2 B.2）：必须在读，硬性条件不可特批；在读时不额外列出，保持原有校验项顺序
+        String enrollmentError = checkEnrollment(student);
+        if (enrollmentError != null) {
+            checks.add(new Check("enrollment", "学籍状态校验（在读）", false, false, enrollmentError));
+        }
+
         if (Boolean.TRUE.equals(student.getIsInternational())) {
             // 1. 签证
             boolean visaOk = Boolean.TRUE.equals(student.getVisaValid()) && notBlank(student.getVisaType());
@@ -411,6 +417,10 @@ public final class RuleEngine {
         if (Num.orZero(job.getHiredCount()) >= Num.orZero(job.getQuota())) {
             errors.add("该岗位招聘名额已满，无法继续录用");
         }
+        // 学籍状态必须为在读（P2 B.2，硬性条件，特批也不能放行）
+        if (checkEnrollment(student) != null) {
+            errors.add("该学生当前学籍状态为「" + enrollmentStatusOf(student) + "」，仅在读学生可录用（不可特批）");
+        }
         if (Boolean.TRUE.equals(student.getIsInternational())) {
             if (!(Boolean.TRUE.equals(student.getVisaValid()) && notBlank(student.getVisaType()))) {
                 errors.add("该国际生无有效学习类居留许可，不能录用");
@@ -445,6 +455,28 @@ public final class RuleEngine {
             }
         }
         return new HireCheck(errors.isEmpty(), errors, currentHours, jobHours, projectedHours, maxHours, hoursOverridden);
+    }
+
+    // ================================================================== 学籍状态（P2 B.2）
+
+    /** 学籍状态：在读（唯一允许申请、录用的状态） */
+    public static final String ENROLLMENT_ACTIVE = "在读";
+    /** 学籍系统可能返回的全部状态 */
+    public static final List<String> ENROLLMENT_STATUSES = List.of("在读", "休学", "毕业");
+
+    /** 学生的学籍状态；未登记（如历史数据）按在读处理（同 JS enrollmentStatusOf） */
+    public static String enrollmentStatusOf(User student) {
+        String s = student.getEnrollmentStatus();
+        return s == null || s.isBlank() ? ENROLLMENT_ACTIVE : s.trim();
+    }
+
+    /** 学籍状态为在读返回 null，否则返回拦截文案（同 JS checkEnrollment） */
+    public static String checkEnrollment(User student) {
+        String s = enrollmentStatusOf(student);
+        if (ENROLLMENT_ACTIVE.equals(s)) {
+            return null;
+        }
+        return "当前学籍状态为「" + s + "」，仅在读学生可申请三助岗位（硬性条件，不可特批）";
     }
 
     // ================================================================== 合规强化（P1 第三批）

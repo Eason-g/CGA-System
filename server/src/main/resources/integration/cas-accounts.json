@@ -1,0 +1,13 @@
+[
+  { "uid": "2025210891", "name": "Alex Chen", "note": "学生（学号）" },
+  { "uid": "2023011420", "name": "林致远", "note": "学生（学号）" },
+  { "uid": "2024110305", "name": "苏雨桐", "note": "学生（学号）" },
+  { "uid": "2025220418", "name": "Elena Rossi", "note": "学生（学号）" },
+  { "uid": "zhang.mingyuan", "name": "张明远", "note": "教职工（工号）" },
+  { "uid": "li.wanqing", "name": "李婉清", "note": "教职工（工号）" },
+  { "uid": "wang.haitao", "name": "王海涛", "note": "教职工（工号）" },
+  { "uid": "zhou.guoqiang", "name": "周国强", "note": "教职工（工号）" },
+  { "uid": "chen.shouren", "name": "陈守仁", "note": "教职工（工号）" },
+  { "uid": "zhao.minghua", "name": "赵明华", "note": "教职工（工号）" },
+  { "uid": "2026990001", "name": "新入学演示学生", "note": "认证中心有账号、本系统未开通，用于演示 403" }
+]

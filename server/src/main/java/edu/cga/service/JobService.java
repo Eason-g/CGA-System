@@ -16,6 +16,7 @@ import edu.cga.domain.entity.Job;
 import edu.cga.domain.mapper.BudgetMapper;
 import edu.cga.domain.mapper.DepartmentMapper;
 import edu.cga.domain.mapper.JobMapper;
+import edu.cga.integration.research.ResearchProjectService;
 import edu.cga.rule.RuleEngine;
 import edu.cga.scope.DataScope;
 import edu.cga.security.CurrentUser;
@@ -67,11 +68,15 @@ public class JobService {
     private final IdGenerator ids;
     private final TimeService time;
     private final JobTypeSchemaService jobTypeSchemas;
+    /** P2 B.3：RA 岗位绑定科研项目的校验 */
+    private final ResearchProjectService researchProjects;
 
     public JobService(JobMapper jobMapper, BudgetMapper budgetMapper, DepartmentMapper departmentMapper,
                       DataScope scope, ConfigService configService, AuditService audit, IdGenerator ids,
-                      TimeService time, JobTypeSchemaService jobTypeSchemas) {
+                      TimeService time, JobTypeSchemaService jobTypeSchemas,
+                      ResearchProjectService researchProjects) {
         this.jobTypeSchemas = jobTypeSchemas;
+        this.researchProjects = researchProjects;
         this.jobMapper = jobMapper;
         this.budgetMapper = budgetMapper;
         this.departmentMapper = departmentMapper;
@@ -135,6 +140,11 @@ public class JobService {
         LocalDate deadline = d.deadline() != null ? d.deadline() : time.today().plusDays(DEFAULT_DEADLINE_DAYS);
         Map<String, Object> extraFields = jobTypeSchemas.prepareExtraFields(d.type(), d.extraFields(), budget,
                 d.weeks(), deadline);
+        // P2 B.3：RA 岗位须绑定科研系统中存在、负责人相符、周期覆盖聘期的项目（不通过 400）
+        if ("RA".equals(d.type())) {
+            researchProjects.requireValidForJob(String.valueOf(extraFields.getOrDefault("projectCode", "")),
+                    d.deptId(), operator, deadline, d.weeks());
+        }
 
         boolean allowIntl = Boolean.TRUE.equals(d.allowInternational());
         List<String> steps = RuleEngine.buildWorkflowStepsForJob(configService.workflows(), d.type(), allowIntl);

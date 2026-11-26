@@ -1,0 +1,6 @@
+[
+  { "code": "NSFC-62572018", "name": "面向异构集群的大模型低延迟推理优化", "leaderId": "U_MENTOR", "leaderName": "张明远", "startDate": "2025-09-01", "endDate": "2028-08-31", "availableFunds": 360000 },
+  { "code": "KY-2026-EC02", "name": "区域数字要素流动测度研究", "leaderId": "U_MENTOR_ECON", "leaderName": "赵明华", "startDate": "2026-03-01", "endDate": "2027-12-31", "availableFunds": 120000 },
+  { "code": "KY-2026-MA01", "name": "随机优化算法的收敛性分析", "leaderId": "U_MENTOR_MATH", "leaderName": "陈守仁", "startDate": "2026-01-01", "endDate": "2027-12-31", "availableFunds": 80000 },
+  { "code": "KY-2025-CS09", "name": "校园网络流量异常检测（即将结题）", "leaderId": "U_MENTOR", "leaderName": "张明远", "startDate": "2025-01-01", "endDate": "2027-01-15", "availableFunds": 15000 }
+]

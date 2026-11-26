@@ -68,12 +68,14 @@ public class DatabaseInitializer implements SmartInitializingSingleton {
                     log.warn("数据库缺少 {} 表（由旧版本创建），按最新建表脚本重建演示数据", missingTable());
                     rebuild();
                 } else {
+                    ensureEnrollmentStatusColumn();
                     initDemoPasswords();
                     auditChain.initialize();
                 }
             }
             case NEVER -> {
                 if (usersTableExists()) {
+                    ensureEnrollmentStatusColumn();
                     initDemoPasswords();
                     auditChain.initialize();
                 }
@@ -105,6 +107,20 @@ public class DatabaseInitializer implements SmartInitializingSingleton {
             log.info("已为 {} 个用户设置演示密码", ids.size());
         }
         return ids.size();
+    }
+
+    /** P2 B.2：老库缺少 users.enrollment_status 时补列，并把已有学生标为“在读”（幂等） */
+    void ensureEnrollmentStatusColumn() {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
+                        + "AND table_name = 'users' AND column_name = 'enrollment_status'", Integer.class);
+        if (count != null && count > 0) {
+            return;
+        }
+        log.info("users 表缺少 enrollment_status 列（旧版本创建），自动补列");
+        jdbc.execute("ALTER TABLE users ADD COLUMN enrollment_status VARCHAR(16) NULL "
+                + "COMMENT '学籍状态 在读/休学/毕业' AFTER student_no");
+        jdbc.update("UPDATE users SET enrollment_status = '在读' WHERE role = 'STUDENT'");
     }
 
     private boolean usersTableExists() {

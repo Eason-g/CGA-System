@@ -22,6 +22,11 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: apiTarget,
           changeOrigin: true
+        },
+        // 模拟统一身份认证中心页面（P2 B.1，由后端输出），开发时与前端同源访问
+        '/mock-cas': {
+          target: apiTarget,
+          changeOrigin: true
         }
       }
     }
