@@ -1,7 +1,7 @@
 # 集成测试配置：连接 cga_test 库，账号沿用 application-local.yml
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/cga_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://localhost:3306/${CGA_TEST_DB:cga_test}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
 
 app:
   today: 2026-11-20
