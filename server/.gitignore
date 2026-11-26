@@ -1,4 +1,5 @@
 target/
+uploads/
 *.local.sql
 src/main/resources/application-local.yml
 .idea/

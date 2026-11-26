@@ -39,7 +39,52 @@ export const APP_STATUS_MAP = {
 export const FINANCE_STATUS_MAP = {
   PENDING_CALC: { label: '待核算', tone: 'neutral' },
   PENDING_PAY: { label: '待财务打款', tone: 'caution' },
+  SUBMITTED: { label: '已提交财务', tone: 'blue' },
+  PAY_FAILED: { label: '发放失败', tone: 'error' },
   PAID: { label: '已发放', tone: 'success' }
+}
+
+// ===== P1 第三批：合规强化（与后端 RuleEngine 同名函数、文案一致）=====
+
+// 签证到期预警天数（scanAnomalies 的“签证 30 天内到期”）
+export const VISA_EXPIRY_WARNING_DAYS = 30
+
+function parseDateStr(s) {
+  const [y, m, d] = String(s).split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+// 聘期开始日：今天之后的下一个周一
+export function contractStartFrom(fromStr = todayStr) {
+  const d = parseDateStr(fromStr)
+  const day = d.getDay() // 0=周日
+  d.setDate(d.getDate() + ((8 - day) % 7 || 7))
+  return localDateStr(d)
+}
+
+// 预计聘期结束日：开始日 + 岗位约定周数（至少 1 周）
+export function predictContractEnd(weeks, fromStr = todayStr) {
+  const d = parseDateStr(contractStartFrom(fromStr))
+  d.setDate(d.getDate() + 7 * Math.max(1, Number(weeks) || 0))
+  return localDateStr(d)
+}
+
+// 签证有效期是否覆盖到 endDate：覆盖返回 null，否则返回拦截文案（不可特批）
+export function checkVisaCoverage(student, endDate) {
+  if (!student.visaExpiry) {
+    return `该国际生未登记签证有效期，无法确认覆盖聘期结束日 ${endDate}，不能录用（不可特批）`
+  }
+  if (student.visaExpiry < endDate) {
+    return `该国际生签证有效期至 ${student.visaExpiry}，早于聘期结束日 ${endDate}，签证须覆盖整个聘期，不能录用（不可特批）`
+  }
+  return null
+}
+
+// 语言证明核验状态文案
+export const LANG_CERT_STATUS_MAP = {
+  PENDING: { label: '待核验', tone: 'caution' },
+  VERIFIED: { label: '已核验', tone: 'success' },
+  REJECTED: { label: '核验未通过', tone: 'error' }
 }
 
 export const STEP_TO_JOB_STATUS = {
@@ -169,6 +214,8 @@ export function getStudentWeekLoggedHours(db, studentId, weekNo) {
 
 export function validateStudentApplication(db, student, job) {
   const checks = []
+  // 提示性检查项（不影响 passed、不参与特批判断）
+  const hints = []
   const existingApp = db.applications.find(
     (a) => a.studentId === student.id && a.jobId === job.id && a.status !== 'REJECTED' && a.status !== 'SPECIAL_REJECTED'
   )
@@ -189,7 +236,7 @@ export function validateStudentApplication(db, student, job) {
       passed: visaOk,
       overridable: false,
       detail: visaOk
-        ? `${student.visaType}有效（有效期至 ${student.visaExpiry || '2027-07-31'}）`
+        ? `${student.visaType}有效（有效期至 ${student.visaExpiry || '未登记'}）`
         : '未检测到有效学习类居留许可，禁止从事校内助教/助研活动'
     })
 
@@ -204,6 +251,22 @@ export function validateStudentApplication(db, student, job) {
         ? '该岗位已通过国际生办会签，面向国际学生开放'
         : '该岗位未面向国际学生开放（仅限中国籍学生申请）'
     })
+
+    // 3. 签证有效期覆盖预计聘期（提示性，不拦截；录用时 validateHire 硬拦截）
+    if (visaOk) {
+      const end = predictContractEnd(job.weeks)
+      const covered = !checkVisaCoverage(student, end)
+      const expiry = student.visaExpiry || '未登记'
+      hints.push({
+        key: 'visaPeriod',
+        label: '签证有效期覆盖聘期（提示）',
+        passed: covered,
+        overridable: false,
+        detail: covered
+          ? `签证有效期至 ${expiry}，覆盖预计聘期（至 ${end}）`
+          : `签证有效期至 ${expiry}，早于预计聘期结束日 ${end}，录用时将被系统拦截，请尽快办理续签并上传新的签证材料`
+      })
+    }
   }
 
   // Language requirement check (if job specifies language score)
@@ -211,6 +274,8 @@ export function validateStudentApplication(db, student, job) {
     const reqScore = Number(job.extraFields.minLangScore)
     const stuScore = Number(student.languageLevel || 0)
     const langOk = Boolean(student.languageValid) && stuScore >= reqScore
+    // 新上传的语言证明在国际生办核验前视为未通过（可特批）
+    const pending = student.languageCertStatus === 'PENDING'
     checks.push({
       key: 'lang',
       label: '语言能力证明校验',
@@ -218,6 +283,8 @@ export function validateStudentApplication(db, student, job) {
       overridable: true,
       detail: langOk
         ? `已认证 ${student.languageCert}，满足岗位要求（${job.extraFields.languageRequirement}）`
+        : pending
+        ? `语言证明已提交，待国际生办核验（核验前视为未通过），岗位要求 ${job.extraFields.languageRequirement}`
         : `当前认证 ${student.languageCert || '未提交'}（等效 ${stuScore}），低于岗位最低要求 ${job.extraFields.languageRequirement}`
     })
   }
@@ -258,7 +325,8 @@ export function validateStudentApplication(db, student, job) {
     projectedHours,
     maxHours,
     canSpecialApprove,
-    specialBlockedReason
+    specialBlockedReason,
+    hints
   }
 }
 
@@ -276,6 +344,11 @@ export function validateHire(db, app, job, student) {
   if (student.isInternational) {
     if (!(student.visaValid && student.visaType)) errors.push('该国际生无有效学习类居留许可，不能录用')
     if (!job.allowInternational) errors.push('该岗位未面向国际学生开放，不能录用国际生')
+    // 签证有效期必须覆盖整个聘期（硬性条件，特批也不能放行）
+    if (student.visaValid) {
+      const coverageError = checkVisaCoverage(student, predictContractEnd(job.weeks))
+      if (coverageError) errors.push(coverageError)
+    }
   }
 
   const currentHours = getStudentAllocatedWeeklyHours(db, student.id)
@@ -469,6 +542,33 @@ export function scanAnomalies(db, user) {
         deptId: con.deptId
       })
     }
+  })
+
+  // 签证 30 天内到期（P1 第三批，与后端 RuleEngine.isVisaExpiringSoon 一致）：
+  // 在岗/待签国际生；国际生办与校级管理员另看全部可见国际生
+  const visaStudentIds = new Set(
+    filterByRoleDept(db, db.contracts, user, 'CONTRACT')
+      .filter((c) => c.status === 'ACTIVE' || c.status === 'PENDING_SIGN')
+      .map((c) => c.studentId)
+  )
+  if (user?.role === 'INTL_OFFICER' || user?.role === 'SCHOOL_ADMIN') {
+    db.users.filter((u) => u.role === 'STUDENT' && u.isInternational).forEach((u) => visaStudentIds.add(u.id))
+  }
+  visaStudentIds.forEach((studentId) => {
+    const stu = db.users.find((u) => u.id === studentId)
+    if (!stu?.isInternational || !stu.visaExpiry) return
+    const leftDays = daysUntil(stu.visaExpiry)
+    if (leftDays > VISA_EXPIRY_WARNING_DAYS) return
+    warnings.push({
+      id: `WARN_VISA_${studentId}`,
+      category: 'VISA_EXPIRING',
+      severity: leftDays <= 7 ? 'error' : 'caution',
+      title: leftDays < 0 ? `${stu.name} 签证已过期` : `${stu.name} 签证 ${leftDays} 天内到期`,
+      detail: `签证有效期至 ${stu.visaExpiry}，到期后不得继续从事三助工作，请提醒学生办理续签并上传新的签证材料`,
+      studentId,
+      isInternational: true,
+      deptId: stu.deptId
+    })
   })
 
   return warnings

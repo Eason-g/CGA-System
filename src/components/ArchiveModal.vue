@@ -121,7 +121,7 @@
                   <span class="text-blue">¥{{ p.amount.toFixed(2) }}</span>
                 </div>
                 <div class="text-xs text-muted mt-4">
-                  状态：{{ p.financeStatus === 'PAID' ? `已发放（凭证 ${p.voucherNo}）` : p.financeStatus === 'PENDING_PAY' ? '待财务打款' : '待核算' }}
+                  状态：{{ p.financeStatus === 'PAID' ? `已发放（凭证 ${p.voucherNo}）` : FINANCE_STATUS_MAP[p.financeStatus]?.label || '待核算' }}
                 </div>
               </div>
               <div v-if="!payrolls.length" class="text-xs text-muted">暂无薪酬记录</div>
@@ -159,6 +159,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useAppStore } from '@/stores/appStore'
+import { FINANCE_STATUS_MAP } from '@/services/ruleEngine'
 import FluentIcon from './FluentIcon.vue'
 
 const props = defineProps({

@@ -1,5 +1,8 @@
 server:
   port: ${SERVER_PORT:8088}
+  tomcat:
+    # 超出上传上限时仍读完请求体再返回 400 JSON，避免浏览器看到连接被重置
+    max-swallow-size: 32MB
 
 spring:
   application:
@@ -12,6 +15,11 @@ spring:
     url: jdbc:mysql://localhost:3306/cga?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
   jackson:
     time-zone: Asia/Shanghai
+  # 材料上传（P1 第三批）：单个文件 ≤ 10MB；超限由 UploadExceptionHandler 返回 { code: 400 } JSON
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
 
 mybatis-plus:
   configuration:
@@ -38,6 +46,16 @@ app:
   demo:
     # 是否允许校级管理员调用 POST /api/demo/reset 重置演示数据
     reset-enabled: true
+  # 材料上传存储目录（相对启动目录，即 server/uploads/，已加入 .gitignore）
+  upload-dir: uploads
+  finance:
+    # 财务回调 HMAC-SHA256 签名密钥。生产环境必须通过环境变量 APP_FINANCE_CALLBACK_SECRET 覆盖！
+    callback-secret: ${APP_FINANCE_CALLBACK_SECRET:cga-dev-only-finance-callback-secret-change-me}
+    mock:
+      # 模拟财务系统：提交后由定时任务自动回调；成功率 0–1
+      auto-callback: true
+      callback-delay: 3s
+      success-rate: 1.0
   cors:
     allowed-origins:
       - http://localhost:5173

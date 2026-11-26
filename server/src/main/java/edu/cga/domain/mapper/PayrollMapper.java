@@ -18,16 +18,18 @@ public interface PayrollMapper extends BaseMapper<Payroll> {
     Payroll selectByContractAndMonth(@Param("contractId") String contractId, @Param("month") String month);
 
     /** 某合同最近一张未发放的薪酬单，加锁（考核修改系数时使用） */
-    @Select("SELECT * FROM payrolls WHERE contract_id = #{contractId} AND finance_status <> 'PAID'"
+    // 已提交财务（SUBMITTED）的金额已发给财务系统，不能再改系数
+    @Select("SELECT * FROM payrolls WHERE contract_id = #{contractId} AND finance_status NOT IN ('PAID', 'SUBMITTED')"
             + " ORDER BY month DESC, id DESC LIMIT 1 FOR UPDATE")
     Payroll lockLatestUnpaidByContract(@Param("contractId") String contractId);
 
     /**
      * 预算汇总：某岗位下已发放 + 待发放薪酬之和，可排除一张（重新核算/改系数时排除它自己）。
      * 岗位剩余预留 = reservedAmount − 该值（不低于 0）。
+     * 待发放包括 PENDING_PAY、已提交财务 SUBMITTED、发放失败待重提 PAY_FAILED（P1 第三批）。
      */
     @Select("SELECT COALESCE(SUM(amount), 0) FROM payrolls"
-            + " WHERE job_id = #{jobId} AND finance_status IN ('PAID', 'PENDING_PAY')"
+            + " WHERE job_id = #{jobId} AND finance_status IN ('PAID', 'PENDING_PAY', 'SUBMITTED', 'PAY_FAILED')"
             + " AND (#{excludeId} IS NULL OR id <> #{excludeId})")
     BigDecimal sumCommittedByJob(@Param("jobId") String jobId, @Param("excludeId") String excludeId);
 
@@ -41,7 +43,8 @@ public interface PayrollMapper extends BaseMapper<Payroll> {
             + " FROM (SELECT job_id, SUM(amount) AS committed,"
             + "         SUM(CASE WHEN finance_status = 'PAID' THEN amount ELSE 0 END) AS paid"
             + "       FROM payrolls"
-            + "       WHERE budget_id = #{budgetId} AND finance_status IN ('PAID', 'PENDING_PAY')"
+            + "       WHERE budget_id = #{budgetId}"
+            + "         AND finance_status IN ('PAID', 'PENDING_PAY', 'SUBMITTED', 'PAY_FAILED')"
             + "         AND (#{excludeId} IS NULL OR id <> #{excludeId})"
             + "       GROUP BY job_id) c"
             + " JOIN jobs j ON j.id = c.job_id")

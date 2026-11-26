@@ -35,4 +35,14 @@ public class Payroll {
     private LocalDateTime paidAt;
 
     private String voucherNo;
+
+    /** 当前（最近一次）提交财务的流水号（P1 第三批） */
+    private String financeSerialNo;
+
+    /** 最近一次提交财务的时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime submittedAt;
+
+    /** 发放失败原因（PAY_FAILED 时有值） */
+    private String failReason;
 }

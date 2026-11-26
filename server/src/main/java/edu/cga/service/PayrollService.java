@@ -127,7 +127,9 @@ public class PayrollService {
             BigDecimal amount = RuleEngine.calcPayrollAmount(totalHours, con.getHourlyRate(), coeff);
 
             Payroll existing = payrollMapper.selectByContractAndMonth(con.getId(), targetMonth);
-            if (existing != null && "PAID".equals(existing.getFinanceStatus())) {
+            // 已发放、已提交财务（等待回写）的不重新核算；发放失败的可重新核算后再提交
+            if (existing != null && ("PAID".equals(existing.getFinanceStatus())
+                    || "SUBMITTED".equals(existing.getFinanceStatus()))) {
                 continue;
             }
 
@@ -148,6 +150,9 @@ public class PayrollService {
                 existing.setAmount(amount);
                 existing.setFinanceStatus("PENDING_PAY");
                 existing.setCalculatedAt(time.now());
+                if (existing.getFailReason() != null) {
+                    existing.setFailReason("");
+                }
                 payrollMapper.updateById(existing);
             } else {
                 Payroll p = new Payroll();
@@ -202,13 +207,32 @@ public class PayrollService {
         if ("PAID".equals(pay.getFinanceStatus())) {
             throw BizException.badRequest("该笔薪酬已发放，请勿重复打款");
         }
+        if ("SUBMITTED".equals(pay.getFinanceStatus())) {
+            throw BizException.badRequest("该笔薪酬已提交财务，请等待财务系统回写结果");
+        }
         if (!"PENDING_PAY".equals(pay.getFinanceStatus())) {
             throw BizException.badRequest("该笔薪酬尚未核算，请先执行月度核算");
         }
 
+        String voucherNo = "CW-" + pay.getMonth().replace("-", "") + "-" + (1000 + random.nextInt(9000));
+        settlePayout(budget, pay, voucherNo, operator, "确认财务发放并联动扣减经费池");
+        return pay;
+    }
+
+    // ------------------------------------------------------------------ 发放记账（一步发放与财务回调共用）
+
+    /**
+     * 发放校验（不改数据），返回本次应从冻结额中释放的金额。规则同 P0：
+     * <ul>
+     *   <li>amount ≤ total − used；</li>
+     *   <li>冻结额只释放 min(金额, 发放前本岗位剩余预留)；</li>
+     *   <li>超出本岗位预留的部分 ≤ 经费可用额 − 同经费池其他待发放薪酬已承诺的超额。</li>
+     * </ul>
+     * 不满足抛 400。调用方须已按“经费行 → 薪酬行”的顺序加锁。
+     */
+    public BigDecimal checkPayout(Budget budget, Payroll pay) {
         BigDecimal amount = Num.orZero(pay.getAmount());
         BigDecimal used = Num.orZero(budget.getUsedAmount());
-        BigDecimal frozen = Num.orZero(budget.getFrozenAmount());
         // 规格要求：发放时再校验一次 amount ≤ total − used
         if (amount.compareTo(Num.orZero(budget.getTotalAmount()).subtract(used)) > 0) {
             throw BizException.badRequest("经费池「" + budget.getName() + "」剩余总额不足，拦截打款");
@@ -223,12 +247,25 @@ public class PayrollService {
         if (amount.subtract(release).compareTo(RuleEngine.getBudgetAvailable(budget).subtract(excessOthers)) > 0) {
             throw BizException.badRequest("经费池「" + budget.getName() + "」可用额不足（超出岗位预留部分无可用经费），拦截打款");
         }
+        return release;
+    }
+
+    /**
+     * 按 P0 发放规则记账：校验 → usedAmount += 金额、frozenAmount −= 本岗位预留释放额 → 薪酬置为 PAID 并写凭证号，
+     * 通知学生、写审计日志。POST /api/payrolls/{id}/payout 与财务成功回调共用这一个方法。
+     * 调用方须已按“经费行 → 薪酬行”的顺序加锁，并已确认薪酬状态可以发放。
+     */
+    public void settlePayout(Budget budget, Payroll pay, String voucherNo, CurrentUser operator, String action) {
+        BigDecimal release = checkPayout(budget, pay);
+        BigDecimal amount = Num.orZero(pay.getAmount());
+        BigDecimal used = Num.orZero(budget.getUsedAmount());
+        BigDecimal frozen = Num.orZero(budget.getFrozenAmount());
+        String beforeStatus = "SUBMITTED".equals(pay.getFinanceStatus()) ? "已提交财务" : "待打款";
 
         budget.setUsedAmount(Num.money(used.add(amount)));
         budget.setFrozenAmount(Num.money(frozen.subtract(release).max(BigDecimal.ZERO)));
         budgetMapper.updateById(budget);
 
-        String voucherNo = "CW-" + pay.getMonth().replace("-", "") + "-" + (1000 + random.nextInt(9000));
         pay.setFinanceStatus("PAID");
         pay.setPaidAt(time.now());
         pay.setVoucherNo(voucherNo);
@@ -238,10 +275,9 @@ public class PayrollService {
                 pay.getMonth() + " 三助薪酬已发放：¥" + Num.fixed2(amount),
                 "财务打款凭证号 " + voucherNo + "，审核工时 " + Num.plain(pay.getTotalHours()) + "h × ¥"
                         + Num.plain(pay.getHourlyRate()) + "/h × 考核系数 " + Num.plain(pay.getCoefficient()) + "x。");
-        audit.log("PAYROLL", pay.getId(), operator, "确认财务发放并联动扣减经费池",
+        audit.log("PAYROLL", pay.getId(), operator, action,
                 "发放金额 ¥" + Num.fixed2(amount) + "，凭证号 " + voucherNo + "，经费池「" + budget.getName() + "」实时扣减。",
-                "待打款（经费已用 ¥" + Num.locale(used) + "）",
+                beforeStatus + "（经费已用 ¥" + Num.locale(used) + "）",
                 "已发放（经费已用 ¥" + Num.locale(budget.getUsedAmount()) + "）");
-        return pay;
     }
 }

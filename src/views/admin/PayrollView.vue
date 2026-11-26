@@ -10,12 +10,12 @@
       </div>
       <button v-if="canFinance" type="button" class="f-btn f-btn-primary" :disabled="busy" @click="handleAutoCalc">
         <FluentIcon name="sparkles" :size="15" />
-        <span>核算 2026-11 薪酬</span>
+        <span>核算 {{ currentMonth }} 薪酬</span>
       </button>
     </header>
 
     <div v-if="showRule" class="f-expand-panel" style="margin-top: -8px;">
-      实发薪酬 = 导师审核通过工时 × 岗位时薪 × 周期考核系数（优秀 1.1x / 合格 1.0x / 不合格 0.85x）；确认打款后实时扣减对应经费池余额。
+      实发薪酬 = 导师审核通过工时 × 岗位时薪 × 周期考核系数（优秀 1.1x / 合格 1.0x / 不合格 0.85x）；<template v-if="isHttpMode">校级管理员“提交财务”后经费暂不变动，财务系统回写发放成功时才扣减对应经费池，回写失败可重新提交。</template><template v-else>确认打款后实时扣减对应经费池余额。</template>
     </div>
 
     <!-- 3 Compact Budget Source Cards -->
@@ -70,10 +70,36 @@
                 <span class="f-pill" :class="`f-pill-${FINANCE_STATUS_MAP[p.financeStatus]?.tone || 'neutral'}`">
                   {{ FINANCE_STATUS_MAP[p.financeStatus]?.label || p.financeStatus }}
                 </span>
+                <div v-if="p.financeStatus === 'SUBMITTED' && p.financeSerialNo" class="text-xs text-muted mt-4 tabular-nums">
+                  流水 {{ p.financeSerialNo }}
+                </div>
+                <div v-if="p.financeStatus === 'PAY_FAILED' && p.failReason" class="text-xs text-error mt-4 fail-reason">
+                  {{ p.failReason }}
+                </div>
               </td>
               <td>
+                <!-- http 模式：两步发放（提交财务 → 财务回写）；mock 模式保留一步打款 -->
+                <template v-if="isHttpMode && canPay && ['PENDING_PAY', 'PAY_FAILED', 'SUBMITTED'].includes(p.financeStatus)">
+                  <button
+                    v-if="p.financeStatus !== 'SUBMITTED'"
+                    type="button"
+                    class="f-btn f-btn-primary f-btn-sm"
+                    :disabled="busy"
+                    @click="handleSubmitFinance(p)"
+                  >
+                    {{ p.financeStatus === 'PAY_FAILED' ? '重新提交' : '提交财务' }}
+                  </button>
+                  <div v-else class="flex gap-6 flex-wrap">
+                    <button type="button" class="f-btn f-btn-sm" :disabled="busy" title="演示：模拟财务系统回写成功" @click="handleSimulate(p, true)">
+                      模拟成功
+                    </button>
+                    <button type="button" class="f-btn f-btn-danger-outline f-btn-sm" :disabled="busy" title="演示：模拟财务系统回写失败" @click="handleSimulate(p, false)">
+                      模拟失败
+                    </button>
+                  </div>
+                </template>
                 <button
-                  v-if="p.financeStatus === 'PENDING_PAY' && canFinance"
+                  v-else-if="!isHttpMode && p.financeStatus === 'PENDING_PAY' && canFinance"
                   type="button"
                   class="f-btn f-btn-primary f-btn-sm"
                   :disabled="busy"
@@ -102,10 +128,12 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useAppStore } from '@/stores/appStore'
 import { filterByRoleDept, getBudgetAvailable, FINANCE_STATUS_MAP } from '@/services/ruleEngine'
 import { api } from '@/services/api'
+import { isHttpMode } from '@/services/http'
+import { materialFinanceApi } from '@/services/materialFinanceApi'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
 
@@ -142,11 +170,49 @@ const filteredPayrolls = computed(() =>
 )
 const totalFilteredAmount = computed(() => filteredPayrolls.value.reduce((s, p) => s + Number(p.amount || 0), 0))
 
+const currentMonth = computed(() => store.db.meta?.currentMonth)
+// 财务发放只由校级管理员（兼财务）操作
+const canPay = computed(() => user.value?.role === 'SCHOOL_ADMIN')
+
 async function handleAutoCalc() {
   busy.value = true
-  try { await store.mutate(() => api.generateMonthlyPayrolls({ month: '2026-11' }, user.value)) }
+  try { await store.mutate(() => api.generateMonthlyPayrolls({ month: currentMonth.value }, user.value)) }
   finally { busy.value = false }
 }
+
+async function handleSubmitFinance(payroll) {
+  busy.value = true
+  try { await store.mutate(() => materialFinanceApi.submitPayrollToFinance(payroll.id)) }
+  finally { busy.value = false }
+}
+
+async function handleSimulate(payroll, success) {
+  busy.value = true
+  try {
+    await store.mutate(() =>
+      materialFinanceApi.simulateFinanceCallback(payroll.id, success, success ? '' : '模拟财务系统：收款银行卡号校验失败')
+    )
+  } finally { busy.value = false }
+}
+
+// 有“已提交财务”的单据时定时刷新，等待模拟财务系统自动回写（默认几秒后）
+let pollTimer = null
+const hasSubmitted = computed(() => isHttpMode && visiblePayrolls.value.some((p) => p.financeStatus === 'SUBMITTED'))
+watch(
+  hasSubmitted,
+  (v) => {
+    if (v && !pollTimer) {
+      pollTimer = setInterval(() => store.refreshSnapshot(), 4000)
+    } else if (!v && pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
+  },
+  { immediate: true }
+)
+onBeforeUnmount(() => {
+  if (pollTimer) clearInterval(pollTimer)
+})
 
 async function handlePayout(payroll) {
   busy.value = true
@@ -163,6 +229,9 @@ async function handlePayout(payroll) {
 .table-card { overflow: hidden; }
 .border-b { border-bottom: 1px solid var(--color-border-light); }
 .mt-6 { margin-top: 6px; }
+.mt-4 { margin-top: 4px; }
+.gap-6 { gap: 6px; }
+.fail-reason { max-width: 220px; white-space: normal; }
 
 @media (max-width: 960px) {
   .source-grid { grid-template-columns: 1fr; }

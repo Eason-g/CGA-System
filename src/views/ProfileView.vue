@@ -134,7 +134,16 @@
             </div>
             <div class="kv-item">
               <span class="kv-k">语言能力认证</span>
-              <span class="kv-v text-success fw-600">{{ user.languageCert }}（已同步教务）</span>
+              <span v-if="user.languageCertStatus === 'PENDING'" class="kv-v text-caution fw-600">
+                新语言证明待国际生办核验（核验前申请校验视为未通过）
+              </span>
+              <span v-else-if="user.languageCertStatus === 'REJECTED'" class="kv-v text-error fw-600">
+                {{ user.languageCert || '-' }}（最新语言证明核验未通过）
+              </span>
+              <span v-else-if="user.languageCertStatus === 'VERIFIED'" class="kv-v text-success fw-600">
+                {{ user.languageCert }}（国际生办已核验）
+              </span>
+              <span v-else class="kv-v text-success fw-600">{{ user.languageCert }}（已同步教务）</span>
             </div>
             <div v-if="user.isInternational" class="kv-item">
               <span class="kv-k">签证与居留许可</span>
@@ -157,6 +166,40 @@
               <span v-if="!(user.skills && user.skills.length)" class="text-xs text-subtle">暂未设置技能标签</span>
             </div>
           </div>
+        </div>
+
+        <!-- P1 第三批：语言证明与签证材料上传（http 模式） -->
+        <div v-if="isStudent && isHttpMode" class="acrylic-card p-20 flex-col gap-12">
+          <div class="flex items-center justify-between flex-wrap gap-8">
+            <h2 class="text-sub">合规材料</h2>
+            <div class="flex gap-8">
+              <label class="f-btn f-btn-sm upload-btn" :class="{ disabled: uploading }">
+                <FluentIcon name="plus" :size="14" />
+                <span>上传语言证明</span>
+                <input type="file" :accept="ACCEPT_TYPES" hidden :disabled="uploading" @change="onPick($event, 'LANG_CERT')" />
+              </label>
+              <label v-if="user.isInternational" class="f-btn f-btn-sm upload-btn" :class="{ disabled: uploading }">
+                <FluentIcon name="plus" :size="14" />
+                <span>上传签证/居留许可</span>
+                <input type="file" :accept="ACCEPT_TYPES" hidden :disabled="uploading" @change="onPick($event, 'VISA')" />
+              </label>
+            </div>
+          </div>
+          <div class="text-xs text-muted">
+            支持 PDF / JPG / PNG，单个不超过 10MB。新上传的语言证明需国际生办核验后才生效，核验前岗位申请的语言项视为未通过（可申请特批）。
+          </div>
+          <ul v-if="myMaterials.length" class="att-list">
+            <li v-for="a in myMaterials" :key="a.id" class="att-row">
+              <span class="f-pill f-pill-neutral">{{ ATTACHMENT_KIND_MAP[a.kind] }}</span>
+              <span class="text-sm truncate att-name">{{ a.originalName }}</span>
+              <span v-if="a.verifyStatus" class="f-pill" :class="`f-pill-${LANG_CERT_STATUS_MAP[a.verifyStatus]?.tone}`">
+                {{ LANG_CERT_STATUS_MAP[a.verifyStatus]?.label }}
+              </span>
+              <span class="text-xs text-muted tabular-nums">{{ a.uploadedAt }}</span>
+              <button type="button" class="f-btn-link text-xs" @click="downloadAtt(a)">下载</button>
+            </li>
+          </ul>
+          <div v-else class="text-xs text-subtle">暂未上传材料</div>
         </div>
 
         <!-- Admin Staff Profile & RBAC Permissions -->
@@ -245,10 +288,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores/appStore'
-import { getStudentHoursSummary, filterJobsByRole } from '@/services/ruleEngine'
+import { getStudentHoursSummary, filterJobsByRole, LANG_CERT_STATUS_MAP } from '@/services/ruleEngine'
 import { api } from '@/services/api'
+import { isHttpMode } from '@/services/http'
+import { materialFinanceApi, ACCEPT_TYPES, ATTACHMENT_KIND_MAP } from '@/services/materialFinanceApi'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
 
@@ -334,9 +379,49 @@ async function saveProfile() {
     saving.value = false
   }
 }
+
+// ===== 合规材料（P1 第三批）=====
+const myMaterials = ref([])
+const uploading = ref(false)
+
+async function loadMaterials() {
+  if (!isHttpMode || !isStudent.value || !user.value) return
+  const res = await materialFinanceApi.listAttachments({ ownerId: user.value.id })
+  if (res.code === 200) {
+    myMaterials.value = (res.data || []).filter((a) => a.kind === 'LANG_CERT' || a.kind === 'VISA')
+  }
+}
+
+async function onPick(event, kind) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  uploading.value = true
+  try {
+    // 上传语言证明会改变学籍合规状态，成功后刷新快照
+    const res = await store.mutate(() => materialFinanceApi.uploadAttachment(file, kind))
+    if (res.code === 200) await loadMaterials()
+  } finally {
+    uploading.value = false
+  }
+}
+
+async function downloadAtt(a) {
+  const res = await materialFinanceApi.downloadAttachment(a)
+  if (res.code !== 200) store.notify(res.message || '下载失败', 'error')
+}
+
+onMounted(loadMaterials)
 </script>
 
 <style scoped>
+.upload-btn { cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.upload-btn.disabled { opacity: 0.5; pointer-events: none; }
+.att-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.att-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--color-border-light); border-radius: 4px; background: #ffffff; min-width: 0; }
+.att-name { flex: 1; min-width: 0; }
+.text-caution { color: var(--color-caution); }
+
 .profile-page {
   display: flex;
   flex-direction: column;

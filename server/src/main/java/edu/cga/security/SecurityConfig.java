@@ -53,6 +53,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                        // 财务系统回调：不带登录令牌，由 FinanceService 校验 HMAC-SHA256 签名（P1 第三批）
+                        .requestMatchers(HttpMethod.POST, "/api/integration/finance/callback").permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex

@@ -40,6 +40,8 @@ public class User {
     private String languageCert;
     private BigDecimal languageLevel;
     private Boolean languageValid;
+    /** 语言证明核验状态（P1 第三批）：null=种子/历史数据，PENDING 待核验，VERIFIED 已核验，REJECTED 未通过 */
+    private String languageCertStatus;
     private Integer maxWeeklyHours;
     private String studentNo;
     private String degree;

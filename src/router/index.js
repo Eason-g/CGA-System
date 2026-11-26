@@ -9,6 +9,7 @@ import JobListView from '@/views/admin/JobListView.vue'
 import JobPublishView from '@/views/admin/JobPublishView.vue'
 import ApplicationReviewView from '@/views/admin/ApplicationReviewView.vue'
 import TimesheetAuditView from '@/views/admin/TimesheetAuditView.vue'
+import ComplianceReviewView from '@/views/admin/ComplianceReviewView.vue'
 import PayrollView from '@/views/admin/PayrollView.vue'
 import EvaluationView from '@/views/admin/EvaluationView.vue'
 import ConfigCenterView from '@/views/admin/ConfigCenterView.vue'
@@ -43,6 +44,7 @@ const routes = [
       { path: 'jobs', name: 'AdminJobs', component: JobListView, meta: { title: '岗位管理与审批' } },
       { path: 'jobs/publish', name: 'AdminJobPublish', component: JobPublishView, meta: { title: '发布新岗位' } },
       { path: 'applications', name: 'AdminApplications', component: ApplicationReviewView, meta: { title: '简历筛选与国际生特批' } },
+      { path: 'compliance', name: 'AdminCompliance', component: ComplianceReviewView, meta: { title: '合规材料核验', roles: ['INTL_OFFICER', 'SCHOOL_ADMIN'] } },
       { path: 'timesheets', name: 'AdminTimesheets', component: TimesheetAuditView, meta: { title: '在岗工时与预警' } },
       { path: 'payroll', name: 'AdminPayroll', component: PayrollView, meta: { title: '薪酬核算与预算联动' } },
       { path: 'evaluations', name: 'AdminEvaluations', component: EvaluationView, meta: { title: '周期性考核评价' } },

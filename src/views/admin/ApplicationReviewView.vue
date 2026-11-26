@@ -79,7 +79,24 @@
           <div><span class="text-muted">签证：</span><strong>{{ selectedStudent?.isInternational ? selectedStudent.visaType : '中国籍' }}</strong></div>
         </div>
         <div class="quote-box mt-10 text-xs">{{ selectedApp.statement }}</div>
-        <div class="mt-8 text-xs text-blue">附件：{{ selectedApp.resumeFileName }}</div>
+        <div v-if="!isHttpMode" class="mt-8 text-xs text-blue">附件：{{ selectedApp.resumeFileName }}</div>
+        <!-- P1 第三批：申请附件 + 学生的语言证明 / 签证材料，可下载 -->
+        <div v-else class="mt-10">
+          <div class="fw-600 text-xs mb-6">申请材料</div>
+          <div v-if="attLoading" class="text-xs text-muted">加载附件中…</div>
+          <div v-else-if="!drawerAttachments.length" class="text-xs text-muted">未上传附件（简历：{{ selectedApp.resumeFileName }}）</div>
+          <ul v-else class="att-list">
+            <li v-for="a in drawerAttachments" :key="a.id" class="att-row">
+              <span class="f-pill f-pill-neutral">{{ ATTACHMENT_KIND_MAP[a.kind] }}</span>
+              <span class="text-xs truncate att-name">{{ a.originalName }}</span>
+              <span v-if="a.verifyStatus" class="f-pill" :class="`f-pill-${LANG_CERT_STATUS_MAP[a.verifyStatus]?.tone}`">
+                {{ LANG_CERT_STATUS_MAP[a.verifyStatus]?.label }}
+              </span>
+              <span class="text-xs text-muted">{{ formatFileSize(a.sizeBytes) }}</span>
+              <button type="button" class="f-btn-link text-xs" @click="downloadAtt(a)">下载</button>
+            </li>
+          </ul>
+        </div>
       </div>
 
       <div class="drawer-card">
@@ -89,6 +106,13 @@
             <FluentIcon :name="c.passed ? 'check-circle' : 'x-circle'" :size="14" />
             <div class="text-xs"><strong>{{ c.label }}</strong>：{{ c.detail }}</div>
           </div>
+        </div>
+        <div
+          v-for="h in (selectedApp.complianceCheckResult?.hints || []).filter((x) => !x.passed)"
+          :key="h.key"
+          class="f-banner caution mt-10 text-xs"
+        >
+          <span><strong>{{ h.label }}：</strong>{{ h.detail }}</span>
         </div>
         <div v-if="selectedApp.isSpecialApproval" class="f-banner caution mt-10 text-xs">
           <span><strong>特批理由：</strong>{{ selectedApp.specialReason }}</span>
@@ -139,8 +163,10 @@
 <script setup>
 import { ref, reactive, computed } from 'vue'
 import { useAppStore } from '@/stores/appStore'
-import { filterByRoleDept, APP_STATUS_MAP } from '@/services/ruleEngine'
+import { filterByRoleDept, APP_STATUS_MAP, LANG_CERT_STATUS_MAP } from '@/services/ruleEngine'
 import { api } from '@/services/api'
+import { isHttpMode } from '@/services/http'
+import { materialFinanceApi, ATTACHMENT_KIND_MAP, formatFileSize } from '@/services/materialFinanceApi'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import AuditDrawer from '@/components/AuditDrawer.vue'
@@ -192,6 +218,31 @@ function openDrawer(app) {
   selectedAppId.value = app.id
   specialOpinion.value = ''
   actionMode.value = app.status === 'INTERVIEW_SCHEDULED' ? 'DECIDE' : 'INTERVIEW'
+  loadAttachments(app)
+}
+
+// 筛选抽屉的附件：本申请关联的材料 + 申请人的语言证明、签证材料
+const drawerAttachments = ref([])
+const attLoading = ref(false)
+async function loadAttachments(app) {
+  drawerAttachments.value = []
+  if (!isHttpMode) return
+  attLoading.value = true
+  try {
+    const res = await materialFinanceApi.listAttachments({ ownerId: app.studentId })
+    if (selectedAppId.value !== app.id) return
+    const ids = new Set(app.attachmentIds || [])
+    drawerAttachments.value = (res.code === 200 ? res.data || [] : []).filter(
+      (a) => ids.has(a.id) || a.kind === 'LANG_CERT' || a.kind === 'VISA'
+    )
+  } finally {
+    attLoading.value = false
+  }
+}
+
+async function downloadAtt(a) {
+  const res = await materialFinanceApi.downloadAttachment(a)
+  if (res.code !== 200) store.notify(res.message || '下载失败', 'error')
 }
 
 async function handleSpecialDecision(decision) {
@@ -227,6 +278,10 @@ async function handleDecide(decision) {
 .check-mini.ok svg { color: var(--color-success); margin-top: 2px; flex-shrink: 0; }
 .check-mini.fail svg { color: var(--color-error); margin-top: 2px; flex-shrink: 0; }
 .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.att-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.att-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #ffffff; border: 1px solid var(--color-border-light); border-radius: 4px; min-width: 0; }
+.att-name { flex: 1; min-width: 0; }
+.mb-6 { margin-bottom: 6px; }
 .mt-8 { margin-top: 8px; }
 .mt-10 { margin-top: 10px; }
 .mb-8 { margin-bottom: 8px; }

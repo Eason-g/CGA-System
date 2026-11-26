@@ -1,6 +1,7 @@
 package edu.cga.domain.entity;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 
 import com.baomidou.mybatisplus.annotation.IdType;
@@ -26,6 +27,10 @@ public class JobApplication {
 
     private String statement;
     private String resumeFileName;
+
+    /** 申请附件 ID 列表（P1 第三批：简历与其他材料，见 attachments 表） */
+    @TableField(typeHandler = JsonColumnTypeHandler.class)
+    private List<String> attachmentIds;
 
     @TableField(typeHandler = JsonColumnTypeHandler.class)
     private Map<String, Object> complianceCheckResult;

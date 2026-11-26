@@ -251,7 +251,7 @@ const pendingMyActions = computed(() => pendingJobs.value.length + pendingApps.v
 
 function budgetUtil(b) { return getBudgetUtilization(b) }
 function categoryLabel(cat) {
-  return { HOURS_LIMIT: '工时预警', MISSING_TIMESHEET: '未填报', EXPIRING_SOON: '临期' }[cat] || '预警'
+  return { HOURS_LIMIT: '工时预警', MISSING_TIMESHEET: '未填报', EXPIRING_SOON: '临期', VISA_EXPIRING: '签证到期' }[cat] || '预警'
 }
 </script>
 

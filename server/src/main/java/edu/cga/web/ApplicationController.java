@@ -37,7 +37,9 @@ public class ApplicationController {
             @Size(max = 2000, message = "申请陈述不能超过 2000 字") String statement,
             @Size(max = 128, message = "简历文件名过长") String resumeFileName,
             Boolean isSpecialApproval,
-            @Size(max = 2000, message = "特批理由不能超过 2000 字") String specialReason) {
+            @Size(max = 2000, message = "特批理由不能超过 2000 字") String specialReason,
+            // P1 第三批：本人上传的简历与其他材料
+            @Size(max = 10, message = "每份申请最多关联 10 个附件") java.util.List<String> attachmentIds) {
     }
 
     public record SpecialReviewRequest(
@@ -67,7 +69,7 @@ public class ApplicationController {
                                               @AuthenticationPrincipal CurrentUser user) {
         boolean special = Boolean.TRUE.equals(req.isSpecialApproval());
         JobApplication app = applicationService.submit(req.jobId(), req.statement(), req.resumeFileName(), special,
-                req.specialReason(), user);
+                req.specialReason(), req.attachmentIds(), user);
         return ApiResponse.ok(app, special ? "已提交特批申请，等待国际生办审核留痕" : "投递成功，等待导师筛选");
     }
 
