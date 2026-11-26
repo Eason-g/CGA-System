@@ -1,0 +1,102 @@
+{
+  "_说明": "模拟评教系统演示数据（P2 C.1）。按 课程号 + 学期 给出学生评教结果；taQuestions 为助教相关题目（1–5 分），均分由系统按题目平均计算。MATH1012（高等微积分）故意不提供，用于演示“该课程暂无评教数据”。",
+  "source": "模拟评教系统",
+  "evaluations": [
+    {
+      "courseCode": "CS3042",
+      "courseName": "机器学习导论（双语）",
+      "semester": "2026-2027 秋季学期",
+      "enrolledCount": 52,
+      "responseCount": 48,
+      "satisfactionRate": 95.8,
+      "publishedAt": "期中评教",
+      "taQuestions": [
+        { "title": "助教答疑及时、耐心", "avg": 4.78 },
+        { "title": "作业批改认真、反馈清楚", "avg": 4.66 },
+        { "title": "实验课指导对学习有帮助", "avg": 4.69 }
+      ]
+    },
+    {
+      "courseCode": "CS3042",
+      "courseName": "机器学习导论（双语）",
+      "semester": "2025-2026 春季学期",
+      "enrolledCount": 47,
+      "responseCount": 41,
+      "satisfactionRate": 91.5,
+      "publishedAt": "期末评教",
+      "taQuestions": [
+        { "title": "助教答疑及时、耐心", "avg": 4.52 },
+        { "title": "作业批改认真、反馈清楚", "avg": 4.40 },
+        { "title": "实验课指导对学习有帮助", "avg": 4.47 }
+      ]
+    },
+    {
+      "courseCode": "CS4018",
+      "courseName": "高级算法与数据结构（全英文）",
+      "semester": "2026-2027 秋季学期",
+      "enrolledCount": 70,
+      "responseCount": 61,
+      "satisfactionRate": 90.2,
+      "publishedAt": "期中评教",
+      "taQuestions": [
+        { "title": "习题课讲解清晰", "avg": 4.52 },
+        { "title": "OJ 题目维护及时", "avg": 4.41 },
+        { "title": "答疑耐心、回复及时", "avg": 4.47 }
+      ]
+    },
+    {
+      "courseCode": "CS6009",
+      "courseName": "国际学术论文写作工作坊",
+      "semester": "2026-2027 秋季学期",
+      "enrolledCount": 20,
+      "responseCount": 18,
+      "satisfactionRate": 97.6,
+      "publishedAt": "期中评教",
+      "taQuestions": [
+        { "title": "论文修改意见具体可行", "avg": 4.83 },
+        { "title": "研讨组织有序", "avg": 4.90 },
+        { "title": "答疑耐心、回复及时", "avg": 4.76 }
+      ]
+    },
+    {
+      "courseCode": "CS2011",
+      "courseName": "计算机系统基础（双语）",
+      "semester": "2026-2027 秋季学期",
+      "enrolledCount": 104,
+      "responseCount": 87,
+      "satisfactionRate": 86.4,
+      "publishedAt": "期中评教",
+      "taQuestions": [
+        { "title": "答疑时段安排合理", "avg": 4.35 },
+        { "title": "小测验批改及时", "avg": 4.28 },
+        { "title": "答疑讲解清楚", "avg": 4.40 }
+      ]
+    },
+    {
+      "courseCode": "CS5031",
+      "courseName": "人工智能伦理与治理（国际班）",
+      "semester": "2026-2027 春季预招",
+      "enrolledCount": 36,
+      "responseCount": 30,
+      "satisfactionRate": 92.0,
+      "publishedAt": "上一轮开课评教（演示）",
+      "taQuestions": [
+        { "title": "案例研讨组织有序", "avg": 4.60 },
+        { "title": "小组课题跟进及时", "avg": 4.55 }
+      ]
+    },
+    {
+      "courseCode": "CS4088",
+      "courseName": "深度学习实践（英文）",
+      "semester": "2026-2027 春季预招",
+      "enrolledCount": 58,
+      "responseCount": 49,
+      "satisfactionRate": 89.8,
+      "publishedAt": "上一轮开课评教（演示）",
+      "taQuestions": [
+        { "title": "实验环境配置指导到位", "avg": 4.44 },
+        { "title": "实验手册清楚易懂", "avg": 4.38 }
+      ]
+    }
+  ]
+}

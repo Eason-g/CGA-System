@@ -168,9 +168,14 @@
                       <span v-for="d in ev.dimensions" :key="d.key">
                         {{ d.label }}（{{ d.weight }}%）：<strong class="tabular-nums">{{ d.score }} 分</strong>
                         <span v-if="d.feedbackCount" class="text-blue">（服务对象评价 {{ d.feedbackCount }} 条，折算 {{ d.feedbackScore }} 分）</span>
+                        <span v-if="d.teachingEvalScore !== undefined" class="text-blue">（课程评教折算 {{ d.teachingEvalScore }} 分）</span>
+                        <span v-if="d.defaultSource" class="text-muted">· 默认取{{ d.defaultSource === 'TEACHING_EVAL' ? '课程评教' : '服务对象评价' }}</span>
                       </span>
                       <span v-if="ev.courseEvalSync" class="text-blue">
-                        课程评教联动：{{ ev.courseEvalSync.responseCount }} 份 · 满意度 {{ ev.courseEvalSync.satisfactionRate }}%
+                        课程评教（{{ ev.courseEvalSync.source || '模拟评教系统' }}）：
+                        <template v-if="ev.courseEvalSync.courseCode">{{ ev.courseEvalSync.courseCode }} · {{ ev.courseEvalSync.semester }} · </template>
+                        {{ ev.courseEvalSync.responseCount }} 份 · 均分 {{ ev.courseEvalSync.avgRating }} · 满意度 {{ ev.courseEvalSync.satisfactionRate }}%
+                        <template v-if="ev.courseEvalSync.syncedAt"> · 同步于 {{ ev.courseEvalSync.syncedAt }}</template>
                       </span>
                     </div>
                     <div v-for="d in ev.dimensions.filter((x) => x.overrideReason)" :key="`r_${d.key}`" class="text-xs text-caution mt-6">
@@ -238,15 +243,89 @@
             <input v-model="evalForm.period" type="text" class="f-input" />
           </div>
 
-          <div v-if="selectedContractJob?.type === 'TA'" class="f-banner info">
-            <div class="text-xs flex-1">已同步课程评教：48 份问卷，满意度 94.2%（折算 93 分）</div>
-            <button type="button" class="f-btn f-btn-sm" @click="applyCourseEvalScore">一键代入</button>
+          <!-- 课程评教联动（P2 C.1）：仅 TA 协议；数据由后端从评教系统拉取 -->
+          <div v-if="selectedContractJob?.type === 'TA'" class="eval-sync-panel">
+            <div class="sync-head">
+              <div class="min-w-0">
+                <div class="text-sm fw-600">课程评教联动</div>
+                <div class="text-xs text-muted">数据来源：{{ teachingEval?.source || '模拟评教系统' }}（演示环境），按课程号 + 学期同步</div>
+              </div>
+              <button
+                type="button"
+                class="f-btn f-btn-sm"
+                :disabled="teachingLoading || !isHttpMode"
+                @click="syncTeachingEval"
+              >
+                {{ teachingLoading ? '同步中…' : teachingEval ? '重新同步' : '同步评教结果' }}
+              </button>
+            </div>
+            <div v-if="!isHttpMode" class="text-xs text-muted">评教联动需要连接后端</div>
+            <template v-else-if="teachingEval">
+              <div v-if="!teachingEval.available" class="f-banner caution">
+                <div class="text-xs">
+                  {{ teachingEval.message || '该课程暂无评教数据' }}
+                  <span v-if="teachingEval.courseCode">（{{ teachingEval.courseCode }} · {{ teachingEval.semester }}）</span>
+                </div>
+              </div>
+              <template v-else>
+                <div class="sync-stats">
+                  <div class="sync-stat wide">
+                    <span class="stat-label">课程 / 学期</span>
+                    <span class="stat-value">{{ teachingEval.courseCode }} {{ teachingEval.courseName }} · {{ teachingEval.semester }}</span>
+                  </div>
+                  <div class="sync-stat">
+                    <span class="stat-label">回收问卷</span>
+                    <span class="stat-value tabular-nums">
+                      {{ teachingEval.responseCount }} 份<template v-if="teachingEval.enrolledCount"> / {{ teachingEval.enrolledCount }} 人</template>
+                    </span>
+                  </div>
+                  <div class="sync-stat">
+                    <span class="stat-label">助教题目均分</span>
+                    <span class="stat-value tabular-nums">{{ teachingEval.avgRating }} / 5</span>
+                  </div>
+                  <div class="sync-stat">
+                    <span class="stat-label">满意度</span>
+                    <span class="stat-value tabular-nums">{{ teachingEval.satisfactionRate }}%</span>
+                  </div>
+                  <div class="sync-stat">
+                    <span class="stat-label">折算分（均分 × 20）</span>
+                    <span class="stat-value tabular-nums text-blue">{{ teachingEval.serviceScore }} 分</span>
+                  </div>
+                </div>
+                <div v-if="teachingEval.questions?.length" class="text-xs text-muted">
+                  <span v-for="(q, i) in teachingEval.questions" :key="i" class="q-item">{{ q.title }} {{ q.avg }}</span>
+                </div>
+                <div class="flex items-center justify-between gap-8 flex-wrap">
+                  <span class="text-xs text-muted tabular-nums">{{ teachingEval.round }} · 获取于 {{ teachingEval.fetchedAt }}</span>
+                  <button v-if="!teachingConfirmed" type="button" class="f-btn f-btn-primary f-btn-sm" @click="confirmTeachingEval">
+                    确认采用
+                  </button>
+                  <span v-else class="f-pill f-pill-success">已确认，提交时写入考核记录</span>
+                </div>
+              </template>
+            </template>
           </div>
 
-          <div v-if="feedbackSummary && feedbackSummary.count > 0" class="f-banner success">
+          <div v-if="hasFeedback" class="f-banner success">
             <div class="text-xs flex-1">
-              服务对象评价 {{ feedbackSummary.count }} 条，平均 {{ feedbackSummary.avgRating }} 星，折算 {{ feedbackSummary.serviceScore }} 分，已代入「{{ serviceDimLabel }}」维度
+              服务对象评价 {{ feedbackSummary.count }} 条，平均 {{ feedbackSummary.avgRating }} 星，折算 {{ feedbackSummary.serviceScore }} 分
             </div>
+          </div>
+
+          <!-- 服务对象评价与课程评教同时存在时，由导师选定服务维度的默认值 -->
+          <div v-if="hasServiceDim && hasFeedback && teachingConfirmed" class="default-picker">
+            <div class="text-xs fw-600">「{{ serviceDimLabel }}」默认值来源</div>
+            <label class="radio-row">
+              <input v-model="serviceSource" type="radio" value="FEEDBACK" @change="applyServiceDefault" />
+              <span>服务对象评价（{{ feedbackSummary.serviceScore }} 分）</span>
+            </label>
+            <label class="radio-row">
+              <input v-model="serviceSource" type="radio" value="TEACHING_EVAL" @change="applyServiceDefault" />
+              <span>课程评教（{{ teachingEval.serviceScore }} 分）</span>
+            </label>
+          </div>
+          <div v-else-if="hasServiceDim && serviceDefault !== null" class="text-xs text-muted">
+            「{{ serviceDimLabel }}」已默认填入{{ serviceSourceLabel }} {{ serviceDefault }} 分，修改须填写理由
           </div>
 
           <div class="dim-box">
@@ -269,7 +348,7 @@
 
           <div v-if="serviceOverridden" class="f-field">
             <label class="f-label">修改「{{ serviceDimLabel }}」分数的理由 <span class="req">*</span></label>
-            <textarea v-model="evalForm.serviceOverrideReason" class="f-textarea" rows="2" maxlength="500" placeholder="默认分数来自服务对象评价，修改须说明理由（写入审计日志）" />
+            <textarea v-model="evalForm.serviceOverrideReason" class="f-textarea" rows="2" maxlength="500" :placeholder="`默认分数来自${serviceSourceLabel}，修改须说明理由（写入审计日志）`" />
           </div>
 
           <div class="f-field">
@@ -318,7 +397,6 @@ const activeContracts = computed(() =>
 const showRules = ref(false)
 const showModal = ref(false)
 const busy = ref(false)
-const courseEvalLinked = ref(false)
 const expandedIds = ref(new Set())
 const expandedFeedback = ref(new Set())
 
@@ -442,27 +520,85 @@ async function renew(c) {
 
 // ---------------------------------------------------------------- 考核
 
+// 考核周期名称按当前月份生成，不写死日期
+function defaultPeriod() {
+  return `${store.db.meta?.currentMonth || today.value.slice(0, 7)} 月度考核`
+}
+
 const evalForm = reactive({
   contractId: '',
-  period: '2026-11 月度考核',
+  period: '',
   dimensionScores: {},
   comment: '履职尽责，按期完成任务。',
   serviceOverrideReason: ''
 })
 const feedbackSummary = ref(null)
 
+// 课程评教联动（P2 C.1）：预览结果、导师是否确认采用、服务维度默认值来源（FEEDBACK / TEACHING_EVAL）
+const teachingEval = ref(null)
+const teachingLoading = ref(false)
+const teachingConfirmed = ref(false)
+const serviceSource = ref(null)
+
 const selectedContract = computed(() => store.db.contracts.find((c) => c.id === evalForm.contractId) || null)
 const selectedContractJob = computed(() => (selectedContract.value ? store.getJob(selectedContract.value.jobId) : null))
 const activeTemplate = computed(() => store.db.configs.evaluationTemplates[selectedContractJob.value?.type || 'TA'] || [])
 const serviceDimLabel = computed(() => activeTemplate.value.find((d) => d.key === SERVICE_KEY)?.label || '服务评价')
-
-// 有服务对象评价时，service 维度改动了默认分就要填理由
-const serviceOverridden = computed(() => {
+const hasServiceDim = computed(() => activeTemplate.value.some((d) => d.key === SERVICE_KEY))
+const hasFeedback = computed(() => {
   const s = feedbackSummary.value
-  if (!s || !s.count || s.serviceScore === null || s.serviceScore === undefined) return false
-  if (!activeTemplate.value.some((d) => d.key === SERVICE_KEY)) return false
-  return Number(evalForm.dimensionScores[SERVICE_KEY]) !== Number(s.serviceScore)
+  return !!(s && s.count > 0 && s.serviceScore !== null && s.serviceScore !== undefined)
 })
+
+// 当前选定来源的默认分；没有可用来源时为 null
+const serviceDefault = computed(() => {
+  if (serviceSource.value === 'FEEDBACK' && hasFeedback.value) return Number(feedbackSummary.value.serviceScore)
+  if (serviceSource.value === 'TEACHING_EVAL' && teachingConfirmed.value && teachingEval.value?.available) {
+    return Number(teachingEval.value.serviceScore)
+  }
+  return null
+})
+const serviceSourceLabel = computed(() => (serviceSource.value === 'TEACHING_EVAL' ? '课程评教折算分' : '服务对象评价折算分'))
+
+// 服务维度有默认值时，改动了默认分就要填理由（与后端规则一致）
+const serviceOverridden = computed(() => {
+  if (serviceDefault.value === null || !hasServiceDim.value) return false
+  return Number(evalForm.dimensionScores[SERVICE_KEY]) !== serviceDefault.value
+})
+
+function applyServiceDefault() {
+  if (serviceDefault.value !== null && hasServiceDim.value) {
+    evalForm.dimensionScores[SERVICE_KEY] = serviceDefault.value
+  }
+}
+
+async function syncTeachingEval() {
+  const contractId = evalForm.contractId
+  if (!contractId) return
+  teachingLoading.value = true
+  try {
+    const res = await api.getTeachingEval({ contractId })
+    if (contractId !== evalForm.contractId) return
+    if (res.code === 200) {
+      teachingEval.value = res.data
+      teachingConfirmed.value = false
+      if (serviceSource.value === 'TEACHING_EVAL') {
+        serviceSource.value = hasFeedback.value ? 'FEEDBACK' : null
+        applyServiceDefault()
+      }
+    } else {
+      store.notify(res.message || '同步评教结果失败', 'error')
+    }
+  } finally { teachingLoading.value = false }
+}
+
+// 导师确认后，服务维度默认取“均分 × 20”；同时有服务对象评价时可在下方切换来源
+function confirmTeachingEval() {
+  teachingConfirmed.value = true
+  serviceSource.value = 'TEACHING_EVAL'
+  applyServiceDefault()
+  store.notify(`已采用课程评教结果：「${serviceDimLabel.value}」默认 ${teachingEval.value.serviceScore} 分`, 'info')
+}
 
 const liveScore = computed(() => {
   const total = activeTemplate.value.reduce((s, d) => s + (Number(evalForm.dimensionScores[d.key] || 0) * d.weight) / 100, 0)
@@ -477,9 +613,11 @@ function toggleEval(id) {
 }
 
 async function initScoresForContract() {
-  courseEvalLinked.value = false
   evalForm.serviceOverrideReason = ''
   feedbackSummary.value = null
+  teachingEval.value = null
+  teachingConfirmed.value = false
+  serviceSource.value = null
   const scores = {}
   activeTemplate.value.forEach((d) => { scores[d.key] = 90 })
   evalForm.dimensionScores = scores
@@ -488,25 +626,19 @@ async function initScoresForContract() {
   const res = await api.getFeedbackSummary({ contractId })
   if (res.code === 200 && res.data && contractId === evalForm.contractId) {
     feedbackSummary.value = res.data
-    if (res.data.count > 0 && activeTemplate.value.some((d) => d.key === SERVICE_KEY)) {
-      evalForm.dimensionScores[SERVICE_KEY] = Number(res.data.serviceScore)
+    // 评教结果尚未确认采用时，有服务对象评价就先用它作默认值（P1 规则）
+    if (hasFeedback.value && serviceSource.value === null) {
+      serviceSource.value = 'FEEDBACK'
+      applyServiceDefault()
     }
   }
 }
 
 function openNewEvalModal(contractId) {
   evalForm.contractId = contractId || activeContracts.value[0]?.id || ''
+  evalForm.period = defaultPeriod()
   initScoresForContract()
   showModal.value = true
-}
-
-function applyCourseEvalScore() {
-  const serviceDim = activeTemplate.value.find((d) => d.key === SERVICE_KEY) || activeTemplate.value[1]
-  if (serviceDim) {
-    evalForm.dimensionScores[serviceDim.key] = 93
-    courseEvalLinked.value = true
-    store.notify('已代入课程评教分数（93 分）', 'info')
-  }
 }
 
 async function submitEval() {
@@ -519,8 +651,10 @@ async function submitEval() {
           period: evalForm.period,
           dimensionScores: evalForm.dimensionScores,
           comment: evalForm.comment,
-          courseEvalSync: courseEvalLinked.value ? { responseCount: 48, satisfactionRate: 94.2, avgRating: 4.71 } : null,
-          serviceOverrideReason: serviceOverridden.value ? evalForm.serviceOverrideReason.trim() : null
+          serviceOverrideReason: serviceOverridden.value ? evalForm.serviceOverrideReason.trim() : null,
+          // 评教数字由后端重新拉取，前端只告知“导师已确认同步”与选定的默认值来源
+          syncTeachingEval: teachingConfirmed.value && !!teachingEval.value?.available,
+          serviceDefaultSource: serviceSource.value
         },
         user.value
       )
@@ -543,6 +677,26 @@ async function submitEval() {
 .preview-result { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: #ffffff; border: 1px solid var(--color-blue-border); border-radius: 4px; }
 .code-chip { font-family: ui-monospace, Consolas, monospace; font-weight: 600; letter-spacing: 0.08em; padding: 2px 8px; border-radius: 4px; background: var(--color-blue-subtle); color: var(--color-fluent-blue); }
 .stars { color: #d9a400; letter-spacing: 1px; }
+/* 课程评教联动面板（P2 C.1） */
+.eval-sync-panel { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 4px; border: 1px solid var(--color-blue-border); background: var(--color-blue-subtle); min-width: 0; }
+.sync-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.sync-head .f-btn { flex-shrink: 0; }
+.sync-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.sync-stat { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: #ffffff; border-radius: 4px; border: 1px solid var(--color-border-light); min-width: 0; }
+.sync-stat.wide { grid-column: 1 / -1; }
+.stat-label { font-size: 12px; color: var(--color-muted); }
+.stat-value { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.q-item { display: inline-block; margin-right: 10px; }
+.default-picker { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 4px; border: 1px solid var(--color-border-light); background: #faf9f8; }
+.radio-row { display: flex; align-items: center; gap: 8px; font-size: 13px; min-height: 32px; cursor: pointer; }
+.min-w-0 { min-width: 0; }
+@media (max-width: 768px) {
+  .eval-sync-panel { padding: 10px 12px; }
+  .sync-head .f-btn { width: 100%; min-height: 40px; }
+  .sync-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat-label, .stat-value, .radio-row { font-size: 14px; }
+  .radio-row { min-height: 40px; }
+}
 .flex-1 { flex: 1; }
 .mr-6 { margin-right: 6px; }
 .ml-6 { margin-left: 6px; }

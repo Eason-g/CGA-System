@@ -40,6 +40,10 @@ public class EvaluationService {
     /** 服务对象评价对应的考核维度 key（TA/RA/GA 模板中均为 service） */
     private static final String SERVICE_DIMENSION = "service";
 
+    /** service 维度默认值来源（P2 C.1）：服务对象评价 / 课程评教 */
+    public static final String SOURCE_FEEDBACK = "FEEDBACK";
+    public static final String SOURCE_TEACHING_EVAL = "TEACHING_EVAL";
+
     private final EvaluationMapper evaluationMapper;
     private final ContractMapper contractMapper;
     private final JobMapper jobMapper;
@@ -51,12 +55,14 @@ public class EvaluationService {
     private final IdGenerator ids;
     private final TimeService time;
     private final FeedbackService feedbackService;
+    private final TeachingEvalService teachingEvalService;
 
     public EvaluationService(EvaluationMapper evaluationMapper, ContractMapper contractMapper, JobMapper jobMapper,
                              PayrollMapper payrollMapper, BudgetMapper budgetMapper, DataScope scope,
                              ConfigService configService, AuditService audit, IdGenerator ids, TimeService time,
-                             FeedbackService feedbackService) {
+                             FeedbackService feedbackService, TeachingEvalService teachingEvalService) {
         this.feedbackService = feedbackService;
+        this.teachingEvalService = teachingEvalService;
         this.evaluationMapper = evaluationMapper;
         this.contractMapper = contractMapper;
         this.jobMapper = jobMapper;
@@ -86,12 +92,31 @@ public class EvaluationService {
     /**
      * 同上。P1：该合同有服务对象评价时，service 维度默认取“平均星级 × 20”（未传该维度分数即用默认值）；
      * 传入的分数与默认值不同时必须填写 serviceOverrideReason，理由写进审计日志。
+     * <p>
+     * courseEvalSync 只作为“导师确认同步评教”的旧式开关：不为空即等同 syncTeachingEval=true，
+     * 其中的数字一律忽略，由后端重新从评教系统拉取（P2 C.1）。
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public EvaluationResult submit(String contractId, String period, Map<String, Object> dimensionScores,
+                                   String comment, Map<String, Object> courseEvalSync, String serviceOverrideReason,
+                                   CurrentUser operator) {
+        return submit(contractId, period, dimensionScores, comment, courseEvalSync != null, null,
+                serviceOverrideReason, operator);
+    }
+
+    /**
+     * 同上（P2 C.1 评教联动）。
+     *
+     * @param syncTeachingEval     导师已确认同步评教结果：后端按合同所属课程重新拉取，写入 courseEvalSync；
+     *                             该课程没有评教数据时 400
+     * @param serviceDefaultSource service 维度默认值来源：FEEDBACK（服务对象评价）/ TEACHING_EVAL（课程评教）；
+     *                             为空时有服务对象评价取它，否则取已同步的评教结果，都没有则不设默认值
      */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     @SuppressWarnings("unchecked")
     public EvaluationResult submit(String contractId, String period, Map<String, Object> dimensionScores,
-                                   String comment, Map<String, Object> courseEvalSync, String serviceOverrideReason,
-                                   CurrentUser operator) {
+                                   String comment, boolean syncTeachingEval, String serviceDefaultSource,
+                                   String serviceOverrideReason, CurrentUser operator) {
         Contract con = scope.requireVisible(contractMapper, scope.contracts(operator), contractId, "聘用协议不存在");
         Job job = jobMapper.selectById(con.getJobId());
         if (job == null) {
@@ -106,26 +131,59 @@ public class EvaluationService {
         Map<String, Object> scores = dimensionScores == null ? Map.of() : dimensionScores;
         FeedbackService.FeedbackStats feedback = feedbackService.stats(con.getId());
         BigDecimal feedbackScore = feedback.serviceScore();
+
+        // 评教联动：只信任后端从评教系统拉取的数据
+        String source = normalizeSource(serviceDefaultSource);
+        TeachingEvalService.Lookup teaching = null;
+        if (syncTeachingEval || SOURCE_TEACHING_EVAL.equals(source)) {
+            teaching = teachingEvalService.lookup(con, job);
+            if (!teaching.available()) {
+                throw BizException.badRequest(teaching.message() + "，无法同步评教结果");
+            }
+        }
+        BigDecimal teachingScore = teaching == null ? null : teaching.evaluation().serviceScore();
+        if (SOURCE_FEEDBACK.equals(source) && feedbackScore == null) {
+            throw BizException.badRequest("该聘用协议暂无服务对象评价，不能作为服务维度默认值");
+        }
+        if (source == null) {
+            source = feedbackScore != null ? SOURCE_FEEDBACK : teachingScore != null ? SOURCE_TEACHING_EVAL : null;
+        }
+        BigDecimal serviceDefault = SOURCE_FEEDBACK.equals(source) ? feedbackScore
+                : SOURCE_TEACHING_EVAL.equals(source) ? teachingScore : null;
+        String defaultLabel = SOURCE_TEACHING_EVAL.equals(source)
+                ? "课程评教折算分（" + teachingEvalService.sourceName() + "）" : "服务对象评价折算分";
+
         String feedbackNote = "";
+        boolean teachingApplied = false;
         List<Map<String, Object>> dimensions = new ArrayList<>();
         BigDecimal weighted = BigDecimal.ZERO;
         for (Map<String, Object> dim : dims) {
             String key = String.valueOf(dim.get("key"));
             Object raw = scores.get(key);
-            boolean serviceFromFeedback = SERVICE_DIMENSION.equals(key) && feedbackScore != null;
-            BigDecimal defaultScore = serviceFromFeedback ? feedbackScore : DEFAULT_DIMENSION_SCORE;
+            boolean serviceDim = SERVICE_DIMENSION.equals(key);
+            boolean hasDefault = serviceDim && serviceDefault != null;
+            BigDecimal defaultScore = hasDefault ? serviceDefault : DEFAULT_DIMENSION_SCORE;
             BigDecimal score = raw == null ? defaultScore : Num.toDecimal(raw);
             if (score == null || score.signum() < 0 || score.compareTo(BigDecimal.valueOf(100)) > 0) {
                 throw BizException.badRequest("考核维度「" + dim.get("label") + "」的分数必须在 0–100 之间");
             }
             String overrideReason = null;
-            if (serviceFromFeedback) {
-                feedbackNote = "；服务对象评价 " + feedback.count() + " 条，平均 " + Num.plain(feedback.avgRating())
+            if (serviceDim && feedbackScore != null) {
+                feedbackNote += "；服务对象评价 " + feedback.count() + " 条，平均 " + Num.plain(feedback.avgRating())
                         + " 星，折算 " + Num.plain(feedbackScore) + " 分";
-                if (score.compareTo(feedbackScore) != 0) {
+            }
+            if (serviceDim && teaching != null) {
+                feedbackNote += "；" + teachingEvalService.sourceName() + "课程评教 " + teaching.evaluation().responseCount()
+                        + " 份，助教题目均分 " + Num.plain(teaching.evaluation().taItemAvg()) + "，折算 "
+                        + Num.plain(teachingScore) + " 分";
+            }
+            if (hasDefault) {
+                teachingApplied = SOURCE_TEACHING_EVAL.equals(source);
+                feedbackNote += "，默认取" + defaultLabel;
+                if (score.compareTo(serviceDefault) != 0) {
                     if (serviceOverrideReason == null || serviceOverrideReason.isBlank()) {
-                        throw BizException.badRequest("「" + dim.get("label") + "」默认取服务对象评价折算分 "
-                                + Num.plain(feedbackScore) + " 分，修改为 " + Num.plain(score) + " 分须填写修改理由");
+                        throw BizException.badRequest("「" + dim.get("label") + "」默认取" + defaultLabel + " "
+                                + Num.plain(serviceDefault) + " 分，修改为 " + Num.plain(score) + " 分须填写修改理由");
                     }
                     overrideReason = serviceOverrideReason.trim();
                     feedbackNote += "，评价人改为 " + Num.plain(score) + " 分，理由：" + overrideReason;
@@ -137,10 +195,17 @@ public class EvaluationService {
             d.put("label", dim.get("label"));
             d.put("weight", dim.get("weight"));
             d.put("score", score);
-            if (serviceFromFeedback) {
+            if (serviceDim && feedbackScore != null) {
                 d.put("feedbackCount", feedback.count());
                 d.put("feedbackAvg", feedback.avgRating());
                 d.put("feedbackScore", feedbackScore);
+            }
+            if (serviceDim && teaching != null) {
+                d.put("teachingEvalScore", teachingScore);
+            }
+            if (hasDefault) {
+                d.put("defaultSource", source);
+                d.put("defaultScore", serviceDefault);
                 if (overrideReason != null) {
                     d.put("overrideReason", overrideReason);
                 }
@@ -148,6 +213,8 @@ public class EvaluationService {
             dimensions.add(d);
             weighted = weighted.add(score.multiply(weight).divide(BigDecimal.valueOf(100)));
         }
+        Map<String, Object> courseEvalSync = teaching == null ? null
+                : teachingEvalService.syncRecord(teaching, teachingApplied);
         BigDecimal totalScore = weighted.setScale(1, RoundingMode.HALF_UP);
         RuleEngine.GradeInfo grade = RuleEngine.gradeFromScore(totalScore);
 
@@ -206,5 +273,17 @@ public class EvaluationService {
         String message = "考核已提交：" + grade.grade() + "（" + Num.plain(totalScore) + "分，系数 "
                 + Num.plain(grade.coefficient()) + "x）" + payrollNote;
         return new EvaluationResult(ev, message);
+    }
+
+    /** 默认值来源：空 → null；FEEDBACK / TEACHING_EVAL（不区分大小写）；其他取值 400 */
+    private static String normalizeSource(String s) {
+        if (s == null || s.isBlank()) {
+            return null;
+        }
+        String v = s.trim().toUpperCase();
+        if (!SOURCE_FEEDBACK.equals(v) && !SOURCE_TEACHING_EVAL.equals(v)) {
+            throw BizException.badRequest("服务维度默认值来源只能是服务对象评价（FEEDBACK）或课程评教（TEACHING_EVAL）");
+        }
+        return v;
     }
 }

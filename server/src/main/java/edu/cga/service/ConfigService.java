@@ -140,6 +140,11 @@ public class ConfigService {
                     globalRules.put(key, v.intValueExact());
                 }
             }
+            // P2 C.2：智能推荐权重须为非负数（校验与规范化见 RecommendationService）
+            if (globalRules.containsKey(RecommendationService.CONFIG_KEY)) {
+                globalRules.put(RecommendationService.CONFIG_KEY,
+                        RecommendationService.validateWeights(globalRules.get(RecommendationService.CONFIG_KEY)));
+            }
         }
 
         if (evaluationTemplates != null) {

@@ -929,8 +929,10 @@ const httpApi = {
     return http.post(`/api/payrolls/${enc(payrollId)}/payout`)
   },
 
-  submitEvaluation({ contractId, period, dimensionScores, comment, courseEvalSync, serviceOverrideReason }) {
-    return http.post('/api/evaluations', { contractId, period, dimensionScores, comment, courseEvalSync, serviceOverrideReason })
+  // P2 C.1：syncTeachingEval 为 true 时后端重新拉取评教结果写入 courseEvalSync（前端不再传评教数字）；
+  // serviceDefaultSource 为服务维度默认值来源 FEEDBACK / TEACHING_EVAL
+  submitEvaluation({ contractId, period, dimensionScores, comment, serviceOverrideReason, syncTeachingEval = false, serviceDefaultSource = null }) {
+    return http.post('/api/evaluations', { contractId, period, dimensionScores, comment, serviceOverrideReason, syncTeachingEval, serviceDefaultSource })
   },
 
   saveConfigs({ workflows, evaluationTemplates, globalRules, jobTypeSchemas }) {
@@ -1006,6 +1008,20 @@ const httpApi = {
     return http.get('/api/audit/verify')
   }
 }
+
+// ----- P2 C 批：评教联动与智能推荐（只在 http 模式实现，mock 模式提示需要后端） -----
+Object.assign(httpApi, {
+  // 评教结果预览：{ available, source, courseCode, semester, responseCount, avgRating, satisfactionRate, serviceScore, message }
+  getTeachingEval({ contractId }) {
+    return http.get(`/api/integration/teaching-eval?contractId=${enc(contractId)}`)
+  },
+  // 学生本人的岗位推荐：{ weights, items: [{ jobId, score, applicable, reasons, blockers, factors }], topJobIds }
+  getRecommendations() {
+    return http.get('/api/recommendations')
+  }
+})
+mockApi.getTeachingEval = backendOnly
+mockApi.getRecommendations = backendOnly
 
 export const api = isHttpMode ? httpApi : mockApi
 // 供脚本直接测试 mock 后端（scripts/verify-p0-fixes.mjs）

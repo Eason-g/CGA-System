@@ -218,3 +218,16 @@ node scripts/gen-seed-sql.mjs
 **旧库升级**：`app.db.init=if-empty` 时若发现缺少 P1 新表（`job_templates`、`feedback_rounds`、`service_feedback`），会按最新脚本重建演示数据。
 
 新增测试：`JobTypeSchemaIntegrationTest`、`JobTemplateIntegrationTest`、`FeedbackIntegrationTest`、`RenewalIntegrationTest`。
+
+## 10. P2 C 批：评教联动与智能推荐（规格见 `docs/P2设计.md` C 批）
+
+| 接口 | 权限 | 说明 |
+|---|---|---|
+| `GET /api/integration/teaching-eval?contractId=` | MENTOR（本人岗位）、DEPT_ADMIN、SCHOOL_ADMIN；学生 403，范围外 404 | 按 TA 岗位 `extraFields.courseCode + semester` 查评教：回收份数、助教题目均分（1–5）、满意度、折算分（均分 × 20）。没有数据时仍 200，`available=false`、`message=该课程暂无评教数据`；非 TA 合同 400 |
+| `POST /api/evaluations` 增加 `syncTeachingEval`、`serviceDefaultSource` | 同前 | `syncTeachingEval=true` 时后端**重新拉取**评教结果写入 `courseEvalSync`（source、sourceCode、courseCode、semester、responseCount、avgRating、satisfactionRate、serviceScore、appliedAsDefault、syncedAt），前端传来的 `courseEvalSync` 数字不采信（旧字段不为空只当作同步开关）；课程无评教数据 400。`serviceDefaultSource` = `FEEDBACK` / `TEACHING_EVAL` 决定 service 维度默认值，缺省时有服务对象评价取它、否则取评教；改分仍须理由 |
+| `GET /api/recommendations` | STUDENT（其他角色 403） | 已发布、本人未申请的岗位逐个打分，返回 `{ weights, currentHours, maxHours, topJobIds, items[{ jobId, score, applicable, needsSpecialApproval, reasons, blockers, factors }] }` |
+| `PUT /api/configs` 的 `globalRules.recommendWeights` | SCHOOL_ADMIN | 只能含 skill / hours / language / dept / deadline，非负数且不能全为 0，缺项补默认值，否则 400 |
+
+- **评教网关**：接口 `integration/TeachingEvalGateway`，默认 `MockTeachingEvalGateway` 读 `resources/integration/course-evaluations.json`（标注“模拟评教系统”）。`app.integration.teaching-eval.provider` 缺省为 `mock`；接真实系统时新增实现类并改该配置。演示数据覆盖种子 TA 岗位课程，**MATH1012 故意没有数据**（校级管理员或 `chen.shouren` 考核 Elena 时可演示“暂无评教数据”）。
+- **推荐打分**（`service/RecommendationService`）：先调用 `RuleEngine.validateStudentApplication`，签证/国际生开放资格等硬性条件不过、名额已满或已过截止日 → `applicable=false`、0 分、排最后，`blockers` 写原因。其余岗位五项因子取值 0–1：技能重合比例（岗位无技能取 0.5）；录用后工时 ≤ 上限 80% 取 1、≤ 上限取 0.6、超上限 0；语言无要求或满足取 1、否则 0；同院系 1/0；7 天内截止取 1、之后线性降到 60 天取 0。推荐分 = Σ(权重 × 取值) / Σ权重 × 100 取整。默认权重 40 / 25 / 15 / 10 / 10。工时超限、语言不足属于可特批项：岗位仍可申请，但列入 `blockers` 并标 `needsSpecialApproval`。
+- 新增测试：`TeachingEvalIntegrationTest`、`RecommendationIntegrationTest`。

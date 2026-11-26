@@ -317,7 +317,9 @@ export function createSeedData() {
         maxWeeklyHoursDefault: 20,
         maxWeeklyHoursIntl: 20,
         expiryWarningDays: 15,
-        cautionHoursRatio: 0.8
+        cautionHoursRatio: 0.8,
+        // P2 C.2 智能推荐权重：技能匹配 / 剩余周工时 / 语言要求 / 同院系 / 截止临近（按比例归一到 0–100 分）
+        recommendWeights: { skill: 40, hours: 25, language: 15, dept: 10, deadline: 10 }
       },
       // P1：岗位类型差异化字段。发布页按它渲染表单，后端建岗按它校验（必填、下拉选项、经费来源）
       // 字段 type：text / textarea / number / select / lines（多行，存为字符串数组）/ date

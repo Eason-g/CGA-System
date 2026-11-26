@@ -62,11 +62,48 @@
     <div class="storefront-container">
       <!-- Left 8 Columns: Clean Uniform Job Cards -->
       <section class="jobs-column">
+        <!-- 为你推荐（P2 C.2）：http 模式取后端推荐前 3 个；mock 模式按技能匹配在前端估算 -->
+        <section v-if="recommendCards.length" class="rec-section" aria-label="为你推荐">
+          <div class="rec-head">
+            <h2 class="rec-heading">
+              <FluentIcon name="sparkles" :size="15" />
+              <span>为你推荐</span>
+            </h2>
+            <span class="text-xs text-muted">
+              {{ isHttpMode ? '综合技能匹配、剩余周工时、语言要求、院系与截止日打分' : '演示模式：按技能匹配估算' }}
+            </span>
+          </div>
+          <div class="rec-grid">
+            <article
+              v-for="r in recommendCards"
+              :key="r.job.id"
+              class="acrylic-card interactive rec-card"
+              @click="detailJob = r.job"
+            >
+              <div class="flex items-center justify-between gap-8">
+                <span class="f-type-tag" :class="r.job.type.toLowerCase()">{{ r.job.type }}</span>
+                <span class="rec-score tabular-nums" :title="isHttpMode ? '推荐度（0–100）' : '技能匹配度'">
+                  {{ r.score }}<small>{{ isHttpMode ? '分' : '%' }}</small>
+                </span>
+              </div>
+              <h3 class="rec-title">{{ r.job.title }}</h3>
+              <ul class="rec-reasons">
+                <li v-for="(t, i) in r.reasons.slice(0, 3)" :key="i">{{ t }}</li>
+              </ul>
+              <div v-if="r.blockers.length" class="rec-blocker">{{ r.blockers[0] }}</div>
+              <div class="rec-actions">
+                <button type="button" class="f-btn f-btn-sm" @click.stop="detailJob = r.job">详情</button>
+                <button type="button" class="f-btn f-btn-primary f-btn-sm" @click.stop="applyModalJob = r.job">一键申请</button>
+              </div>
+            </article>
+          </div>
+        </section>
+
         <div class="flex items-center justify-between mb-14 flex-wrap gap-8">
           <span class="text-xs text-muted">
             在招岗位 <strong class="text-text tabular-nums">{{ displayedJobs.length }}</strong> 个 · 点击岗位可打开右侧详情，或勾选最多 3 个横向对比
           </span>
-          <span v-if="sortByMatch" class="f-pill f-pill-blue">已按技能匹配排序</span>
+          <span v-if="sortByMatch" class="f-pill f-pill-blue">{{ isHttpMode && recData ? '已按智能推荐排序' : '已按技能匹配排序' }}</span>
         </div>
 
         <div v-if="displayedJobs.length" class="job-stream">
@@ -92,7 +129,12 @@
                     <span class="f-meta-sep">·</span>
                     <span class="text-blue fw-600">国际生可报</span>
                   </template>
-                  <template v-if="sortByMatch && item.match.matched.length">
+                  <template v-if="sortByMatch && item.rec">
+                    <span class="f-meta-sep">·</span>
+                    <span v-if="item.rec.applicable" class="text-success fw-600">推荐度 {{ item.rec.score }}</span>
+                    <span v-else class="text-error fw-600">不可申请</span>
+                  </template>
+                  <template v-else-if="sortByMatch && !useBackendSort && item.match.matched.length">
                     <span class="f-meta-sep">·</span>
                     <span class="text-success fw-600">匹配 {{ item.match.score }}%</span>
                   </template>
@@ -282,8 +324,10 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useAppStore } from '@/stores/appStore'
+import { api } from '@/services/api'
+import { isHttpMode } from '@/services/http'
 import {
   getStudentHoursSummary,
   getStudentActiveContracts,
@@ -354,11 +398,68 @@ const displayedJobs = computed(() => {
     .map((job) => ({
       job,
       check: validateStudentApplication(store.db, student.value, job),
-      match: calcSkillMatch(student.value, job)
+      match: calcSkillMatch(student.value, job),
+      rec: useBackendSort.value ? recIndex.value.get(job.id)?.item || null : null
     }))
 
-  if (sortByMatch.value) mapped.sort((a, b) => b.match.score - a.match.score)
+  if (sortByMatch.value) {
+    if (useBackendSort.value) {
+      // http 模式：按后端推荐顺序（可申请在前、分数降序）；已申请的岗位不在推荐列表里，排在最后
+      const rank = (id) => recIndex.value.get(id)?.rank ?? Number.MAX_SAFE_INTEGER
+      mapped.sort((a, b) => rank(a.job.id) - rank(b.job.id))
+    } else {
+      mapped.sort((a, b) => b.match.score - a.match.score)
+    }
+  }
   return mapped
+})
+
+// ---------------------------------------------------------------- 智能推荐（P2 C.2）
+
+const recData = ref(null)
+
+async function loadRecommendations() {
+  if (!isHttpMode || student.value?.role !== 'STUDENT') return
+  const res = await api.getRecommendations()
+  if (res.code === 200 && res.data) recData.value = res.data
+}
+
+onMounted(loadRecommendations)
+// 投递成功后快照刷新，已申请的岗位要从推荐里移除
+watch(() => store.db.applications.length, loadRecommendations)
+
+// http 模式且拿到后端结果时，“技能推荐”改用后端排序；mock 模式保留前端 calcSkillMatch
+const useBackendSort = computed(() => isHttpMode && !!recData.value)
+
+const recIndex = computed(() => {
+  const m = new Map()
+  ;(recData.value?.items || []).forEach((item, rank) => m.set(item.jobId, { item, rank }))
+  return m
+})
+
+const recommendCards = computed(() => {
+  if (isHttpMode) {
+    return (recData.value?.topJobIds || [])
+      .map((id) => {
+        const item = recIndex.value.get(id)?.item
+        const job = store.getJob(id)
+        return item && job ? { job, score: item.score, reasons: item.reasons || [], blockers: item.blockers || [] } : null
+      })
+      .filter(Boolean)
+  }
+  // mock 模式：排除已申请、名额已满与硬性条件不过的岗位，按技能匹配取前 3
+  return store.db.jobs
+    .filter((j) => j.status === 'PUBLISHED')
+    .map((job) => ({ job, check: validateStudentApplication(store.db, student.value, job), match: calcSkillMatch(student.value, job) }))
+    .filter((x) => !x.check.alreadyApplied && !x.check.quotaFull && !x.check.checks.some((c) => !c.passed && !c.overridable))
+    .sort((a, b) => b.match.score - a.match.score)
+    .slice(0, 3)
+    .map((x) => ({
+      job: x.job,
+      score: x.match.score,
+      reasons: x.match.matched.length ? [`技能匹配：${x.match.matched.join('、')}`] : ['满足申请条件'],
+      blockers: x.check.passed ? [] : ['部分条件未满足，需特批']
+    }))
 })
 
 const comparedJobs = computed(() =>
@@ -486,6 +587,21 @@ function resetFilters() {
 }
 
 .job-stream { display: flex; flex-direction: column; gap: 14px; }
+
+/* 为你推荐（P2 C.2） */
+.rec-section { margin-bottom: 20px; min-width: 0; }
+.rec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.rec-heading { display: inline-flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; color: var(--color-fluent-blue); }
+.rec-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.rec-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; cursor: pointer; min-width: 0; }
+.rec-score { font-size: 20px; font-weight: 600; color: var(--color-fluent-blue); line-height: 1; }
+.rec-score small { font-size: 12px; font-weight: 400; color: var(--color-muted); margin-left: 2px; }
+.rec-title { font-size: 14px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.rec-reasons { margin: 0; padding-left: 16px; font-size: 12.5px; color: var(--color-muted); display: flex; flex-direction: column; gap: 3px; }
+.rec-reasons li { overflow-wrap: anywhere; }
+.rec-blocker { font-size: 12px; color: var(--color-caution-text); background: var(--color-caution-bg, rgba(255, 185, 0, 0.12)); border-radius: 4px; padding: 4px 8px; overflow-wrap: anywhere; }
+.rec-actions { display: flex; gap: 8px; margin-top: auto; padding-top: 4px; }
+.rec-actions .f-btn { flex: 1 1 0; min-width: 0; }
 
 .job-card { padding: 20px 22px; }
 .job-card.is-selected {
@@ -675,6 +791,7 @@ function resetFilters() {
   }
   .storefront-container { grid-template-columns: minmax(0, 1fr); padding: 0 16px 80px; }
   .jobs-column, .sidebar-column { grid-column: span 1; position: static; min-width: 0; }
+  .rec-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 }
 
 /* 手机（≤768px）：卡片满宽、操作按钮换行，对比栏让出底部标签栏 */
@@ -714,6 +831,11 @@ function resetFilters() {
   .compare-toggle-btn { height: 40px; justify-content: center; font-size: 14px; }
 
   .hours-seg-item .text-xs, .qual-item, .todo-item { font-size: 14px; }
+
+  .rec-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .rec-head .text-xs, .rec-reasons, .rec-blocker { font-size: 14px; }
+  .rec-title { font-size: 15px; }
+  .rec-actions .f-btn { min-height: 40px; }
   .todo-item { padding: 11px 12px; }
 
   .compare-dock {

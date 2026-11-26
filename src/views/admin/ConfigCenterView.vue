@@ -193,6 +193,23 @@
         </div>
       </div>
     </section>
+
+    <!-- Section 5: 智能推荐权重（P2 C.2，学生端岗位大厅“为你推荐”按此打分） -->
+    <section class="acrylic-card p-20 flex-col gap-14">
+      <div>
+        <h2 class="text-lg fw-600">智能推荐权重</h2>
+        <div class="text-xs text-muted mt-4">
+          每个岗位按下列因子加权打分，自动按权重之和归一到 0–100 分；权重须为非负数。签证、国际生开放资格等硬性条件不过的岗位不参与推荐。
+        </div>
+      </div>
+      <div class="weights-grid">
+        <div v-for="f in RECOMMEND_FACTORS" :key="f.key" class="f-field">
+          <label class="f-label">{{ f.label }}</label>
+          <input v-model.number="draftRules.recommendWeights[f.key]" type="number" min="0" step="1" class="f-input tabular-nums" />
+          <span class="text-xs text-muted">{{ f.hint }} · 占 {{ weightShare(f.key) }}%</span>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -210,10 +227,47 @@ const fieldType = ref('TA')
 const newNodeKey = ref('SCHOOL_REVIEW')
 const saving = ref(false)
 
+// 智能推荐因子（与后端 RecommendationService 一致；未配置时用默认权重）
+const RECOMMEND_FACTORS = [
+  { key: 'skill', label: '技能匹配', hint: '岗位技能与学生技能的重合度', default: 40 },
+  { key: 'hours', label: '剩余周工时', hint: '录用后是否仍在工时上限内', default: 25 },
+  { key: 'language', label: '语言要求', hint: '是否满足岗位语言成绩要求', default: 15 },
+  { key: 'dept', label: '同院系', hint: '岗位与学生同院系', default: 10 },
+  { key: 'deadline', label: '截止临近', hint: '7 天内截止得满分，越远越低', default: 10 }
+]
+
+function cloneRules() {
+  const rules = JSON.parse(JSON.stringify(store.db.configs.globalRules || {}))
+  const w = rules.recommendWeights && typeof rules.recommendWeights === 'object' ? rules.recommendWeights : {}
+  rules.recommendWeights = Object.fromEntries(RECOMMEND_FACTORS.map((f) => [f.key, w[f.key] ?? f.default]))
+  return rules
+}
+
 const draftWorkflows = ref(JSON.parse(JSON.stringify(store.db.configs.workflows)))
 const draftEvals = ref(JSON.parse(JSON.stringify(store.db.configs.evaluationTemplates)))
-const draftRules = ref({ ...store.db.configs.globalRules })
+const draftRules = ref(cloneRules())
 const draftSchemas = ref(cloneSchemas())
+
+const weightSum = computed(() =>
+  RECOMMEND_FACTORS.reduce((s, f) => s + (Number(draftRules.value.recommendWeights[f.key]) || 0), 0)
+)
+
+function weightShare(key) {
+  const v = Number(draftRules.value.recommendWeights[key]) || 0
+  return weightSum.value > 0 ? Math.round((v / weightSum.value) * 1000) / 10 : 0
+}
+
+// 推荐权重检查（后端会再校验一次）：非负数、不能全为 0
+function checkWeights() {
+  for (const f of RECOMMEND_FACTORS) {
+    const raw = draftRules.value.recommendWeights[f.key]
+    if (raw === '' || raw === null || raw === undefined || !Number.isFinite(Number(raw)) || Number(raw) < 0) {
+      return `推荐权重「${f.label}」必须为非负数`
+    }
+  }
+  if (weightSum.value <= 0) return '推荐权重不能全部为 0'
+  return ''
+}
 
 const currentWeightSum = computed(() =>
   (draftEvals.value[evalType.value] || []).reduce((s, d) => s + Number(d.weight || 0), 0)
@@ -235,7 +289,7 @@ function cloneSchemas() {
 function reloadLocal() {
   draftWorkflows.value = JSON.parse(JSON.stringify(store.db.configs.workflows))
   draftEvals.value = JSON.parse(JSON.stringify(store.db.configs.evaluationTemplates))
-  draftRules.value = { ...store.db.configs.globalRules }
+  draftRules.value = cloneRules()
   draftSchemas.value = cloneSchemas()
   store.notify('已还原当前配置', 'info')
 }
@@ -340,6 +394,11 @@ async function handleSave() {
     store.notify(schemaError, 'error')
     return
   }
+  const weightError = checkWeights()
+  if (weightError) {
+    store.notify(weightError, 'error')
+    return
+  }
   saving.value = true
   try {
     const res = await store.mutate(() => api.saveConfigs({
@@ -348,7 +407,10 @@ async function handleSave() {
       globalRules: draftRules.value,
       jobTypeSchemas: schemasPayload()
     }, store.currentUser))
-    if (res.code === 200) draftSchemas.value = cloneSchemas()
+    if (res.code === 200) {
+      draftSchemas.value = cloneSchemas()
+      draftRules.value = cloneRules()
+    }
   } finally { saving.value = false }
 }
 </script>
@@ -361,6 +423,7 @@ async function handleSave() {
 .add-node-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .dim-edit-row { display: flex; align-items: center; gap: 10px; }
 .rules-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.weights-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; }
 .field-edit-card { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; background: rgba(255, 255, 255, 0.78); border: 1px solid var(--color-border-light); border-radius: 4px; }
 .field-edit-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .key-input { width: 140px; }
