@@ -118,7 +118,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useAppStore } from '@/stores/appStore'
-import { filterByRoleDept, scanAnomalies, getStudentWeekLoggedHours } from '@/services/ruleEngine'
+import { filterByRoleDept, scanAnomalies, getStudentWeekLoggedHours, getStudentHoursSummary } from '@/services/ruleEngine'
 import { api } from '@/services/api'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -148,7 +148,7 @@ const selectedTsLogs = computed(() =>
 )
 
 function weekTotal(studentId, weekNo) { return getStudentWeekLoggedHours(store.db, studentId, weekNo) }
-function maxCap(studentId) { return store.getUser(studentId)?.maxWeeklyHours || 20 }
+function maxCap(studentId) { return getStudentHoursSummary(store.db, store.getUser(studentId)).max }
 function weekRatio(studentId, weekNo) { return Math.round((weekTotal(studentId, weekNo) / maxCap(studentId)) * 100) }
 
 function openAuditDrawer(ts) {

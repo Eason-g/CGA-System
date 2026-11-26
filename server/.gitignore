@@ -1,0 +1,5 @@
+target/
+*.local.sql
+src/main/resources/application-local.yml
+.idea/
+*.iml

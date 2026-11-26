@@ -1,5 +1,21 @@
 import { TODAY_STR } from '@/mock/seedData'
 
+// “今天”：mock 模式固定为种子数据锚定日期；http 模式由 store 在拉取快照后设为后端 meta.today（缺省为系统日期）
+let todayStr = TODAY_STR
+
+export function localDateStr(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+export function setTodayStr(dateStr) {
+  todayStr = dateStr || localDateStr()
+}
+
+export function getTodayStr() {
+  return todayStr
+}
+
 export const JOB_STATUS_MAP = {
   DRAFT: { label: '草稿', tone: 'neutral' },
   PENDING_DEPT_REVIEW: { label: '待院系初审', tone: 'caution' },
@@ -113,10 +129,32 @@ export function buildWorkflowStepsForJob(db, jobType, allowInternational) {
   return steps
 }
 
+// 周工时上限：按国际生/国内生读取配置中心 globalRules，个人上限（学籍/签证给出）只能更严，不能放宽
+export function getMaxWeeklyHours(db, student) {
+  const rules = db?.configs?.globalRules || {}
+  const fallback = Number(rules.maxWeeklyHoursDefault) || 20
+  const ruleCap = student?.isInternational ? Number(rules.maxWeeklyHoursIntl) || fallback : fallback
+  const personalCap = Number(student?.maxWeeklyHours)
+  return personalCap > 0 ? Math.min(personalCap, ruleCap) : ruleCap
+}
+
 export function getStudentAllocatedWeeklyHours(db, studentId) {
   return db.contracts
     .filter((c) => c.studentId === studentId && (c.status === 'ACTIVE' || c.status === 'PENDING_SIGN'))
     .reduce((sum, c) => sum + Number(c.weeklyHours || 0), 0)
+}
+
+// 学生跨岗周工时负荷（展示用）：快照里学生 user 带 hoursSummary（后端按全部合同累计）时优先使用，
+// 导师/院系看不到外院合同明细时也能显示真实总负荷；没有时退回按当前可见合同计算
+export function getStudentHoursSummary(db, student) {
+  const summary = student?.hoursSummary
+  if (summary && summary.allocated != null && summary.max != null) {
+    return { allocated: Number(summary.allocated) || 0, max: Number(summary.max) || getMaxWeeklyHours(db, student) }
+  }
+  return {
+    allocated: student ? getStudentAllocatedWeeklyHours(db, student.id) : 0,
+    max: getMaxWeeklyHours(db, student)
+  }
 }
 
 export function getStudentActiveContracts(db, studentId) {
@@ -139,8 +177,9 @@ export function validateStudentApplication(db, student, job) {
   const currentHours = getStudentAllocatedWeeklyHours(db, student.id)
   const jobHours = Number(job.weeklyHours || 0)
   const projectedHours = currentHours + jobHours
-  const maxHours = Number(student.maxWeeklyHours || db.configs.globalRules.maxWeeklyHoursDefault || 20)
+  const maxHours = getMaxWeeklyHours(db, student)
 
+  // overridable: false 表示硬性条件，不允许通过特批绕过
   if (student.isInternational) {
     // 1. Visa Check
     const visaOk = Boolean(student.visaValid && student.visaType)
@@ -148,6 +187,7 @@ export function validateStudentApplication(db, student, job) {
       key: 'visa',
       label: '签证类型校验（有效学习居留许可）',
       passed: visaOk,
+      overridable: false,
       detail: visaOk
         ? `${student.visaType}有效（有效期至 ${student.visaExpiry || '2027-07-31'}）`
         : '未检测到有效学习类居留许可，禁止从事校内助教/助研活动'
@@ -159,6 +199,7 @@ export function validateStudentApplication(db, student, job) {
       key: 'allowIntl',
       label: '岗位国际生开放资格校验',
       passed: allowIntlOk,
+      overridable: false,
       detail: allowIntlOk
         ? '该岗位已通过国际生办会签，面向国际学生开放'
         : '该岗位未面向国际学生开放（仅限中国籍学生申请）'
@@ -174,6 +215,7 @@ export function validateStudentApplication(db, student, job) {
       key: 'lang',
       label: '语言能力证明校验',
       passed: langOk,
+      overridable: true,
       detail: langOk
         ? `已认证 ${student.languageCert}，满足岗位要求（${job.extraFields.languageRequirement}）`
         : `当前认证 ${student.languageCert || '未提交'}（等效 ${stuScore}），低于岗位最低要求 ${job.extraFields.languageRequirement}`
@@ -186,15 +228,24 @@ export function validateStudentApplication(db, student, job) {
     key: 'hours',
     label: '跨岗累计周工时校验',
     passed: hoursOk,
+    overridable: true,
     detail: hoursOk
       ? `当前已占 ${currentHours}h + 本岗 ${jobHours}h = ${projectedHours}h ≤ 上限 ${maxHours}h/周`
       : `当前已占 ${currentHours}h + 本岗 ${jobHours}h = ${projectedHours}h > 上限 ${maxHours}h/周（超出 ${projectedHours - maxHours}h）`
   })
 
   const allPassed = checks.every((c) => c.passed) && !existingApp && !quotaFull
-  const hasFailedCompliance = checks.some((c) => !c.passed)
-  // Special approval can be initiated when blocked by compliance (hours or language), provided not duplicate or full
-  const canSpecialApprove = !existingApp && !quotaFull && hasFailedCompliance && (!student.isInternational || student.visaValid)
+  const failedChecks = checks.filter((c) => !c.passed)
+  const hardFailures = failedChecks.filter((c) => !c.overridable)
+  // 只有可特批项（工时、语言）未通过时才能发起特批；签证、岗位开放资格属于硬性条件
+  const canSpecialApprove = !existingApp && !quotaFull && failedChecks.length > 0 && hardFailures.length === 0
+  let specialBlockedReason = ''
+  if (!canSpecialApprove) {
+    if (existingApp) specialBlockedReason = '已申请过该岗位'
+    else if (quotaFull) specialBlockedReason = '该岗位名额已招满'
+    else if (failedChecks.length === 0) specialBlockedReason = '合规校验已通过，无需特批'
+    else specialBlockedReason = `${hardFailures.map((c) => c.label).join('、')}未通过，属于硬性条件，不可特批`
+  }
 
   return {
     passed: allPassed,
@@ -206,12 +257,49 @@ export function validateStudentApplication(db, student, job) {
     jobHours,
     projectedHours,
     maxHours,
-    canSpecialApprove
+    canSpecialApprove,
+    specialBlockedReason
   }
 }
 
+export const HIREABLE_APP_STATUSES = ['SUBMITTED', 'SPECIAL_APPROVED', 'INTERVIEW_SCHEDULED']
+
+// 录用时复核：申请后学生可能又被其他岗位录用，必须按录用时刻的累计工时重新判断
+export function validateHire(db, app, job, student) {
+  const errors = []
+  if (!HIREABLE_APP_STATUSES.includes(app.status)) {
+    errors.push(`申请当前状态为「${APP_STATUS_MAP[app.status]?.label || app.status}」，不能录用`)
+  }
+  if (Number(job.hiredCount || 0) >= Number(job.quota || 0)) {
+    errors.push('该岗位招聘名额已满，无法继续录用')
+  }
+  if (student.isInternational) {
+    if (!(student.visaValid && student.visaType)) errors.push('该国际生无有效学习类居留许可，不能录用')
+    if (!job.allowInternational) errors.push('该岗位未面向国际学生开放，不能录用国际生')
+  }
+
+  const currentHours = getStudentAllocatedWeeklyHours(db, student.id)
+  const jobHours = Number(job.weeklyHours || 0)
+  const projectedHours = currentHours + jobHours
+  const maxHours = getMaxWeeklyHours(db, student)
+  let hoursOverridden = false
+  if (projectedHours > maxHours) {
+    // 特批只覆盖审批时看到的超限幅度；之后又多出来的工时需要重新审批
+    const approvedCeiling = Number(app.complianceCheckResult?.projectedHours)
+    if (app.specialStatus === 'APPROVED' && Number.isFinite(approvedCeiling) && projectedHours <= approvedCeiling) {
+      hoursOverridden = true
+    } else {
+      errors.push(
+        `录用后跨岗累计周工时将达 ${projectedHours}h（已占 ${currentHours}h + 本岗 ${jobHours}h），超出上限 ${maxHours}h/周，系统已拦截录用`
+      )
+    }
+  }
+
+  return { ok: errors.length === 0, errors, currentHours, jobHours, projectedHours, maxHours, hoursOverridden }
+}
+
 export function validateTimesheetSubmission(db, student, weekNo, newHours) {
-  const maxHours = Number(student.maxWeeklyHours || 20)
+  const maxHours = getMaxWeeklyHours(db, student)
   const existingHours = getStudentWeekLoggedHours(db, student.id, weekNo)
   const hoursNum = Number(newHours || 0)
   const projectedHours = existingHours + hoursNum
@@ -243,7 +331,7 @@ export function validateTimesheetSubmission(db, student, weekNo, newHours) {
   }
 }
 
-export function daysUntil(dateStr, fromStr = TODAY_STR) {
+export function daysUntil(dateStr, fromStr = todayStr) {
   if (!dateStr) return 999
   const d1 = new Date(fromStr + 'T00:00:00')
   const d2 = new Date(dateStr + 'T00:00:00')
@@ -313,7 +401,7 @@ export function scanAnomalies(db, user) {
   studentSet.forEach((studentId) => {
     const stu = db.users.find((u) => u.id === studentId)
     if (!stu) return
-    const maxH = Number(stu.maxWeeklyHours || 20)
+    const maxH = getMaxWeeklyHours(db, stu)
     const weekLogged = getStudentWeekLoggedHours(db, studentId, currentWeek)
     const allocated = getStudentAllocatedWeeklyHours(db, studentId)
     const peak = Math.max(weekLogged, allocated)

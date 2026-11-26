@@ -5,9 +5,11 @@ import {
   STEP_TO_JOB_STATUS,
   validateStudentApplication,
   validateTimesheetSubmission,
+  validateHire,
   calcJobBudgetCost,
   gradeFromScore
 } from './ruleEngine'
+import { http, isHttpMode } from './http'
 
 // Simulate 150ms ~ 280ms backend latency with standard { code, data, message } response envelope
 function mockAsync(executor) {
@@ -28,7 +30,8 @@ function mockAsync(executor) {
   })
 }
 
-export const api = {
+// ===== mock 模式：直接读写 localStorage 中的演示数据库（保留，VITE_API_MODE=mock 时使用）=====
+const mockApi = {
   // Fetch full reactive DB snapshot
   fetchSnapshot() {
     return mockAsync((db) => JSON.parse(JSON.stringify(db)))
@@ -175,10 +178,14 @@ export const api = {
   },
 
   // P0-2: Student applies for a job (with hard compliance check & special approval branch)
-  submitApplication({ jobId, statement, resumeFileName, isSpecialApproval = false, specialReason = '' }, student) {
+  submitApplication({ jobId, statement, resumeFileName, isSpecialApproval = false, specialReason = '' }, studentRef) {
     return mockAsync((db) => {
       const job = db.jobs.find((j) => j.id === jobId)
       if (!job) return { code: 404, data: null, message: '岗位不存在' }
+      // 以库中学籍为准，不信任调用方传入的签证、工时等字段
+      const student = db.users.find((u) => u.id === studentRef?.id && u.role === 'STUDENT')
+      if (!student) return { code: 403, data: null, message: '仅学生本人可提交岗位申请' }
+      if (job.status !== 'PUBLISHED') return { code: 400, data: null, message: '该岗位未发布或已关闭，不能申请' }
 
       const check = validateStudentApplication(db, student, job)
       if (check.alreadyApplied) {
@@ -189,6 +196,9 @@ export const api = {
       }
       if (!check.passed && !isSpecialApproval) {
         return { code: 403, data: check, message: '合规前置校验未通过，系统已拦截提交' }
+      }
+      if (isSpecialApproval && !check.canSpecialApprove) {
+        return { code: 403, data: check, message: `不能发起特批：${check.specialBlockedReason}` }
       }
       if (isSpecialApproval && (!specialReason || specialReason.trim().length < 6)) {
         return { code: 400, data: check, message: '发起特批申请必须填写不少于 6 个字的特批理由' }
@@ -202,7 +212,14 @@ export const api = {
         appliedAt: nowTimestamp(),
         statement: statement || '已认真阅读岗位职责要求，申请加入团队。',
         resumeFileName: resumeFileName || `${student.name}_个人简历.pdf`,
-        complianceCheckResult: { passed: check.passed, checks: check.checks },
+        // projectedHours 记录申请时的累计工时，特批通过后录用复核以此为上限
+        complianceCheckResult: {
+          passed: check.passed,
+          checks: check.checks,
+          currentHours: check.currentHours,
+          projectedHours: check.projectedHours,
+          maxHours: check.maxHours
+        },
         isSpecialApproval: Boolean(isSpecialApproval),
         specialReason: isSpecialApproval ? specialReason.trim() : '',
         specialStatus: isSpecialApproval ? 'PENDING' : null,
@@ -316,15 +333,24 @@ export const api = {
       const app = db.applications.find((a) => a.id === applicationId)
       if (!app) return { code: 404, data: null, message: '申请单不存在' }
       const job = db.jobs.find((j) => j.id === app.jobId)
+      if (!job) return { code: 404, data: null, message: '关联岗位不存在' }
+      const student = db.users.find((u) => u.id === app.studentId)
+      if (!student) return { code: 404, data: null, message: '申请人不存在' }
+
+      // 先做全部校验，通过后才修改数据，避免拦截时留下半截状态
+      let hireCheck = null
+      if (decision === 'HIRE') {
+        hireCheck = validateHire(db, app, job, student)
+        if (!hireCheck.ok) {
+          return { code: 403, data: hireCheck, message: hireCheck.errors.join('；') }
+        }
+      }
 
       const beforeStatus = app.status
       app.score = Number(score)
       app.mentorComment = comment || ''
 
       if (decision === 'HIRE') {
-        if (job.hiredCount >= job.quota) {
-          return { code: 400, data: null, message: '该岗位招聘名额已满，无法继续录用' }
-        }
         app.status = 'HIRED'
         job.hiredCount += 1
 
@@ -364,7 +390,10 @@ export const api = {
           targetId: app.id,
           operator,
           action: '评分并确认录用',
-          opinion: `面试评分 ${score} 分，评语：${comment || '同意录用'}；自动生成电子协议 ${contract.id}`,
+          opinion:
+            `面试评分 ${score} 分，评语：${comment || '同意录用'}；自动生成电子协议 ${contract.id}；` +
+            `录用复核跨岗累计 ${hireCheck.projectedHours}h/${hireCheck.maxHours}h` +
+            (hireCheck.hoursOverridden ? '（超限部分依据国际生办特批放行）' : ''),
           beforeValue: beforeStatus,
           afterValue: 'HIRED'
         })
@@ -430,8 +459,10 @@ export const api = {
   },
 
   // Submit weekly timesheet with cross-job cumulative cap check
-  submitTimesheet({ contractId, weekNo, hours, workLog, milestoneRef }, student) {
+  submitTimesheet({ contractId, weekNo, hours, workLog, milestoneRef }, studentRef) {
     return mockAsync((db) => {
+      const student = db.users.find((u) => u.id === studentRef?.id && u.role === 'STUDENT')
+      if (!student) return { code: 403, data: null, message: '仅学生本人可填报工时' }
       const con = db.contracts.find((c) => c.id === contractId && c.studentId === student.id)
       if (!con) return { code: 404, data: null, message: '有效聘用协议不存在' }
       if (con.status !== 'ACTIVE') return { code: 400, data: null, message: '请先签署电子聘用协议后再填报工时' }
@@ -781,3 +812,105 @@ export const api = {
     })
   }
 }
+
+// ===== http 模式：调用 Java 后端（docs/后端设计.md 第 5 节）=====
+// 方法名与入参签名与 mockApi 保持一致；最后一个 operator / student 参数不发给后端，身份一律取自 token
+const enc = (id) => encodeURIComponent(id ?? '')
+
+const httpApi = {
+  fetchSnapshot() {
+    return http.get('/api/snapshot')
+  },
+
+  // 仅校级管理员可成功，其他角色返回后端的 403 文案
+  resetDemoData() {
+    return http.post('/api/demo/reset')
+  },
+
+  // 真实后端没有“按用户 ID 免密登录”接口，体验账号改由 store.loginAs 用演示密码走正常登录
+  loginByUserId() {
+    return Promise.resolve({ code: 400, data: null, message: '真实后端模式不支持按用户 ID 登录，请使用账号密码' })
+  },
+
+  // 成功时 data 为 { token, user }；密码错误等 401 不触发全局登出跳转
+  loginByCredentials(account, password) {
+    return http.post(
+      '/api/auth/login',
+      { account: (account || '').trim(), password: password || '' },
+      { skipAuthRedirect: true }
+    )
+  },
+
+  // 用本地 token 恢复登录：返回当前用户（token 失效由 store 自行清理，不触发全局跳转）
+  fetchCurrentUser() {
+    return http.get('/api/auth/me', { skipAuthRedirect: true })
+  },
+
+  createJob(payload) {
+    return http.post('/api/jobs', payload)
+  },
+
+  reviewJob({ jobId, decision, opinion }) {
+    return http.post(`/api/jobs/${enc(jobId)}/review`, { decision, opinion })
+  },
+
+  submitApplication({ jobId, statement, resumeFileName, isSpecialApproval = false, specialReason = '' }) {
+    return http.post('/api/applications', { jobId, statement, resumeFileName, isSpecialApproval, specialReason })
+  },
+
+  reviewSpecialApproval({ applicationId, decision, opinion }) {
+    return http.post(`/api/applications/${enc(applicationId)}/special-review`, { decision, opinion })
+  },
+
+  scheduleInterview({ applicationId, time, location, note }) {
+    return http.post(`/api/applications/${enc(applicationId)}/interview`, { time, location, note })
+  },
+
+  decideApplication({ applicationId, score, decision, comment }) {
+    return http.post(`/api/applications/${enc(applicationId)}/decision`, { score, decision, comment })
+  },
+
+  signContract({ contractId, signatureDataUrl, complianceAgreed }) {
+    return http.post(`/api/contracts/${enc(contractId)}/sign`, { signatureDataUrl, complianceAgreed })
+  },
+
+  submitTimesheet({ contractId, weekNo, hours, workLog, milestoneRef }) {
+    return http.post('/api/timesheets', { contractId, weekNo, hours, workLog, milestoneRef })
+  },
+
+  reviewTimesheet({ timesheetId, decision, comment }) {
+    return http.post(`/api/timesheets/${enc(timesheetId)}/review`, { decision, comment })
+  },
+
+  toggleMilestone({ jobId, milestoneId }) {
+    return http.post(`/api/jobs/${enc(jobId)}/milestones/${enc(milestoneId)}/toggle`)
+  },
+
+  generateMonthlyPayrolls({ month } = {}) {
+    return http.post('/api/payrolls/generate', { month })
+  },
+
+  confirmPayrollPayout({ payrollId }) {
+    return http.post(`/api/payrolls/${enc(payrollId)}/payout`)
+  },
+
+  submitEvaluation({ contractId, period, dimensionScores, comment, courseEvalSync }) {
+    return http.post('/api/evaluations', { contractId, period, dimensionScores, comment, courseEvalSync })
+  },
+
+  saveConfigs({ workflows, evaluationTemplates, globalRules }) {
+    return http.put('/api/configs', { workflows, evaluationTemplates, globalRules })
+  },
+
+  // userId 参数保留签名兼容，后端只标记当前登录用户的通知
+  markNotificationsRead() {
+    return http.post('/api/notifications/read-all')
+  },
+
+  // 只能修改本人资料，userId 不发给后端
+  updateUserProfile({ email, phone, skills, bio }) {
+    return http.put('/api/users/me', { email, phone, skills, bio })
+  }
+}
+
+export const api = isHttpMode ? httpApi : mockApi

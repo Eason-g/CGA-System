@@ -42,7 +42,7 @@
         <div class="acrylic-card stat-card">
           <div class="text-xs text-muted">跨岗周工时</div>
           <div class="stat-val tabular-nums mt-6">
-            {{ allocatedHours }}<span class="stat-sub">/{{ user?.maxWeeklyHours || 20 }}h</span>
+            {{ allocatedHours }}<span class="stat-sub">/{{ maxHours }}h</span>
           </div>
           <div class="f-progress-track mt-8">
             <div
@@ -247,7 +247,7 @@
 <script setup>
 import { ref, reactive, computed } from 'vue'
 import { useAppStore } from '@/stores/appStore'
-import { getStudentAllocatedWeeklyHours, filterJobsByRole } from '@/services/ruleEngine'
+import { getStudentHoursSummary, filterJobsByRole } from '@/services/ruleEngine'
 import { api } from '@/services/api'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -260,8 +260,11 @@ const editing = ref(false)
 const saving = ref(false)
 const editForm = reactive({ email: '', phone: '', skillsText: '', bio: '' })
 
-const allocatedHours = computed(() => (user.value ? getStudentAllocatedWeeklyHours(store.db, user.value.id) : 0))
-const hoursRatio = computed(() => Math.round((allocatedHours.value / (user.value?.maxWeeklyHours || 20)) * 100))
+// 优先使用快照里的 hoursSummary（后端跨院累计），没有时按可见合同计算
+const hoursSummary = computed(() => getStudentHoursSummary(store.db, user.value))
+const allocatedHours = computed(() => hoursSummary.value.allocated)
+const maxHours = computed(() => hoursSummary.value.max)
+const hoursRatio = computed(() => Math.round((allocatedHours.value / maxHours.value) * 100))
 
 const myContracts = computed(() =>
   store.db.contracts.filter((c) => c.studentId === user.value?.id)

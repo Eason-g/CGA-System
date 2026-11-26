@@ -802,7 +802,7 @@ export function createSeedData() {
           ]
         },
         isSpecialApproval: true,
-        specialReason: '本人本科阶段在意大利米兰理工大学接受全英文数学授课（附英文成绩单），实际英文数学表达流利，申请国际生办豁免 IELTS 0.5 分差额特批。',
+        specialReason: '本人本科阶段在欧洲某理工大学接受全英文数学授课（附英文成绩单），实际英文数学表达流利，申请国际生办豁免 IELTS 0.5 分差额特批。',
         specialStatus: 'PENDING',
         interviewInfo: null,
         score: null,

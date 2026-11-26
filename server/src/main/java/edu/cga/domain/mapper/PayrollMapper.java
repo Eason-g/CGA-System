@@ -1,0 +1,53 @@
+package edu.cga.domain.mapper;
+
+import java.math.BigDecimal;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import edu.cga.domain.entity.Payroll;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+
+public interface PayrollMapper extends BaseMapper<Payroll> {
+
+    /** 锁住薪酬单：发放前使用（调用方先锁经费行再锁薪酬行，顺序固定避免死锁） */
+    @Select("SELECT * FROM payrolls WHERE id = #{id} FOR UPDATE")
+    Payroll lockById(@Param("id") String id);
+
+    /** 某合同某月的薪酬单（同一合同每月最多一张） */
+    @Select("SELECT * FROM payrolls WHERE contract_id = #{contractId} AND month = #{month} ORDER BY id LIMIT 1")
+    Payroll selectByContractAndMonth(@Param("contractId") String contractId, @Param("month") String month);
+
+    /** 某合同最近一张未发放的薪酬单，加锁（考核修改系数时使用） */
+    @Select("SELECT * FROM payrolls WHERE contract_id = #{contractId} AND finance_status <> 'PAID'"
+            + " ORDER BY month DESC, id DESC LIMIT 1 FOR UPDATE")
+    Payroll lockLatestUnpaidByContract(@Param("contractId") String contractId);
+
+    /**
+     * 预算汇总：某岗位下已发放 + 待发放薪酬之和，可排除一张（重新核算/改系数时排除它自己）。
+     * 岗位剩余预留 = reservedAmount − 该值（不低于 0）。
+     */
+    @Select("SELECT COALESCE(SUM(amount), 0) FROM payrolls"
+            + " WHERE job_id = #{jobId} AND finance_status IN ('PAID', 'PENDING_PAY')"
+            + " AND (#{excludeId} IS NULL OR id <> #{excludeId})")
+    BigDecimal sumCommittedByJob(@Param("jobId") String jobId, @Param("excludeId") String excludeId);
+
+    /**
+     * 预算汇总：某经费池下，待发放薪酬中超出各自岗位预留的金额之和（可排除一张）。
+     * 每个岗位的未发放超额 = max(已发放+待发放 − 预留, 0) − max(已发放 − 预留, 0)；
+     * 已发放的超额已经计入 used，这里只统计尚未发放、但已承诺要花掉的那部分可用额。
+     */
+    @Select("SELECT COALESCE(SUM(GREATEST(c.committed - j.reserved_amount, 0)"
+            + " - GREATEST(c.paid - j.reserved_amount, 0)), 0)"
+            + " FROM (SELECT job_id, SUM(amount) AS committed,"
+            + "         SUM(CASE WHEN finance_status = 'PAID' THEN amount ELSE 0 END) AS paid"
+            + "       FROM payrolls"
+            + "       WHERE budget_id = #{budgetId} AND finance_status IN ('PAID', 'PENDING_PAY')"
+            + "         AND (#{excludeId} IS NULL OR id <> #{excludeId})"
+            + "       GROUP BY job_id) c"
+            + " JOIN jobs j ON j.id = c.job_id")
+    BigDecimal sumUnpaidExcessByBudget(@Param("budgetId") String budgetId, @Param("excludeId") String excludeId);
+
+    /** 预算汇总：某岗位下已发放薪酬之和（发放时计算“发放前该岗位剩余预留”） */
+    @Select("SELECT COALESCE(SUM(amount), 0) FROM payrolls WHERE job_id = #{jobId} AND finance_status = 'PAID'")
+    BigDecimal sumPaidByJob(@Param("jobId") String jobId);
+}

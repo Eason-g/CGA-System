@@ -26,7 +26,7 @@
 
           <ol class="doc-clauses">
             <li>乙方应严格遵守学校“三助”岗位管理规定，按周如实填报实际工时与工作日志，接受指导教师审核与周期性考核。</li>
-            <li>乙方在全校范围内兼任所有三助（TA/RA/GA）岗位之累计周工时，不得超过学校规定的每周 {{ student?.maxWeeklyHours || 20 }} 小时红线。</li>
+            <li>乙方在全校范围内兼任所有三助（TA/RA/GA）岗位之累计周工时，不得超过学校规定的每周 {{ maxHours }} 小时红线。</li>
             <li>实发薪酬按「审核通过工时 × 时薪 × 周期考核系数」自动核算，经财务处审核通过后从对应专项经费池发放。</li>
             <li>若聘期内发生学籍异动、签证失效或连续考核不合格，甲方有权依法依规中止本聘用协议并记录审计留痕。</li>
           </ol>
@@ -96,6 +96,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores/appStore'
 import { api } from '@/services/api'
+import { getMaxWeeklyHours } from '@/services/ruleEngine'
 import FluentIcon from './FluentIcon.vue'
 
 const props = defineProps({
@@ -106,6 +107,7 @@ const emit = defineEmits(['close', 'signed'])
 const store = useAppStore()
 
 const student = computed(() => store.getUser(props.contract.studentId))
+const maxHours = computed(() => getMaxWeeklyHours(store.db, student.value))
 const job = computed(() => store.getJob(props.contract.jobId))
 const mentor = computed(() => (job.value ? store.getUser(job.value.mentorId) : null))
 

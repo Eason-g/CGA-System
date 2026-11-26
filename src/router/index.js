@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAppStore } from '@/stores/appStore'
+import { isHttpMode } from '@/services/http'
 
 import LoginView from '@/views/LoginView.vue'
 import AdminLayout from '@/views/admin/AdminLayout.vue'
@@ -75,11 +76,17 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const store = useAppStore()
+  // http 模式：等待用 token 恢复登录完成，避免刷新页面时误跳登录页（mock 模式立即完成）
+  await store.restoreSession()
   const user = store.currentUser
 
   if (to.meta.public) {
+    // http 模式：已登录（如刷新后 token 恢复成功）访问登录页时直接进入对应门户
+    if (isHttpMode && to.name === 'Login' && user) {
+      return { path: user.portal === 'student' ? '/student/jobs' : '/admin/dashboard' }
+    }
     return true
   }
 

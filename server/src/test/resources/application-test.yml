@@ -1,0 +1,12 @@
+# 集成测试配置：连接 cga_test 库，账号沿用 application-local.yml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/cga_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+
+app:
+  today: 2026-11-20
+  db:
+    # 测试基类在每个测试类开始前主动重建数据，这里启动时不做处理
+    init: never
+  demo:
+    reset-enabled: true

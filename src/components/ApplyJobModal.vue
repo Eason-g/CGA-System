@@ -98,6 +98,13 @@
             </div>
           </div>
         </div>
+        <div
+          v-else-if="!checkResult.passed && !checkResult.alreadyApplied && !checkResult.quotaFull"
+          class="f-banner error mt-12"
+        >
+          <FluentIcon name="alert" :size="16" />
+          <div class="text-xs">{{ checkResult.specialBlockedReason }}</div>
+        </div>
       </div>
 
       <footer class="f-modal-footer">

@@ -285,7 +285,7 @@
 import { ref, computed } from 'vue'
 import { useAppStore } from '@/stores/appStore'
 import {
-  getStudentAllocatedWeeklyHours,
+  getStudentHoursSummary,
   getStudentActiveContracts,
   validateStudentApplication,
   calcSkillMatch
@@ -315,8 +315,10 @@ const filterPills = [
   { key: 'INTL', label: '国际生可报' }
 ]
 
-const maxHours = computed(() => Number(student.value?.maxWeeklyHours || 20))
-const allocatedHours = computed(() => (student.value ? getStudentAllocatedWeeklyHours(store.db, student.value.id) : 0))
+// 优先使用快照里的 hoursSummary（后端跨院累计），没有时按可见合同计算
+const hoursSummary = computed(() => getStudentHoursSummary(store.db, student.value))
+const maxHours = computed(() => hoursSummary.value.max)
+const allocatedHours = computed(() => hoursSummary.value.allocated)
 const remainingHours = computed(() => Math.max(0, maxHours.value - allocatedHours.value))
 const hoursRatio = computed(() => Math.round((allocatedHours.value / maxHours.value) * 100))
 const ringDash = computed(() => Math.min(251.2, (allocatedHours.value / maxHours.value) * 251.2))

@@ -174,7 +174,7 @@
 <script setup>
 import { ref, reactive, computed, watchEffect } from 'vue'
 import { useAppStore } from '@/stores/appStore'
-import { getStudentWeekLoggedHours, validateTimesheetSubmission, daysUntil } from '@/services/ruleEngine'
+import { getStudentWeekLoggedHours, validateTimesheetSubmission, daysUntil, getMaxWeeklyHours } from '@/services/ruleEngine'
 import { api } from '@/services/api'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -183,7 +183,7 @@ import ContractSignModal from '@/components/ContractSignModal.vue'
 const store = useAppStore()
 const student = computed(() => store.currentUser)
 const currentWeek = computed(() => store.db.meta.currentWeekNo || 12)
-const maxHours = computed(() => Number(student.value?.maxWeeklyHours || 20))
+const maxHours = computed(() => getMaxWeeklyHours(store.db, student.value))
 
 const myContracts = computed(() => store.db.contracts.filter((c) => c.studentId === student.value?.id))
 const activeSignedContracts = computed(() => myContracts.value.filter((c) => c.status === 'ACTIVE'))

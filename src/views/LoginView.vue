@@ -262,7 +262,10 @@
             <FluentIcon name="refresh" :size="13" />
             <span>重置初始数据</span>
           </button>
-          <button type="button" class="f-btn f-btn-sm" @click="showRoleModal = false">关闭</button>
+          <div class="flex items-center gap-8">
+            <span v-if="isHttpMode" class="demo-pwd-note">演示密码 {{ DEMO_PASSWORD }}</span>
+            <button type="button" class="f-btn f-btn-sm" @click="showRoleModal = false">关闭</button>
+          </div>
         </footer>
       </div>
     </div>
@@ -299,6 +302,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/appStore'
 import FluentIcon from '@/components/FluentIcon.vue'
+import { isHttpMode, DEMO_PASSWORD } from '@/services/http'
 
 const store = useAppStore()
 const router = useRouter()
@@ -306,7 +310,7 @@ const router = useRouter()
 const isEn = ref(false)
 const loginTab = ref('password')
 const account = ref('zhang.mingyuan')
-const password = ref('Campus@2026')
+const password = ref('')
 const showPassword = ref(false)
 const rememberMe = ref(true)
 const loggingIn = ref(false)
@@ -338,11 +342,18 @@ async function handlePasswordLogin() {
     errorMsg.value = '请输入学工号或校园邮箱'
     return
   }
+  if (isHttpMode && !password.value) {
+    errorMsg.value = '请输入密码'
+    return
+  }
   loggingIn.value = true
   try {
-    const user = await store.loginWithUsername(account.value.trim())
+    const user = await store.loginWithUsername(account.value.trim(), password.value)
     if (user) {
       router.push(user.portal === 'student' ? '/student/jobs' : '/admin/dashboard')
+    } else if (isHttpMode) {
+      // 显示后端返回的错误文案（如“账号或密码错误”“无法连接服务器”）
+      errorMsg.value = store.lastLoginError
     } else {
       errorMsg.value = isEn.value ? 'Account not found. Check Demo Roles below.' : '未找到该学工号，请核对或点击右下角“体验账号”'
     }
@@ -362,15 +373,17 @@ async function simulateQrScan() {
 
 function fillAccount(u) {
   account.value = u.studentNo || u.username
-  password.value = 'Campus@2026'
+  password.value = DEMO_PASSWORD
   loginTab.value = 'password'
   errorMsg.value = ''
   showRoleModal.value = false
   store.notify(`已填入 ${u.roleLabel}（${u.name}）账号`, 'info')
 }
 
+// “进入”：http 模式下由 store.loginAs 使用该账号 + 演示密码走正常登录
 async function quickLogin(u) {
   showRoleModal.value = false
+  errorMsg.value = ''
   const user = await store.loginAs(u.id)
   if (user) router.push(user.portal === 'student' ? '/student/jobs' : '/admin/dashboard')
 }
@@ -805,6 +818,11 @@ async function handleReset() {
   font-size: 12px;
   color: var(--color-subtle);
   text-align: center;
+}
+
+.demo-pwd-note {
+  font-size: 11px;
+  color: var(--color-subtle);
 }
 
 .role-row {
