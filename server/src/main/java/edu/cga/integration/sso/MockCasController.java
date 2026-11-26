@@ -4,7 +4,10 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
+import edu.cga.common.BizException;
 import edu.cga.config.IntegrationProperties;
+import edu.cga.security.login.LoginGuard;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -34,10 +37,12 @@ public class MockCasController {
 
     private final MockCasProvider cas;
     private final IntegrationProperties props;
+    private final LoginGuard loginGuard;
 
-    public MockCasController(MockCasProvider cas, IntegrationProperties props) {
+    public MockCasController(MockCasProvider cas, IntegrationProperties props, LoginGuard loginGuard) {
         this.cas = cas;
         this.props = props;
+        this.loginGuard = loginGuard;
     }
 
     @GetMapping("/login")
@@ -52,16 +57,34 @@ public class MockCasController {
     @PostMapping(value = "/login", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
     public ResponseEntity<String> login(@RequestParam(required = false) String uid,
                                         @RequestParam(required = false) String password,
-                                        @RequestParam(required = false) String service) {
+                                        @RequestParam(required = false) String service,
+                                        HttpServletRequest request) {
         ResponseEntity<String> rejected = rejectIfUnavailable(service);
         if (rejected != null) {
             return rejected;
         }
-        Optional<SsoIdentity> identity = cas.authenticate(uid, password);
-        if (identity.isEmpty()) {
-            return html(HttpStatus.UNAUTHORIZED, page(service, uid, "学工号或密码错误"));
+        // 认证中心的密码表单与本系统密码登录同样防暴力破解：按 IP 限流 + 按学工号连续失败锁定
+        String lockKey = "cas:" + (uid == null ? "" : uid.trim().toLowerCase());
+        try {
+            loginGuard.checkIp(request.getRemoteAddr());
+            loginGuard.ensureNotLocked(lockKey);
+            Optional<SsoIdentity> identity = cas.authenticate(uid, password);
+            if (identity.isEmpty()) {
+                loginGuard.recordFailure(lockKey); // 达到阈值时抛 429
+                return html(HttpStatus.UNAUTHORIZED, page(service, uid, "学工号或密码错误"));
+            }
+            loginGuard.recordSuccess(lockKey);
+            return redirectWithTicket(identity.get(), service);
+        } catch (BizException e) {
+            if (e.getCode() != HttpStatus.TOO_MANY_REQUESTS.value()) {
+                throw e;
+            }
+            return html(HttpStatus.TOO_MANY_REQUESTS, page(service, uid, e.getMessage()));
         }
-        String ticket = cas.issueTicket(identity.get(), service);
+    }
+
+    private ResponseEntity<String> redirectWithTicket(SsoIdentity identity, String service) {
+        String ticket = cas.issueTicket(identity, service);
         return ResponseEntity.status(HttpStatus.FOUND)
                 .header(HttpHeaders.LOCATION, URI.create(MockCasProvider.appendTicket(service, ticket)).toString())
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")

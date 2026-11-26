@@ -115,6 +115,20 @@ class SsoIntegrationTest extends WriteApiTestBase {
     }
 
     @Test
+    void casLoginFormLocksAccountAfterRepeatedFailures() throws Exception {
+        // 认证中心表单与本系统密码登录同样防暴力破解：连续失败达到阈值后锁定，锁定期内正确密码也被拒（429）
+        String uid = "2025220418";
+        int last = 0;
+        for (int i = 0; i < 5; i++) {
+            last = casLogin(uid, "wrong-password-" + i, SERVICE).getStatus();
+        }
+        assertThat(last).isEqualTo(429);
+        MockHttpServletResponse locked = casLogin(uid, DEMO_PASSWORD, SERVICE);
+        assertThat(locked.getStatus()).isEqualTo(429);
+        assertThat(locked.getContentAsString(StandardCharsets.UTF_8)).doesNotContain("ticket=");
+    }
+
+    @Test
     void casRejectsWrongPasswordAndForeignService() throws Exception {
         MockHttpServletResponse bad = casLogin("2025210891", "wrong-password", SERVICE);
         assertThat(bad.getStatus()).isEqualTo(401);
