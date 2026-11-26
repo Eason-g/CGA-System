@@ -673,7 +673,59 @@ function resetFilters() {
     backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--color-border-light);
   }
-  .storefront-container { grid-template-columns: 1fr; padding: 0 16px 80px; }
-  .jobs-column, .sidebar-column { grid-column: span 1; position: static; }
+  .storefront-container { grid-template-columns: minmax(0, 1fr); padding: 0 16px 80px; }
+  .jobs-column, .sidebar-column { grid-column: span 1; position: static; min-width: 0; }
+}
+
+/* 手机（≤768px）：卡片满宽、操作按钮换行，对比栏让出底部标签栏 */
+@media (max-width: 768px) {
+  .hero-section { padding: 20px 16px 18px; }
+  .hero-eyebrow { font-size: 13px; max-width: 100%; line-height: 1.4; }
+  .hero-title { font-size: 21px; }
+  .unified-search { padding: 4px 4px 4px 12px; }
+  .u-search-input { min-width: 0; font-size: 16px; height: 40px; }
+  .u-search-btn { height: 40px; padding: 0 14px; flex-shrink: 0; }
+  .hero-pills {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+  .hero-pills { scrollbar-width: none; }
+  .hero-pills::-webkit-scrollbar { display: none; }
+  .hero-pills .f-pill-filter { flex-shrink: 0; }
+
+  .mobile-hours-strip { top: 56px; padding: 10px 16px; }
+  .storefront-container { margin-top: 16px; gap: 16px; padding-bottom: 24px; }
+  .job-card { padding: 16px; }
+  .job-top { gap: 12px; }
+  .job-top > .min-w-0 { flex: 1; }
+  .job-title { font-size: 16px; }
+  .rate-value { font-size: 18px; }
+  .rate-unit { font-size: 13px; }
+
+  .job-bottom { flex-direction: column; align-items: stretch; }
+  .job-bottom .text-xs { font-size: 13px; }
+  .job-bottom > div:last-child { flex-wrap: wrap; }
+  .job-bottom > div:last-child > button { flex: 1 1 0; min-width: 0; }
+  .job-bottom > div:last-child > .f-pill { flex-basis: 100%; justify-content: center; }
+  .compare-toggle-btn { height: 40px; justify-content: center; font-size: 14px; }
+
+  .hours-seg-item .text-xs, .qual-item, .todo-item { font-size: 14px; }
+  .todo-item { padding: 11px 12px; }
+
+  .compare-dock {
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    width: calc(100vw - 16px);
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .dock-chips { flex-basis: 100%; }
+  .dock-chip { max-width: 100%; min-width: 0; font-size: 13px; }
+  .dock-remove { width: 32px; height: 32px; }
+  .dock-actions { flex: 1; justify-content: flex-end; }
+  .dock-actions .f-btn-primary { flex: 1; }
 }
 </style>

@@ -118,4 +118,14 @@ const totalHours = computed(() =>
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 768px) {
+  .portal-page { margin-top: 16px; }
+  .summary-grid { gap: 10px; }
+  .summary-grid .p-20 { padding: 14px 16px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .summary-grid .mt-6 { margin-top: 0; }
+  .sum-val { font-size: 22px; }
+  /* 表格只在卡片内横向滚动 */
+  .f-table { min-width: 640px; }
+}
 </style>

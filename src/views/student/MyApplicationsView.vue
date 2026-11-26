@@ -95,4 +95,9 @@ function toggle(id) {
 .portal-page { max-width: 1200px; margin: 24px auto 0; padding: 0 24px; }
 .min-w-0 { min-width: 0; }
 @media (max-width: 960px) { .portal-page { padding: 0 16px; } }
+@media (max-width: 768px) {
+  .portal-page { margin-top: 16px; }
+  .acrylic-card > .flex > .flex.items-center.gap-8:last-child { width: 100%; justify-content: space-between; }
+  .f-expand-panel { font-size: 14px; }
+}
 </style>

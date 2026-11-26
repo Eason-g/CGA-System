@@ -331,4 +331,14 @@ async function handleSubmit(isSpecial) {
 .mb-10 { margin-bottom: 10px; }
 .mt-2 { margin-top: 2px; }
 .mt-6 { margin-top: 6px; }
+
+@media (max-width: 768px) {
+  .check-box { padding: 12px; }
+  .check-box > .flex.justify-between { flex-wrap: wrap; gap: 8px; }
+  .check-row .text-xs { font-size: 14px; }
+  .special-section > .flex { flex-wrap: wrap; gap: 4px; }
+  .special-box { padding: 12px; }
+  .upload-btn { flex: 1 1 140px; }
+  .att-row { flex-wrap: wrap; }
+}
 </style>

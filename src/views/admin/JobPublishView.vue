@@ -291,7 +291,8 @@ import { useAppStore } from '@/stores/appStore'
 import {
   validateJobPublish,
   getBudgetAvailable,
-  buildWorkflowStepsForJob
+  buildWorkflowStepsForJob,
+  defaultJobDeadline
 } from '@/services/ruleEngine'
 import {
   JOB_TYPES,
@@ -327,7 +328,7 @@ const form = reactive({
   weeklyHours: 8,
   weeks: 16,
   allowInternational: true,
-  deadline: '2026-12-28',
+  deadline: defaultJobDeadline(),
   description: '协助主讲教师组织双语实验课、批改作业并维护课程评测环境。'
 })
 

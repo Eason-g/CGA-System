@@ -25,7 +25,7 @@
           </div>
           <div class="text-right text-xs text-muted tabular-nums">
             <div>归档编号：ARC-{{ contract.id }}</div>
-            <div>生成日期：2026-11-20</div>
+            <div>生成日期：{{ todayStr }}</div>
           </div>
         </div>
 
@@ -159,7 +159,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useAppStore } from '@/stores/appStore'
-import { FINANCE_STATUS_MAP } from '@/services/ruleEngine'
+import { FINANCE_STATUS_MAP, getTodayStr } from '@/services/ruleEngine'
 import FluentIcon from './FluentIcon.vue'
 
 const props = defineProps({
@@ -168,6 +168,7 @@ const props = defineProps({
 
 defineEmits(['close'])
 const store = useAppStore()
+const todayStr = getTodayStr()
 
 const contract = computed(() => store.db.contracts.find((c) => c.id === props.contractId))
 const student = computed(() => (contract.value ? store.getUser(contract.value.studentId) : null))
@@ -308,6 +309,21 @@ function printArchive() {
 .mt-6 { margin-top: 6px; }
 .mb-6 { margin-bottom: 6px; }
 .mb-8 { margin-bottom: 8px; }
+
+@media (max-width: 768px) {
+  .f-modal-header { flex-wrap: wrap; }
+  .archive-banner { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .archive-banner .text-right { text-align: left; }
+  .archive-h1 { font-size: 18px; }
+  .archive-kv { font-size: 14px; }
+  .archive-kv > div { overflow-wrap: anywhere; }
+  .signature-box > .flex { flex-wrap: wrap; }
+  .sig-img { max-width: 100%; height: auto; max-height: 64px; }
+  /* 档案表格只在自身范围内横向滚动 */
+  .archive-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; font-size: 13px; }
+  .archive-table th, .archive-table td { white-space: nowrap; }
+  .archive-table td:nth-child(4) { white-space: normal; min-width: 180px; }
+}
 
 @media (max-width: 720px) {
   .archive-kv,

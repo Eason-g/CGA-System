@@ -113,4 +113,8 @@ const store = useAppStore()
     opacity: 1;
   }
 }
+
+@media (max-width: 768px) {
+  .toast-stack { top: 12px; left: 12px; right: 12px; max-width: none; }
+}
 </style>

@@ -545,4 +545,24 @@ onMounted(loadMaterials)
 @media (max-width: 560px) {
   .stats-grid, .grid-2 { grid-template-columns: 1fr; }
 }
+
+/* 手机（≤768px）：网格列允许收缩，按钮换行，避免页面被撑宽 */
+@media (max-width: 768px) {
+  .profile-page.student-wrap { margin-top: 16px; padding: 0 16px; }
+  .profile-page { gap: 14px; }
+  .profile-hero { padding: 18px 16px; }
+  .hero-left { gap: 12px; }
+  .big-avatar { width: 52px; height: 52px; font-size: 21px; }
+  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .stat-card { padding: 14px; min-width: 0; }
+  .stat-val { font-size: 22px; }
+  .profile-grid { grid-template-columns: minmax(0, 1fr); }
+  .profile-grid > *, .stats-grid > * { min-width: 0; }
+  .profile-grid .p-20 { padding: 16px; }
+  .profile-grid .flex { flex-wrap: wrap; }
+  .profile-grid .upload-btn { flex: 1 1 140px; }
+  .kv-item { font-size: 14px; flex-wrap: wrap; }
+  .kv-v { min-width: 0; overflow-wrap: anywhere; }
+  .skill-chip { font-size: 13px; }
+}
 </style>

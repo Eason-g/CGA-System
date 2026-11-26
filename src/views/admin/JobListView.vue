@@ -49,7 +49,7 @@
     <!-- Clean Single-Line Density Table -->
     <section class="acrylic-card table-card">
       <div v-if="filteredJobs.length" class="f-table-wrap">
-        <table class="f-table">
+        <table class="f-table f-table-sticky-action">
           <thead>
             <tr>
               <th>岗位名称</th>

@@ -31,7 +31,7 @@
 
     <section class="acrylic-card table-card">
       <div v-if="filteredTimesheets.length" class="f-table-wrap">
-        <table class="f-table">
+        <table class="f-table f-table-sticky-action">
           <thead>
             <tr>
               <th>学生</th>

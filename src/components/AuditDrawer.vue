@@ -125,4 +125,12 @@ function dotTone(action = '') {
 
 .mt-4 { margin-top: 4px; }
 .mt-6 { margin-top: 6px; }
+
+@media (max-width: 768px) {
+  .drawer-header { padding: 14px 16px 12px; }
+  .drawer-body { padding: 16px; gap: 16px; overscroll-behavior: contain; }
+  .drawer-footer { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .timeline-head { flex-wrap: wrap; }
+  .timeline-opinion { font-size: 14px; overflow-wrap: anywhere; }
+}
 </style>

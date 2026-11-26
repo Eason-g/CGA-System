@@ -11,7 +11,7 @@
 
     <section class="acrylic-card table-card">
       <div v-if="filteredApps.length" class="f-table-wrap">
-        <table class="f-table">
+        <table class="f-table f-table-sticky-action">
           <thead>
             <tr>
               <th>申请人</th>
@@ -163,7 +163,7 @@
 <script setup>
 import { ref, reactive, computed } from 'vue'
 import { useAppStore } from '@/stores/appStore'
-import { filterByRoleDept, APP_STATUS_MAP, LANG_CERT_STATUS_MAP } from '@/services/ruleEngine'
+import { filterByRoleDept, APP_STATUS_MAP, LANG_CERT_STATUS_MAP, contractStartFrom } from '@/services/ruleEngine'
 import { api } from '@/services/api'
 import { isHttpMode } from '@/services/http'
 import { materialFinanceApi, ATTACHMENT_KIND_MAP, formatFileSize } from '@/services/materialFinanceApi'
@@ -180,7 +180,7 @@ const actionMode = ref('INTERVIEW')
 const specialOpinion = ref('')
 const busy = ref(false)
 
-const interviewForm = reactive({ time: '2026-11-24 14:30', location: '信息楼 412', note: '准备 5 分钟试讲' })
+const interviewForm = reactive({ time: `${contractStartFrom()} 14:30`, location: '信息楼 412', note: '准备 5 分钟试讲' })
 const decideForm = reactive({ score: 90, comment: '符合岗位要求，同意录用。' })
 
 const visibleApps = computed(() => filterByRoleDept(store.db, store.db.applications, user.value, 'APPLICATION'))

@@ -506,4 +506,28 @@ function handleLogout() {
   .admin-sidebar.open { transform: translateX(0); }
   .admin-main { margin-left: 0; padding: 20px 16px 40px; }
 }
+
+/* 手机（≤768px）：侧栏为抽屉，触控目标 ≥ 40px */
+@media (max-width: 768px) {
+  .mobile-topbar { height: 56px; padding: 0 8px 0 4px; gap: 8px; }
+  .mobile-topbar > .f-btn { width: 44px; min-height: 44px; padding: 0; }
+  .mobile-topbar > .fw-600 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+  .mobile-topbar > .f-pill { flex-shrink: 0; }
+  .admin-sidebar {
+    width: min(300px, 86vw);
+    padding: 16px 12px calc(12px + env(safe-area-inset-bottom));
+    box-shadow: 8px 0 32px rgba(15, 23, 42, 0.16);
+  }
+  .admin-sidebar:not(.open) { box-shadow: none; visibility: hidden; transition: transform 220ms cubic-bezier(0.2, 0, 0, 1), visibility 0s 220ms; }
+  .admin-sidebar.open { visibility: visible; transition: transform 220ms cubic-bezier(0.2, 0, 0, 1); }
+  .mobile-close { width: 40px; min-height: 40px; padding: 0; flex-shrink: 0; }
+  .nav-item { height: 44px; font-size: 15px; }
+  .nav-group-title { font-size: 12px; }
+  .nav-badge { font-size: 12px; min-width: 22px; height: 20px; }
+  .profile-trigger { min-height: 48px; }
+  .popover-item { min-height: 44px; font-size: 14px; }
+  .popover-header { font-size: 13px; }
+  .popover-act-btn { height: 40px; font-size: 14px; }
+  .admin-main { padding: 16px 12px calc(32px + env(safe-area-inset-bottom)); }
+}
 </style>

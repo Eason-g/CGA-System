@@ -365,4 +365,18 @@ function categoryLabel(cat) {
 @media (max-width: 600px) {
   .kpi-grid { grid-template-columns: 1fr; }
 }
+
+/* 手机（≤768px）：网格列允许收缩，避免长标题（truncate）把页面撑宽 */
+@media (max-width: 768px) {
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .bench-grid { grid-template-columns: minmax(0, 1fr); }
+  .kpi-grid > *, .bench-grid > * { min-width: 0; }
+  .bench-grid .p-20 { padding: 16px; }
+  .clean-row { min-height: 44px; }
+  .row-detail { font-size: 14px; }
+}
+
+@media (max-width: 420px) {
+  .kpi-grid { grid-template-columns: minmax(0, 1fr); }
+}
 </style>

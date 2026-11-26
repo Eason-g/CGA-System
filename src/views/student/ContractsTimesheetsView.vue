@@ -278,6 +278,19 @@ async function handleTimesheetSubmit() {
 
 @media (max-width: 960px) {
   .portal-page { padding: 0 16px; }
-  .ts-layout { grid-template-columns: 1fr; }
+  .ts-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 768px) {
+  .portal-page { margin-top: 16px; }
+  .ts-layout > * { min-width: 0; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  /* 合同卡片：操作按钮换行并铺满 */
+  .acrylic-card.p-16 > .flex > .flex.items-center.gap-8 { flex-wrap: wrap; width: 100%; }
+  .acrylic-card.p-16 > .flex > .flex.items-center.gap-8 > .f-btn { flex: 1 1 140px; }
+  .schedule-grid { grid-template-columns: minmax(0, 1fr); }
+  .ms-row { min-height: 44px; font-size: 14px; }
+  .f-checkbox { width: 20px; height: 20px; }
+  form .f-btn-primary { width: 100%; }
 }
 </style>

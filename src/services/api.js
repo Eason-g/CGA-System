@@ -7,7 +7,10 @@ import {
   validateTimesheetSubmission,
   validateHire,
   calcJobBudgetCost,
-  gradeFromScore
+  gradeFromScore,
+  contractStartFrom,
+  predictContractEnd,
+  defaultJobDeadline
 } from './ruleEngine'
 import { http, isHttpMode, download } from './http'
 import { deriveExtraFieldsForMock } from './jobSchema'
@@ -100,14 +103,14 @@ const mockApi = {
         workflowInstanceId: generateId('WF'),
         workflowSteps: steps,
         currentStepIndex: nextIndex,
-        deadline: payload.deadline || '2026-12-30',
+        deadline: payload.deadline || defaultJobDeadline(),
         createdAt: nowTimestamp(),
         skills: payload.skills || [],
         description: payload.description || '',
         // 派生字段（TA 语言要求、RA 里程碑）在 http 模式由后端生成，这里模拟同样的规则
         extraFields: deriveExtraFieldsForMock(payload.type, payload.extraFields, {
           weeks: payload.weeks,
-          deadline: payload.deadline
+          deadline: payload.deadline || defaultJobDeadline()
         })
       }
 
@@ -360,8 +363,9 @@ const mockApi = {
         job.hiredCount += 1
 
         // Auto-create electronic contract waiting for student signature
-        const startDate = '2026-11-23'
-        const endDate = '2027-03-15'
+        // 聘期与后端一致：下周一开始，持续岗位约定周数（mock 模式“今天”为 TODAY_STR）
+        const startDate = contractStartFrom()
+        const endDate = predictContractEnd(job.weeks)
         const contract = {
           id: generateId('CON'),
           applicationId: app.id,

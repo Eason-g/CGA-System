@@ -21,7 +21,7 @@
     <section v-else class="acrylic-card table-card">
       <div v-if="loading" class="p-16 text-xs text-muted">加载中…</div>
       <div v-else-if="items.length" class="f-table-wrap">
-        <table class="f-table">
+        <table class="f-table f-table-sticky-action">
           <thead>
             <tr>
               <th>学生</th>
@@ -221,5 +221,11 @@ onMounted(load)
 
 @media (max-width: 640px) {
   .grid-2 { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .f-modal-body > .flex { flex-wrap: wrap; }
+  .f-modal-body > .flex > .truncate { flex: 1 1 100%; min-width: 0; }
+  .f-modal-body > .flex > .f-btn { flex: 1 1 auto; }
 }
 </style>

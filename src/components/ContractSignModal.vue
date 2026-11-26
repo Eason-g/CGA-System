@@ -64,13 +64,11 @@
               width="680"
               height="160"
               class="sign-canvas"
-              @mousedown="startDraw"
-              @mousemove="draw"
-              @mouseup="endDraw"
-              @mouseleave="endDraw"
-              @touchstart.prevent="startDraw"
-              @touchmove.prevent="draw"
-              @touchend.prevent="endDraw"
+              @pointerdown="startDraw"
+              @pointermove="draw"
+              @pointerup="endDraw"
+              @pointercancel="endDraw"
+              @lostpointercapture="endDraw"
             />
             <span v-if="!hasSigned" class="canvas-placeholder">请在此区域内手写您的姓名完成电子签章</span>
           </div>
@@ -128,9 +126,16 @@ let ctx = null
 onMounted(() => {
   const canvas = canvasRef.value
   if (!canvas) return
+  // 画布像素尺寸按实际显示尺寸 × 设备像素比设置，手机窄屏下笔迹不被横向拉伸
+  const rect = canvas.getBoundingClientRect()
+  const dpr = Math.min(window.devicePixelRatio || 1, 3)
+  if (rect.width > 0 && rect.height > 0) {
+    canvas.width = Math.round(rect.width * dpr)
+    canvas.height = Math.round(rect.height * dpr)
+  }
   ctx = canvas.getContext('2d')
   ctx.strokeStyle = '#201f1e'
-  ctx.lineWidth = 2.4
+  ctx.lineWidth = 2.4 * (canvas.width / (rect.width || canvas.width))
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
 })
@@ -140,15 +145,22 @@ function getPos(e) {
   const rect = canvas.getBoundingClientRect()
   const scaleX = canvas.width / rect.width
   const scaleY = canvas.height / rect.height
-  const point = e.touches ? e.touches[0] : e
   return {
-    x: (point.clientX - rect.left) * scaleX,
-    y: (point.clientY - rect.top) * scaleY
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY
   }
 }
 
+// pointer 事件统一处理鼠标 / 触摸 / 手写笔；canvas 设了 touch-action: none，触摸时不滚动页面
 function startDraw(e) {
   if (!ctx) return
+  if (e.pointerType === 'mouse' && e.button !== 0) return
+  e.preventDefault()
+  try {
+    canvasRef.value?.setPointerCapture?.(e.pointerId)
+  } catch {
+    // 个别环境（如合成事件）不支持捕获，忽略即可
+  }
   isDrawing.value = true
   const { x, y } = getPos(e)
   ctx.beginPath()
@@ -157,15 +169,19 @@ function startDraw(e) {
 
 function draw(e) {
   if (!isDrawing.value || !ctx) return
+  e.preventDefault()
   const { x, y } = getPos(e)
   ctx.lineTo(x, y)
   ctx.stroke()
   hasSigned.value = true
 }
 
-function endDraw() {
+function endDraw(e) {
   if (!isDrawing.value) return
   isDrawing.value = false
+  if (e?.pointerId !== undefined && canvasRef.value?.hasPointerCapture?.(e.pointerId)) {
+    canvasRef.value.releasePointerCapture(e.pointerId)
+  }
   ctx?.closePath()
 }
 
@@ -291,5 +307,17 @@ async function submitSign() {
   .doc-grid {
     grid-template-columns: 1fr;
   }
+}
+
+@media (max-width: 768px) {
+  .contract-doc { padding: 14px; }
+  .doc-title { font-size: 16px; }
+  .doc-grid, .doc-clauses { font-size: 14px; }
+  .doc-grid > div { overflow-wrap: anywhere; }
+  .intl-declaration .text-xs { font-size: 14px; }
+  .sign-section > .flex { flex-wrap: wrap; gap: 8px; }
+  .sign-canvas { height: 180px; }
+  .f-checkbox { width: 20px; height: 20px; }
+  .canvas-placeholder { padding: 0 16px; text-align: center; }
 }
 </style>

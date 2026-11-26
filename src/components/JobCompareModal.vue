@@ -253,4 +253,19 @@ const maxMatch = computed(() => Math.max(0, ...items.value.map((i) => i.match.sc
 .mt-2 { margin-top: 2px; }
 .mt-4 { margin-top: 4px; }
 .mt-8 { margin-top: 8px; }
+
+@media (max-width: 768px) {
+  /* 对比表只在弹窗内横向滚动；维度列固定在左侧便于对照 */
+  .compare-table { min-width: 560px; }
+  .compare-table th, .compare-table td { padding: 12px; }
+  .dim-col, .dim-label {
+    width: 96px;
+    font-size: 13px;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+  }
+  .remove-col-btn { width: 36px; height: 36px; }
+  .compare-table .text-xs { font-size: 13px; }
+}
 </style>

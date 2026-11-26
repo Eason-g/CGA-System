@@ -242,4 +242,19 @@ const estTotalIncome = computed(() => Number(props.job.hourlyRate) * Number(prop
 .mb-6 { margin-bottom: 6px; }
 .min-w-0 { min-width: 0; }
 .flex-1 { flex: 1; }
+
+@media (max-width: 768px) {
+  .detail-head { padding: 14px 16px 12px; }
+  .detail-title { font-size: 17px; }
+  .detail-body { padding: 16px; gap: 16px; overscroll-behavior: contain; }
+  .num-strip { gap: 6px; }
+  .num-cell { padding: 10px 6px; min-width: 0; }
+  .num-big { font-size: 16px; overflow-wrap: anywhere; }
+  .sec-title { font-size: 15px; }
+  .kv-row { font-size: 14px; }
+  .kv-row strong { min-width: 0; overflow-wrap: anywhere; }
+  .skill-chip { font-size: 13px; padding: 5px 12px; }
+  .detail-foot { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); flex-wrap: wrap; }
+  .detail-foot .f-btn { flex: 1 1 140px; }
+}
 </style>

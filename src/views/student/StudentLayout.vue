@@ -116,6 +116,24 @@
     <main class="student-main">
       <router-view />
     </main>
+
+    <!-- 手机（≤768px）底部标签栏：放在 header 之外，避免 backdrop-filter 让 fixed 定位失效 -->
+    <nav class="bottom-tabbar" aria-label="学生端导航（手机）">
+      <router-link
+        v-for="tab in tabs"
+        :key="tab.to"
+        :to="tab.to"
+        class="bottom-tab"
+        :class="{ active: route.path === tab.to }"
+        :aria-current="route.path === tab.to ? 'page' : undefined"
+      >
+        <span class="bottom-tab-icon">
+          <FluentIcon :name="tab.icon" :size="21" />
+          <span v-if="tab.badge > 0" class="bottom-tab-badge">{{ tab.badge }}</span>
+        </span>
+        <span class="bottom-tab-label">{{ tab.label }}</span>
+      </router-link>
+    </nav>
   </div>
 </template>
 
@@ -139,11 +157,11 @@ const pendingSignCount = computed(() =>
 )
 
 const tabs = computed(() => [
-  { to: '/student/jobs', label: '岗位大厅', badge: 0 },
-  { to: '/student/applications', label: '我的投递', badge: 0 },
-  { to: '/student/contracts', label: '工时与合同', badge: pendingSignCount.value },
-  { to: '/student/payroll', label: '薪酬记录', badge: 0 },
-  { to: '/student/profile', label: '个人主页', badge: 0 }
+  { to: '/student/jobs', label: '岗位大厅', icon: 'briefcase', badge: 0 },
+  { to: '/student/applications', label: '我的投递', icon: 'file', badge: 0 },
+  { to: '/student/contracts', label: '工时与合同', icon: 'clock', badge: pendingSignCount.value },
+  { to: '/student/payroll', label: '薪酬记录', icon: 'wallet', badge: 0 },
+  { to: '/student/profile', label: '个人主页', icon: 'user', badge: 0 }
 ])
 
 function closeMenus() {
@@ -455,7 +473,7 @@ function handleLogout() {
   margin: 6px 0;
 }
 
-.mobile-tabs { display: none; }
+.mobile-tabs, .bottom-tabbar { display: none; }
 .student-main { flex: 1; padding-bottom: 64px; }
 .pb-10 { padding-bottom: 10px; }
 .border-b { border-bottom: 1px solid var(--color-border-light); }
@@ -486,6 +504,92 @@ function handleLogout() {
     color: var(--color-fluent-blue);
     font-weight: 600;
     border-bottom-color: var(--color-fluent-blue);
+  }
+}
+/* 手机（≤768px）：顶部只留品牌 + 通知 + 头像，导航改为底部标签栏 */
+@media (max-width: 768px) {
+  .topbar-inner { height: 56px; padding: 0 12px; gap: 8px; }
+  .topbar-brand { min-width: 0; flex-shrink: 1; }
+  .brand-stack { min-width: 0; }
+  .brand-stack > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .brand-mini { font-size: 12px; }
+  .topbar-right { flex-shrink: 0; gap: 4px; }
+  .icon-btn { width: 40px; height: 40px; }
+  .user-chip { height: 40px; padding: 4px 8px 4px 4px; }
+  .user-chip .f-pill { display: none; }
+  .mobile-tabs { display: none; }
+
+  /* 浮层在手机上铺满宽度（header 有 backdrop-filter，fixed 以 header 为参照，正好是视口顶部） */
+  .flyout-panel {
+    position: fixed;
+    top: 60px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+  }
+  .notif-panel { max-height: calc(100vh - 160px); }
+  .menu-item { min-height: 44px; font-size: 14px; }
+  .menu-section-title { font-size: 13px; }
+
+  .bottom-tabbar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 650;
+    padding: 4px 2px calc(4px + env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    border-top: 1px solid var(--color-border-light);
+    box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.05);
+  }
+  .bottom-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 52px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border-radius: 10px;
+    color: var(--color-muted);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .bottom-tab.active { color: var(--color-fluent-blue); }
+  .bottom-tab.active .bottom-tab-label { font-weight: 600; }
+  .bottom-tab-icon { position: relative; display: inline-flex; }
+  .bottom-tab-badge {
+    position: absolute;
+    top: -5px;
+    right: -10px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--color-error);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 17px;
+    text-align: center;
+    box-shadow: 0 0 0 2px #ffffff;
+  }
+  .bottom-tab-label {
+    font-size: 14px;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .student-main {
+    min-width: 0;
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
   }
 }
 </style>

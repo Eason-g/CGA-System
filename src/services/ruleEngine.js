@@ -69,6 +69,14 @@ export function predictContractEnd(weeks, fromStr = todayStr) {
   return localDateStr(d)
 }
 
+// 岗位默认申请截止日：今天 + 30 天（同后端 JobService.DEFAULT_DEADLINE_DAYS）
+export const DEFAULT_DEADLINE_DAYS = 30
+export function defaultJobDeadline(fromStr = todayStr) {
+  const d = parseDateStr(fromStr)
+  d.setDate(d.getDate() + DEFAULT_DEADLINE_DAYS)
+  return localDateStr(d)
+}
+
 // 签证有效期是否覆盖到 endDate：覆盖返回 null，否则返回拦截文案（不可特批）
 export function checkVisaCoverage(student, endDate) {
   if (!student.visaExpiry) {
