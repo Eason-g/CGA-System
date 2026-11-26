@@ -98,6 +98,16 @@ class AuditChainIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void tamperedOperatorNameIsReportedAsContentChanged() throws Exception {
+        // 操作人姓名、角色也在哈希范围内：把日志改成"别人做的"同样能被发现
+        jdbc.update("UPDATE audit_log SET operator_name = '冒名顶替者' WHERE id = 'LOG_05'");
+        JsonNode r = verify();
+        assertThat(r.path("ok").asBoolean()).isFalse();
+        assertThat(r.path("brokenAt").path("id").asString()).isEqualTo("LOG_05");
+        assertThat(r.path("brokenAt").path("reason").asString()).isEqualTo(AuditChainService.REASON_CONTENT);
+    }
+
+    @Test
     void deletedLogIsReportedAsSequenceGap() throws Exception {
         String next = idAtSeq(6);
         jdbc.update("DELETE FROM audit_log WHERE seq = 5");

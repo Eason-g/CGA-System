@@ -60,7 +60,7 @@ public class AuditChainService {
             + "operator_name, operator_role, action, opinion, before_value, after_value, log_time, seq, prev_hash, hash) "
             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-    private static final String COLUMNS = "id, target_type, target_id, operator_id, action, opinion, before_value, "
+    private static final String COLUMNS = "id, target_type, target_id, operator_id, operator_name, operator_role, action, opinion, before_value, "
             + "after_value, log_time, seq, prev_hash, hash";
 
     /** 当前事务上暂存的待追加日志（TransactionSynchronizationManager 的资源键） */
@@ -126,7 +126,7 @@ public class AuditChainService {
         String prev = (String) head.get("last_hash");
         for (AuditLog e : entries) {
             seq++;
-            String hash = hash(prev, seq, e.getTargetType(), e.getTargetId(), e.getOperatorId(), e.getAction(),
+            String hash = hash(prev, seq, e.getTargetType(), e.getTargetId(), e.getOperatorId(), e.getOperatorName(), e.getOperatorRole(), e.getAction(),
                     e.getOpinion(), e.getBeforeValue(), e.getAfterValue(), e.getTimestamp());
             jdbc.update(INSERT_SQL, e.getId(), e.getTargetType(), e.getTargetId(), e.getOperatorId(),
                     e.getOperatorName(), e.getOperatorRole(), e.getAction(), e.getOpinion(), e.getBeforeValue(),
@@ -185,7 +185,7 @@ public class AuditChainService {
         String prev = (String) head.get("last_hash");
         for (Row r : rows) {
             seq++;
-            String hash = hash(prev, seq, r.targetType, r.targetId, r.operatorId, r.action, r.opinion,
+            String hash = hash(prev, seq, r.targetType, r.targetId, r.operatorId, r.operatorName, r.operatorRole, r.action, r.opinion,
                     r.beforeValue, r.afterValue, r.logTime);
             jdbc.update("UPDATE audit_log SET seq = ?, prev_hash = ?, hash = ? WHERE id = ?", seq, prev, hash, r.id);
             prev = hash;
@@ -222,7 +222,7 @@ public class AuditChainService {
                 if (!prev.equals(r.prevHash)) {
                     return broken(checked, r.id, r.seq, REASON_LINK, "prev_hash 与上一条日志的哈希不一致");
                 }
-                String actual = hash(r.prevHash, r.seq, r.targetType, r.targetId, r.operatorId, r.action, r.opinion,
+                String actual = hash(r.prevHash, r.seq, r.targetType, r.targetId, r.operatorId, r.operatorName, r.operatorRole, r.action, r.opinion,
                         r.beforeValue, r.afterValue, r.logTime);
                 if (!actual.equals(r.hash)) {
                     return broken(checked, r.id, r.seq, REASON_CONTENT, "按当前内容重算的哈希与存档哈希不一致");
@@ -258,13 +258,17 @@ public class AuditChainService {
 
     // ------------------------------------------------------------------ 哈希
 
-    /** hash = SHA-256(prev_hash|seq|targetType|targetId|operatorId|action|opinion|beforeValue|afterValue|timestamp)，空值按空串 */
+    /**
+     * hash = SHA-256(prev_hash|seq|targetType|targetId|operatorId|operatorName|operatorRole|action|opinion|
+     * beforeValue|afterValue|timestamp)，空值按空串。页面上显示的每一列都在哈希范围内，改任何一列都能被发现。
+     */
     public static String hash(String prevHash, long seq, String targetType, String targetId, String operatorId,
-                              String action, String opinion, String beforeValue, String afterValue,
-                              LocalDateTime timestamp) {
+                              String operatorName, String operatorRole, String action, String opinion,
+                              String beforeValue, String afterValue, LocalDateTime timestamp) {
         String ts = timestamp == null ? "" : timestamp.format(TimeService.TIMESTAMP_FORMAT);
         String text = String.join("|", nz(prevHash), String.valueOf(seq), nz(targetType), nz(targetId),
-                nz(operatorId), nz(action), nz(opinion), nz(beforeValue), nz(afterValue), ts);
+                nz(operatorId), nz(operatorName), nz(operatorRole), nz(action), nz(opinion), nz(beforeValue),
+                nz(afterValue), ts);
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(md.digest(text.getBytes(StandardCharsets.UTF_8)));
@@ -278,14 +282,15 @@ public class AuditChainService {
     }
 
     /** 校验/补算时读出的一行 */
-    private record Row(String id, String targetType, String targetId, String operatorId, String action,
-                       String opinion, String beforeValue, String afterValue, LocalDateTime logTime, Long seq,
-                       String prevHash, String hash) {
+    private record Row(String id, String targetType, String targetId, String operatorId, String operatorName,
+                       String operatorRole, String action, String opinion, String beforeValue, String afterValue,
+                       LocalDateTime logTime, Long seq, String prevHash, String hash) {
         static Row of(ResultSet rs) throws SQLException {
             long rawSeq = rs.getLong("seq");
             Long seq = rs.wasNull() ? null : rawSeq;
             return new Row(rs.getString("id"), rs.getString("target_type"), rs.getString("target_id"),
-                    rs.getString("operator_id"), rs.getString("action"), rs.getString("opinion"),
+                    rs.getString("operator_id"), rs.getString("operator_name"), rs.getString("operator_role"),
+                    rs.getString("action"), rs.getString("opinion"),
                     rs.getString("before_value"), rs.getString("after_value"),
                     rs.getObject("log_time", LocalDateTime.class), seq,
                     rs.getString("prev_hash"), rs.getString("hash"));
