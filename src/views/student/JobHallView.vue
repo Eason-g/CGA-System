@@ -3,7 +3,7 @@
     <!-- Airy Editorial Hero with Unified Elevated Search Capsule -->
     <section class="hero-section">
       <div class="hero-inner">
-        <div class="hero-eyebrow">{{ store.currentUniversity.name }} · 2026-2027 学年三助招募</div>
+        <div class="hero-eyebrow">{{ store.schoolName }} · 2026-2027 学年三助招募</div>
         <h1 class="hero-title mt-8">探索适合你的助教、助研与助管岗位</h1>
 
         <div class="unified-search mt-20">

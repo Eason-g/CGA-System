@@ -8,7 +8,7 @@
             <FluentIcon name="campus" :size="17" />
           </div>
           <div class="brand-stack">
-            <span class="fw-600 text-sm">{{ store.currentUniversity.name }}</span>
+            <span class="fw-600 text-sm">{{ store.schoolName }}</span>
             <span class="brand-mini">三助招聘门户</span>
           </div>
         </router-link>

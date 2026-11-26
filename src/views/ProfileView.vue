@@ -15,7 +15,7 @@
             </span>
           </div>
           <div class="f-meta-line mt-6">
-            <span>{{ store.currentUniversity.name }}</span>
+            <span>{{ store.schoolName }}</span>
             <span class="f-meta-sep">·</span>
             <span>{{ store.getDeptName(user?.deptId) }}</span>
             <template v-if="user?.studentNo">
@@ -129,6 +129,12 @@
               <span class="kv-v">{{ user.degree }} · {{ user.major }}</span>
             </div>
             <div class="kv-item">
+              <span class="kv-k">学籍状态</span>
+              <span class="kv-v fw-600" :class="enrollmentStatusOf(user) === '在读' ? 'text-success' : 'text-error'">
+                {{ enrollmentStatusOf(user) }}（以学籍系统同步为准，非在读不可申请三助岗位）
+              </span>
+            </div>
+            <div class="kv-item">
               <span class="kv-k">学业 GPA</span>
               <span class="kv-v tabular-nums">{{ user.gpa || '-' }}</span>
             </div>
@@ -208,7 +214,7 @@
           <div class="kv-list">
             <div class="kv-item">
               <span class="kv-k">所属院校</span>
-              <span class="kv-v">{{ store.currentUniversity.name }}</span>
+              <span class="kv-v">{{ store.schoolName }}</span>
             </div>
             <div class="kv-item">
               <span class="kv-k">所属院系 / 部门</span>
@@ -290,7 +296,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores/appStore'
-import { getStudentHoursSummary, filterJobsByRole, LANG_CERT_STATUS_MAP } from '@/services/ruleEngine'
+import { getStudentHoursSummary, filterJobsByRole, LANG_CERT_STATUS_MAP, enrollmentStatusOf } from '@/services/ruleEngine'
 import { api } from '@/services/api'
 import { isHttpMode } from '@/services/http'
 import { materialFinanceApi, ACCEPT_TYPES, ATTACHMENT_KIND_MAP } from '@/services/materialFinanceApi'

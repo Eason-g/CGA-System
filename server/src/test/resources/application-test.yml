@@ -16,3 +16,8 @@ app:
     callback-secret: test-finance-callback-secret
     mock:
       auto-callback: false
+  # P2 B.3：在演示项目之外再加载测试专用项目（覆盖已有测试里 RA 建岗用到的编号 TEST-01、TEST-RA-01）
+  integration:
+    research-data:
+      - classpath:integration/research-projects.json
+      - classpath:integration/research-projects-test.json

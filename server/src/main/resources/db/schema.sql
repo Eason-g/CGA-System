@@ -59,6 +59,7 @@ CREATE TABLE users (
   language_cert_status VARCHAR(16) NULL COMMENT '语言证明核验状态 PENDING/VERIFIED/REJECTED（空=种子数据）',
   max_weekly_hours  INT           NULL COMMENT '个人周工时上限（只能比全局规则更严）',
   student_no        VARCHAR(32)   NULL,
+  enrollment_status VARCHAR(16)   NULL COMMENT '学籍状态 在读/休学/毕业（学籍系统同步；非学生为空，空按在读处理）',
   degree            VARCHAR(32)   NULL,
   major             VARCHAR(64)   NULL,
   gpa               VARCHAR(16)   NULL,

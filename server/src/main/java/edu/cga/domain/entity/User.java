@@ -42,6 +42,8 @@ public class User {
     private Boolean languageValid;
     /** 语言证明核验状态（P1 第三批）：null=种子/历史数据，PENDING 待核验，VERIFIED 已核验，REJECTED 未通过 */
     private String languageCertStatus;
+    /** 学籍状态（P2 B.2，学籍系统同步）：在读 / 休学 / 毕业；非学生为空，空按在读处理 */
+    private String enrollmentStatus;
     private Integer maxWeeklyHours;
     private String studentNo;
     private String degree;

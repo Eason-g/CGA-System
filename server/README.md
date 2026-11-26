@@ -231,3 +231,22 @@ node scripts/gen-seed-sql.mjs
 - **评教网关**：接口 `integration/TeachingEvalGateway`，默认 `MockTeachingEvalGateway` 读 `resources/integration/course-evaluations.json`（标注“模拟评教系统”）。`app.integration.teaching-eval.provider` 缺省为 `mock`；接真实系统时新增实现类并改该配置。演示数据覆盖种子 TA 岗位课程，**MATH1012 故意没有数据**（校级管理员或 `chen.shouren` 考核 Elena 时可演示“暂无评教数据”）。
 - **推荐打分**（`service/RecommendationService`）：先调用 `RuleEngine.validateStudentApplication`，签证/国际生开放资格等硬性条件不过、名额已满或已过截止日 → `applicable=false`、0 分、排最后，`blockers` 写原因。其余岗位五项因子取值 0–1：技能重合比例（岗位无技能取 0.5）；录用后工时 ≤ 上限 80% 取 1、≤ 上限取 0.6、超上限 0；语言无要求或满足取 1、否则 0；同院系 1/0；7 天内截止取 1、之后线性降到 60 天取 0。推荐分 = Σ(权重 × 取值) / Σ权重 × 100 取整。默认权重 40 / 25 / 15 / 10 / 10。工时超限、语言不足属于可特批项：岗位仍可申请，但列入 `blockers` 并标 `needsSpecialApproval`。
 - 新增测试：`TeachingEvalIntegrationTest`、`RecommendationIntegrationTest`。
+
+## 11. P2 B 批：统一认证与系统对接（规格见 `docs/P2设计.md` B 批）
+
+外部系统（统一认证、学籍、科研）都是**接口 + 模拟实现**，演示数据在 `src/main/resources/integration/*.json`，界面上标注“模拟”。接真实系统时新增一个实现类并改配置即可。
+
+| 接口 | 权限 | 说明 |
+|---|---|---|
+| `GET /api/public/site` | 公开 | `{ schoolName, sso: { enabled, provider, displayName, mock } }`，校名来自 `app.school-name`（默认“示范高校”） |
+| `GET /api/auth/sso/login-url?service=` | 公开 | 认证中心登录地址（模拟 CAS 为同源相对路径 `/mock-cas/login?service=…`） |
+| `POST /api/auth/sso/exchange` `{ticket, service}` | 公开 | 换取 JWT，返回体同密码登录；票据无效/过期/重复使用/service 不一致 401，学工号在本系统无账号 403“统一认证账号未在本系统开通”，SSO 关闭 404；写 `统一身份认证登录` 审计 |
+| `GET/POST /mock-cas/login` | 公开 | 模拟统一身份认证中心页面（后端输出 HTML）。账号目录 `integration/cas-accounts.json`（学生用学号、教职工用工号），密码为演示密码；票据 `ST-…` 一次性、60 秒、绑定 service；service 只允许 `app.sso.allowed-service-origins`（为空时取 CORS 白名单）内的地址，防开放跳转 |
+| `POST /api/integration/sis/sync` | SCHOOL_ADMIN、INTL_OFFICER（只同步国际生） | 从学籍系统更新学籍状态（在读/休学/毕业）与签证类型、有效期，返回差异清单 `diffs[{userId, studentNo, name, field, fieldLabel, before, after}]`、`unmatched`；每个变更学生一条 `USER` 审计 + 一条 `INTEGRATION/SIS` 汇总审计；幂等 |
+| `GET /api/integration/research/projects/{code}?deptId=&deadline=&weeks=` | MENTOR、DEPT_ADMIN、SCHOOL_ADMIN | 查询科研项目并按建岗规则预校验（发布页“校验项目”）；不存在 404 |
+
+- **学籍规则**：`users.enrollment_status`；申请与录用要求“在读”，硬性条件不可特批（`RuleEngine.checkEnrollment`，与 `ruleEngine.js` 文案一致）。为不改变已有校验项顺序，学籍项只在**非在读**时出现在 `checks` 首位；空值按在读处理。老库启动时自动补列并把学生标为在读。
+- **科研项目**：RA 建岗在差异化字段校验之后检查 —— 项目存在；负责人是发岗导师（院系管理员、校级管理员代建只要求负责人同院系）；项目结束日不早于预计聘期结束日（申请截止日后第一个周一 + 周数，与里程碑排期一致）。不通过 400，`data` 为校验结果。测试额外加载 `src/test/resources/integration/research-projects-test.json`（`TEST-01`、`TEST-RA-01`）。
+- **前端**：登录页“统一身份认证”页签 → 跳认证中心 → 回跳 `/?ticket=…#/login`，`main.js` 在路由启动前取出 ticket 并用 `history.replaceState` 清掉地址栏，登录页换票；开发时 Vite 把 `/mock-cas` 转发到后端。校名统一读 `/api/public/site`，已删除前端高校名单与切换下拉、扫码登录和“CAS 3.0 / OAuth 2.0 / CARSI”等未实现说法。
+- 配置：`app.school-name`、`app.sso.enabled / provider / ticket-ttl / allowed-service-origins / mock-server-url / mock-accounts`、`app.integration.sis-data / research-data`（可多个文件）。
+- 测试：`SsoIntegrationTest`、`SisSyncIntegrationTest`、`ResearchProjectIntegrationTest`、`RuleEngineEnrollmentTest`。

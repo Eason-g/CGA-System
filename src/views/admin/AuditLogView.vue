@@ -13,6 +13,8 @@
           <option value="EVALUATION">考核评价</option>
           <option value="CONFIG">校级配置</option>
           <option value="REPORT">报表导出</option>
+          <option value="USER">用户档案与登录</option>
+          <option value="INTEGRATION">外部系统对接</option>
         </select>
         <input v-model="keyword" type="text" class="f-input" style="width: 200px;" placeholder="搜索操作人或单号..." />
         <button

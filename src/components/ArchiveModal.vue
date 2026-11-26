@@ -20,7 +20,7 @@
       <div v-if="contract" class="f-modal-body archive-body">
         <div class="archive-banner">
           <div>
-            <div class="text-xs text-muted">{{ store.currentUniversity.name }} · 高校“三助”（TA/RA/GA）一体化管理平台</div>
+            <div class="text-xs text-muted">{{ store.schoolName }} · 高校“三助”（TA/RA/GA）一体化管理平台</div>
             <h1 class="archive-h1">三助岗位聘用全流程电子归档凭证</h1>
           </div>
           <div class="text-right text-xs text-muted tabular-nums">

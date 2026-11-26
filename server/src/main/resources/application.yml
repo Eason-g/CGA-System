@@ -56,6 +56,19 @@ app:
       auto-callback: true
       callback-delay: 3s
       success-rate: 1.0
+  # P2 B.4：学校名称，由 GET /api/public/site 返回，前端登录页、侧栏、归档页统一读取
+  school-name: 示范高校
+  # P2 B.1：统一身份认证。provider=mock 为模拟 CAS（演示用）；对接真实 CAS 时新增 SsoProvider 实现并改这里
+  sso:
+    enabled: true
+    provider: mock
+    # 票据有效期（一次性、绑定 service）
+    ticket-ttl: 60s
+  # P2 B.2/B.3：模拟学籍系统、科研系统的演示数据（resources/integration/*.json）
+  integration:
+    sis-data: classpath:integration/sis-students.json
+    research-data:
+      - classpath:integration/research-projects.json
   cors:
     allowed-origins:
       - http://localhost:5173

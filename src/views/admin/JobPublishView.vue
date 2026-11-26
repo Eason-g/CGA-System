@@ -151,6 +151,14 @@
             </div>
           </div>
           <div v-if="form.type === 'RA'" class="text-xs text-muted mt-8">里程碑截止日期由系统按聘期自动均分生成。</div>
+          <!-- P2 B.3：到科研系统（模拟）校验绑定的项目 -->
+          <ResearchProjectCheck
+            v-if="form.type === 'RA'"
+            :code="extra.projectCode"
+            :dept-id="form.deptId"
+            :deadline="form.deadline"
+            :weeks="form.weeks"
+          />
 
           <label v-if="schema.intlToggle" class="intl-toggle mt-12">
             <input v-model="form.allowInternational" type="checkbox" class="f-checkbox" />
@@ -305,6 +313,7 @@ import {
 } from '@/services/jobSchema'
 import { api } from '@/services/api'
 import FluentIcon from '@/components/FluentIcon.vue'
+import ResearchProjectCheck from '@/components/ResearchProjectCheck.vue'
 
 const store = useAppStore()
 const router = useRouter()

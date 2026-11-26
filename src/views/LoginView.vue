@@ -1,5 +1,5 @@
 <template>
-  <main class="sso-viewport" @click="univMenuOpen = false">
+  <main class="sso-viewport">
     <!-- Serene Fluent Luminous Background -->
     <div class="sso-bg" aria-hidden="true">
       <div class="bg-glow bg-glow-top" />
@@ -27,45 +27,18 @@
       </svg>
     </div>
 
-    <!-- Centered Single-Focus Multi-University SSO Card -->
+    <!-- 居中登录卡片 -->
     <section class="sso-center">
       <div class="sso-card">
-        <!-- Brand Header + Inline University Switcher Pill -->
+        <!-- 品牌与校名（校名来自后端配置 app.school-name） -->
         <header class="card-brand">
           <div class="crest-badge" aria-hidden="true">
             <FluentIcon name="campus" :size="22" />
           </div>
           <h1 class="brand-name">{{ isEn ? 'Campus TA · RA · GA Platform' : '高校“三助”一体化平台' }}</h1>
-
-          <!-- Lightweight Institution Selector Pill -->
-          <div class="univ-anchor" @click.stop>
-            <button
-              type="button"
-              class="univ-pill"
-              :aria-expanded="univMenuOpen"
-              @click="univMenuOpen = !univMenuOpen"
-            >
-              <span class="univ-dot" />
-              <span class="truncate">{{ isEn ? store.currentUniversity.enName : store.currentUniversity.name }}</span>
-              <FluentIcon :name="univMenuOpen ? 'chevron-up' : 'chevron-down'" :size="13" />
-            </button>
-
-            <div v-if="univMenuOpen" class="univ-popover" role="listbox">
-              <div class="univ-pop-head">{{ isEn ? 'Select Institution' : '切换所属高校' }}</div>
-              <div class="univ-pop-list">
-                <button
-                  v-for="u in store.universities"
-                  :key="u.id"
-                  type="button"
-                  class="univ-pop-item"
-                  :class="{ active: u.id === store.currentUniversityId }"
-                  @click="selectUniversity(u.id)"
-                >
-                  <span class="truncate">{{ isEn ? u.enName : u.name }}</span>
-                  <span class="univ-code tabular-nums">{{ u.code }}</span>
-                </button>
-              </div>
-            </div>
+          <div class="school-name">
+            <span class="univ-dot" />
+            <span class="truncate">{{ store.schoolName }}</span>
           </div>
         </header>
 
@@ -84,10 +57,10 @@
             type="button"
             role="tab"
             class="mode-tab"
-            :class="{ active: loginTab === 'qr' }"
-            @click="loginTab = 'qr'"
+            :class="{ active: loginTab === 'sso' }"
+            @click="loginTab = 'sso'"
           >
-            {{ isEn ? 'Campus App QR' : '扫码登录' }}
+            {{ isEn ? 'Unified Identity' : '统一身份认证' }}
           </button>
         </div>
 
@@ -119,7 +92,7 @@
                 :type="showPassword ? 'text' : 'password'"
                 class="clean-input has-trail"
                 autocomplete="current-password"
-                :placeholder="isEn ? 'Enter password' : '请输入统一认证密码'"
+                :placeholder="isEn ? 'Enter password' : '请输入密码'"
                 required
               />
               <button
@@ -153,51 +126,23 @@
           </button>
         </form>
 
-        <!-- Tab 2: Campus App QR Code -->
-        <div v-else class="qr-section">
-          <div class="qr-frame" @click="simulateQrScan" title="点击确认授权登录">
-            <svg viewBox="0 0 120 120" class="qr-svg" aria-label="智慧校园扫码登录">
-              <rect width="120" height="120" fill="#ffffff" />
-              <rect x="10" y="10" width="28" height="28" rx="3" fill="none" stroke="#181c22" stroke-width="4" />
-              <rect x="18" y="18" width="12" height="12" rx="1.5" fill="#0078d4" />
-              <rect x="82" y="10" width="28" height="28" rx="3" fill="none" stroke="#181c22" stroke-width="4" />
-              <rect x="90" y="18" width="12" height="12" rx="1.5" fill="#181c22" />
-              <rect x="10" y="82" width="28" height="28" rx="3" fill="none" stroke="#181c22" stroke-width="4" />
-              <rect x="18" y="90" width="12" height="12" rx="1.5" fill="#181c22" />
-              <g fill="#181c22">
-                <rect x="46" y="12" width="6" height="6" />
-                <rect x="58" y="12" width="6" height="6" />
-                <rect x="70" y="12" width="6" height="6" />
-                <rect x="46" y="24" width="12" height="6" />
-                <rect x="64" y="24" width="6" height="6" />
-                <rect x="46" y="36" width="6" height="6" />
-                <rect x="58" y="36" width="18" height="6" />
-                <rect x="12" y="46" width="6" height="12" />
-                <rect x="24" y="46" width="12" height="6" />
-                <rect x="24" y="58" width="6" height="6" />
-                <rect x="12" y="68" width="18" height="6" />
-                <rect x="34" y="68" width="6" height="6" />
-                <rect x="82" y="46" width="12" height="6" />
-                <rect x="100" y="46" width="8" height="6" />
-                <rect x="88" y="58" width="6" height="12" />
-                <rect x="100" y="58" width="8" height="14" />
-                <rect x="46" y="82" width="12" height="6" />
-                <rect x="64" y="82" width="6" height="12" />
-                <rect x="76" y="82" width="12" height="6" />
-                <rect x="94" y="82" width="14" height="6" />
-                <rect x="46" y="94" width="6" height="14" />
-                <rect x="58" y="98" width="14" height="10" />
-                <rect x="78" y="94" width="10" height="6" />
-                <rect x="94" y="96" width="14" height="12" />
-              </g>
-              <rect x="47" y="47" width="26" height="26" rx="6" fill="#0078d4" />
-              <path d="M52 58.5L60 54l8 4.5-8 4.5-8-4.5z" fill="#ffffff" />
-            </svg>
+        <!-- Tab 2：统一身份认证（P2 B.1，演示环境为模拟 CAS） -->
+        <div v-else class="sso-section">
+          <p class="sso-desc">
+            {{ store.site.sso?.displayName || '统一身份认证（演示环境为模拟 CAS）' }}：跳转到认证中心输入学工号和密码，
+            认证通过后自动回到本系统并完成登录。
+          </p>
+          <div v-if="errorMsg" class="error-strip">
+            <FluentIcon name="x-circle" :size="14" />
+            <span>{{ errorMsg }}</span>
           </div>
-          <p class="qr-hint">{{ isEn ? 'Scan with your Campus Mobile App' : '使用本校智慧校园 App / 企业微信扫码登录' }}</p>
-          <button type="button" class="text-link mt-6" @click="refreshQr">
-            {{ isEn ? 'Refresh QR Code' : '刷新二维码' }}
+          <button type="button" class="submit-btn" :disabled="ssoBusy || !ssoAvailable" @click="startSsoLogin">
+            <span>{{ ssoBusy ? '正在处理统一认证...' : '统一身份认证登录' }}</span>
           </button>
+          <p v-if="!ssoAvailable" class="sso-note">
+            {{ isHttpMode ? '统一身份认证未启用' : '该功能需要连接后端（当前为 mock 演示模式）' }}
+          </p>
+          <p v-else class="sso-note">模拟认证中心仅供演示，不连接任何真实学校的统一身份认证系统。</p>
         </div>
 
         <!-- Minimal Card Utility Footer -->
@@ -219,7 +164,7 @@
       </div>
 
       <p class="page-copyright">
-        {{ isEn ? 'Higher Education TA/RA/GA Platform · CAS / OAuth 2.0 / CARSI Federation' : '高校“三助”岗位一体化管理云平台 · 支持多校 CAS / OAuth 2.0 / CARSI 联邦认证' }}
+        {{ isEn ? 'TA/RA/GA Platform · Unified identity (mock CAS in demo)' : '高校“三助”岗位一体化管理平台 · 统一身份认证（演示环境为模拟 CAS）' }}
       </p>
     </section>
 
@@ -229,7 +174,7 @@
         <header class="f-modal-header">
           <div>
             <h2 class="text-sub">角色体验账号</h2>
-            <p class="text-xs text-muted mt-2">覆盖学生端与管理端 6 类身份，支持任意已选高校进入体验</p>
+            <p class="text-xs text-muted mt-2">覆盖学生端与管理端 6 类身份，使用演示密码登录</p>
           </div>
           <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="showRoleModal = false">
             <FluentIcon name="close" :size="17" />
@@ -274,19 +219,19 @@
     <div v-if="showHelp" class="f-overlay" @click.self="showHelp = false">
       <div class="f-modal" role="dialog" aria-modal="true" aria-label="登录帮助">
         <header class="f-modal-header">
-          <h2 class="text-sub">{{ isEn ? 'Federation SSO Help' : '多校统一身份认证说明' }}</h2>
+          <h2 class="text-sub">{{ isEn ? 'Sign-in Help' : '登录说明' }}</h2>
           <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="showHelp = false">
             <FluentIcon name="close" :size="17" />
           </button>
         </header>
         <div class="f-modal-body flex-col gap-14 text-xs text-muted" style="line-height: 1.7;">
           <div>
-            <div class="fw-600 text-sm" style="color: var(--color-text);">多校接入机制</div>
-            <p class="mt-4">本平台支持多所高校独立租户部署与统一联邦认证（CAS 3.0 / OAuth 2.0 / CARSI）。点击顶部院校胶囊切换所属高校，再使用本校学工号或校园邮箱登录。</p>
+            <div class="fw-600 text-sm" style="color: var(--color-text);">登录方式</div>
+            <p class="mt-4">“账号登录”使用学工号、用户名或校园邮箱加密码；“统一身份认证”跳转到认证中心登录后，带一次性票据回到本系统。演示环境的认证中心为本系统自带的模拟 CAS，接入学校真实的统一身份认证需按其接口新增实现。</p>
           </div>
           <div>
             <div class="fw-600 text-sm" style="color: var(--color-text);">国际学生合规提示</div>
-            <p class="mt-4">系统自动对接本校国际处学籍与签证信息，国际生申请助教/助研岗位时将前置校验 X1 居留许可、语言证明与每周 20 小时工时红线。</p>
+            <p class="mt-4">学籍状态与签证信息可由校级管理员、国际生办从学籍系统同步（演示环境为模拟学籍系统）；申请助教/助研岗位时前置校验学籍在读、居留许可、语言证明与每周工时上限。</p>
           </div>
         </div>
         <footer class="f-modal-footer">
@@ -298,11 +243,12 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/appStore'
 import FluentIcon from '@/components/FluentIcon.vue'
 import { isHttpMode, DEMO_PASSWORD } from '@/services/http'
+import { integrationApi, ssoServiceUrl, consumePendingSsoTicket } from '@/services/integrationApi'
 
 const store = useAppStore()
 const router = useRouter()
@@ -316,14 +262,44 @@ const rememberMe = ref(true)
 const loggingIn = ref(false)
 const errorMsg = ref('')
 
-const univMenuOpen = ref(false)
 const showRoleModal = ref(false)
 const showHelp = ref(false)
 
-function selectUniversity(id) {
-  store.setUniversity(id)
-  univMenuOpen.value = false
+// P2 B.1 统一身份认证
+const ssoBusy = ref(false)
+const ssoAvailable = computed(() => isHttpMode && Boolean(store.site.sso?.enabled))
+
+function enterPortal(user) {
+  router.push(user.portal === 'student' ? '/student/jobs' : '/admin/dashboard')
 }
+
+// 跳到认证中心；回跳地址为当前页面（不含 hash），认证中心会在 # 之前追加 ?ticket=
+async function startSsoLogin() {
+  errorMsg.value = ''
+  ssoBusy.value = true
+  const res = await integrationApi.getSsoLoginUrl(ssoServiceUrl())
+  if (res.code === 200 && res.data?.loginUrl) {
+    window.location.href = res.data.loginUrl
+    return
+  }
+  ssoBusy.value = false
+  errorMsg.value = res.message || '统一身份认证暂不可用'
+}
+
+// 从认证中心回跳：main.js 已取出地址栏里的 ticket 并清掉，这里换取本系统 JWT
+onMounted(async () => {
+  const ticket = consumePendingSsoTicket()
+  if (!ticket) return
+  loginTab.value = 'sso'
+  ssoBusy.value = true
+  try {
+    const user = await store.loginWithSsoTicket(ticket)
+    if (user) enterPortal(user)
+    else errorMsg.value = store.lastLoginError
+  } finally {
+    ssoBusy.value = false
+  }
+})
 
 function shortTag(u) {
   return {
@@ -360,15 +336,6 @@ async function handlePasswordLogin() {
   } finally {
     loggingIn.value = false
   }
-}
-
-function refreshQr() {
-  store.notify('二维码已刷新', 'info')
-}
-
-async function simulateQrScan() {
-  const user = await store.loginAs('U_MENTOR')
-  if (user) router.push('/admin/dashboard')
 }
 
 function fillAccount(u) {
@@ -492,32 +459,8 @@ async function handleReset() {
 }
 
 /* Top Lightweight Institution Pill */
-.univ-anchor {
-  position: relative;
-  margin-top: 10px;
-}
 
-.univ-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  max-width: 280px;
-  height: 28px;
-  padding: 0 11px;
-  border-radius: 999px;
-  border: 1px solid var(--color-blue-border);
-  background: var(--color-blue-subtle);
-  color: var(--color-fluent-blue);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--motion-fast), border-color var(--motion-fast);
-}
 
-.univ-pill:hover {
-  background: rgba(0, 120, 212, 0.13);
-  border-color: var(--color-fluent-blue);
-}
 
 .univ-dot {
   width: 6px;
@@ -527,66 +470,32 @@ async function handleReset() {
   flex-shrink: 0;
 }
 
-.univ-popover {
-  position: absolute;
-  top: 34px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 276px;
-  background: rgba(255, 255, 255, 0.98);
-  backdrop-filter: blur(24px);
-  border: 1px solid var(--color-border-light);
-  border-radius: 12px;
-  box-shadow: var(--shadow-modal);
-  padding: 8px;
-  z-index: 40;
-  text-align: left;
-  animation: fadeIn 140ms ease-out;
-}
 
-.univ-pop-head {
-  padding: 4px 10px 6px;
-  font-size: 11px;
+
+
+
+
+
+.school-name {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--color-subtle);
+  color: var(--color-text);
 }
 
-.univ-pop-list {
-  max-height: 224px;
-  overflow-y: auto;
+.sso-section {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 14px;
+  padding: 8px 0 4px;
 }
 
-.univ-pop-item {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  font-size: 12.5px;
-  color: var(--color-text);
-  cursor: pointer;
-  transition: background var(--motion-fast);
-}
-
-.univ-pop-item:hover { background: var(--surface-subtle); }
-.univ-pop-item.active {
-  background: var(--color-blue-subtle);
-  color: var(--color-fluent-blue);
-  font-weight: 600;
-}
-
-.univ-code {
-  font-size: 11px;
-  color: var(--color-subtle);
-  flex-shrink: 0;
-}
+.sso-desc { margin: 0; font-size: 13px; line-height: 1.7; color: var(--color-muted); }
+.sso-note { margin: 0; font-size: 12px; color: var(--color-muted); text-align: center; }
 
 .mode-tabs {
   display: grid;
@@ -759,29 +668,8 @@ async function handleReset() {
 .submit-btn:active:not(:disabled) { transform: translateY(0.5px); }
 .submit-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
-.qr-section {
-  padding: 26px 0 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-}
 
-.qr-frame {
-  width: 164px;
-  height: 164px;
-  padding: 10px;
-  border-radius: 12px;
-  background: #ffffff;
-  border: 1px solid var(--color-border-light);
-  box-shadow: var(--shadow-xs);
-  cursor: pointer;
-  transition: border-color var(--motion-fast), transform var(--motion-fast);
-}
 
-.qr-frame:hover { border-color: var(--color-blue-border); transform: scale(1.02); }
-.qr-svg { width: 100%; height: 100%; display: block; }
-.qr-hint { margin-top: 14px; font-size: 13px; color: var(--color-muted); }
 
 .card-foot {
   margin-top: 26px;

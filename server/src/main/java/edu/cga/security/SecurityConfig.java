@@ -58,6 +58,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/public/**").permitAll()
                         // 财务系统回调：不带登录令牌，由 FinanceService 校验 HMAC-SHA256 签名（P1 第三批）
                         .requestMatchers(HttpMethod.POST, "/api/integration/finance/callback").permitAll()
+                        // P2 B.1：统一身份认证（取登录地址、换票）与模拟认证中心页面
+                        .requestMatchers(HttpMethod.GET, "/api/auth/sso/login-url").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/sso/exchange").permitAll()
+                        .requestMatchers("/mock-cas/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex
