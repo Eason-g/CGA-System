@@ -841,10 +841,9 @@ Object.assign(mockApi, {
 // 方法名与入参签名与 mockApi 保持一致；最后一个 operator / student 参数不发给后端，身份一律取自 token
 const enc = (id) => encodeURIComponent(id ?? '')
 
-// P1 第二批（报表导出、审计校验）只在 http 模式实现，mock 模式下统一提示
-const NEED_BACKEND = { code: 501, data: null, message: '该功能需要连接后端' }
-mockApi.exportReport = () => Promise.resolve({ ...NEED_BACKEND })
-mockApi.verifyAuditChain = () => Promise.resolve({ ...NEED_BACKEND })
+// P1 第二批（报表导出、审计校验）只在 http 模式实现，mock 模式下统一提示（NEED_BACKEND 定义见上）
+mockApi.exportReport = backendOnly
+mockApi.verifyAuditChain = backendOnly
 
 const httpApi = {
   fetchSnapshot() {
@@ -1005,3 +1004,5 @@ const httpApi = {
 }
 
 export const api = isHttpMode ? httpApi : mockApi
+// 供脚本直接测试 mock 后端（scripts/verify-p0-fixes.mjs）
+export { mockApi }

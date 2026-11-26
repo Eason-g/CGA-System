@@ -23,7 +23,9 @@ globalThis.localStorage = {
   removeItem: (k) => store.delete(k)
 }
 
-const { api } = await import(new URL('services/api.js', srcUrl).href)
+// 显式取 mock 后端（新版 api.js 默认走 http 模式）；旧版只导出 api，退回使用它
+const apiModule = await import(new URL('services/api.js', srcUrl).href)
+const api = apiModule.mockApi ?? apiModule.api
 const { getDB } = await import(new URL('mock/mockDB.js', srcUrl).href)
 const rules = await import(new URL('services/ruleEngine.js', srcUrl).href)
 

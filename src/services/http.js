@@ -1,11 +1,13 @@
 // 真实后端请求封装：基于 fetch，自动携带 JWT，统一返回 { code, data, message }
 
 // 接口模式：http（默认，请求 Java 后端）/ mock（localStorage 假后端，便于未装后端时演示）
-export const API_MODE = import.meta.env.VITE_API_MODE === 'mock' ? 'mock' : 'http'
+// 在 Node 脚本里直接导入时没有 import.meta.env，按空配置处理
+const env = import.meta.env || {}
+export const API_MODE = env.VITE_API_MODE === 'mock' ? 'mock' : 'http'
 export const isHttpMode = API_MODE === 'http'
 
 // 演示账号统一密码（与后端 app.demo-password 一致），仅用于“体验账号”快捷登录
-export const DEMO_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD || 'Cga@2026'
+export const DEMO_PASSWORD = env.VITE_DEMO_PASSWORD || 'Cga@2026'
 
 const TOKEN_KEY = 'CGA_AUTH_TOKEN'
 const NETWORK_ERROR = { code: 0, data: null, message: '无法连接服务器，请确认后端已启动' }
