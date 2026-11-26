@@ -12,10 +12,46 @@
           <option value="PAYROLL">薪酬发放</option>
           <option value="EVALUATION">考核评价</option>
           <option value="CONFIG">校级配置</option>
+          <option value="REPORT">报表导出</option>
         </select>
         <input v-model="keyword" type="text" class="f-input" style="width: 200px;" placeholder="搜索操作人或单号..." />
+        <button
+          v-if="isSchoolAdmin"
+          type="button"
+          class="f-btn f-btn-primary"
+          :disabled="verifying"
+          @click="verifyChain"
+        >
+          <FluentIcon name="shield" :size="15" />
+          <span>{{ verifying ? '校验中…' : '校验完整性' }}</span>
+        </button>
       </div>
     </header>
+
+    <!-- 审计日志防篡改校验结果（P1 第二批 2.2） -->
+    <div v-if="verifyResult" class="f-banner" :class="verifyResult.ok ? 'success' : 'error'" role="status">
+      <FluentIcon :name="verifyResult.ok ? 'check-circle' : 'alert'" :size="18" />
+      <div class="flex-1 text-sm">
+        <template v-if="verifyResult.ok">
+          <div class="fw-600">哈希链完整：共校验 {{ verifyResult.checked }} 条日志，未发现篡改</div>
+          <div class="text-xs mt-4">每条日志的哈希都包含上一条的哈希，任何一条被修改、删除或调换都会在这里报出来。</div>
+        </template>
+        <template v-else>
+          <div class="fw-600">
+            发现异常：{{ verifyResult.brokenAt?.reason }}
+            <span v-if="verifyResult.brokenAt?.id">（日志 {{ verifyResult.brokenAt.id }}，序号 {{ verifyResult.brokenAt.seq }}）</span>
+            <span v-else-if="verifyResult.brokenAt?.seq">（序号 {{ verifyResult.brokenAt.seq }}）</span>
+          </div>
+          <div class="text-xs mt-4">
+            {{ verifyResult.brokenAt?.detail }}。此前 {{ verifyResult.checked }} 条日志校验正常。
+          </div>
+        </template>
+        <div class="text-xs mt-4 text-muted">说明：哈希链能发现篡改，但不能阻止拥有数据库权限的人篡改。</div>
+      </div>
+      <button type="button" class="f-btn f-btn-subtle f-btn-sm" aria-label="关闭校验结果" @click="verifyResult = null">
+        <FluentIcon name="close" :size="13" />
+      </button>
+    </div>
 
     <section class="acrylic-card table-card">
       <div v-if="filteredLogs.length" class="f-table-wrap">
@@ -67,10 +103,32 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useAppStore } from '@/stores/appStore'
+import { api } from '@/services/api'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
 
 const store = useAppStore()
+const isSchoolAdmin = computed(() => store.currentUser?.role === 'SCHOOL_ADMIN')
+const verifying = ref(false)
+const verifyResult = ref(null)
+
+// 从头重算审计哈希链（仅校级管理员）
+async function verifyChain() {
+  verifying.value = true
+  try {
+    const res = await api.verifyAuditChain()
+    if (res.code === 200) {
+      verifyResult.value = res.data
+      store.notify(res.message, res.data?.ok ? 'success' : 'error')
+    } else {
+      verifyResult.value = null
+      store.notify(res.message || '校验失败', 'error')
+    }
+  } finally {
+    verifying.value = false
+  }
+}
+
 const targetFilter = ref('ALL')
 const keyword = ref('')
 const expandedIds = ref(new Set())
@@ -101,4 +159,5 @@ function toggle(id) {
 .expand-row { background: rgba(243, 242, 241, 0.55); }
 .ml-6 { margin-left: 6px; }
 .mt-4 { margin-top: 4px; }
+.flex-1 { flex: 1; }
 </style>

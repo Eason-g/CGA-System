@@ -1,10 +1,11 @@
 package edu.cga.service;
 
+import java.time.temporal.ChronoUnit;
+
 import edu.cga.common.IdGenerator;
 import edu.cga.common.TimeService;
 import edu.cga.domain.entity.AuditLog;
 import edu.cga.domain.entity.Notification;
-import edu.cga.domain.mapper.AuditLogMapper;
 import edu.cga.domain.mapper.NotificationMapper;
 import edu.cga.security.CurrentUser;
 import org.springframework.stereotype.Service;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 /**
  * 审计日志与站内信。字段与 mock 的 addAuditLog / notifications.unshift 一致；
  * 调用方处在业务事务内，日志和业务数据一起提交或回滚。
+ * 审计日志一律经 {@link AuditChainService} 追加到哈希链上（P1 第二批 2.2 防篡改）。
  */
 @Service
 public class AuditService {
@@ -20,17 +22,18 @@ public class AuditService {
     public static final String CHANNEL_MAIL = "站内信 + 模拟邮件";
     public static final String CHANNEL_INBOX = "站内信";
 
-    private final AuditLogMapper auditLogMapper;
     private final NotificationMapper notificationMapper;
     private final IdGenerator ids;
     private final TimeService time;
 
-    public AuditService(AuditLogMapper auditLogMapper, NotificationMapper notificationMapper, IdGenerator ids,
-                        TimeService time) {
-        this.auditLogMapper = auditLogMapper;
+    private final AuditChainService auditChain;
+
+    public AuditService(NotificationMapper notificationMapper, IdGenerator ids, TimeService time,
+                        AuditChainService auditChain) {
         this.notificationMapper = notificationMapper;
         this.ids = ids;
         this.time = time;
+        this.auditChain = auditChain;
     }
 
     /** 写一条审计日志；operatorName/operatorRole 同 mock（姓名、角色中文名），另存 operatorId */
@@ -47,8 +50,10 @@ public class AuditService {
         log.setOpinion(opinion == null ? "" : opinion);
         log.setBeforeValue(beforeValue == null ? "" : beforeValue);
         log.setAfterValue(afterValue == null ? "" : afterValue);
-        log.setTimestamp(time.now());
-        auditLogMapper.insert(log);
+        // 截断到秒，与 DATETIME 列精度一致（否则落库时被四舍五入，重算哈希会对不上）
+        log.setTimestamp(time.now().truncatedTo(ChronoUnit.SECONDS));
+        // 统一走哈希链追加（锁链头、分配 seq、计算 hash），见 AuditChainService；不再直接 insert
+        auditChain.append(log);
         return log;
     }
 

@@ -20,7 +20,8 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>app.db.init=if-empty：users 表不存在（或缺少后续版本新增的表）时执行 schema.sql + data.sql；</li>
  *   <li>always：每次启动都重建；never：不做任何处理；</li>
- *   <li>之后无论哪种模式，都把 password_hash 为空的用户设为演示密码的 BCrypt 哈希。</li>
+ *   <li>之后无论哪种模式，都把 password_hash 为空的用户设为演示密码的 BCrypt 哈希；</li>
+ *   <li>并为尚未入链的审计日志（种子数据、P0 老库）补算哈希链，老库缺列时自动补列。</li>
  * </ul>
  * {@link #rebuild()} 同时供 POST /api/demo/reset 与集成测试使用。
  * <p>
@@ -40,12 +41,15 @@ public class DatabaseInitializer implements SmartInitializingSingleton {
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwordEncoder;
     private final AppProperties props;
+    private final AuditChainService auditChain;
 
-    public DatabaseInitializer(DataSource dataSource, PasswordEncoder passwordEncoder, AppProperties props) {
+    public DatabaseInitializer(DataSource dataSource, PasswordEncoder passwordEncoder, AppProperties props,
+                               AuditChainService auditChain) {
         this.dataSource = dataSource;
         this.jdbc = new JdbcTemplate(dataSource);
         this.passwordEncoder = passwordEncoder;
         this.props = props;
+        this.auditChain = auditChain;
     }
 
     @Override
@@ -65,11 +69,13 @@ public class DatabaseInitializer implements SmartInitializingSingleton {
                     rebuild();
                 } else {
                     initDemoPasswords();
+                    auditChain.initialize();
                 }
             }
             case NEVER -> {
                 if (usersTableExists()) {
                     initDemoPasswords();
+                    auditChain.initialize();
                 }
             }
         }
@@ -83,6 +89,8 @@ public class DatabaseInitializer implements SmartInitializingSingleton {
         populator.addScript(new ClassPathResource("db/data.sql"));
         populator.execute(dataSource);
         initDemoPasswords();
+        // 种子审计日志按时间顺序补算哈希链（P1 第二批 2.2）
+        auditChain.initialize();
     }
 
     /** 把 password_hash 为空的用户设为 app.demo-password 的 BCrypt 哈希（每个用户单独加盐） */

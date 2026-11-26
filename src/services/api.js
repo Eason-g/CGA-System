@@ -9,7 +9,7 @@ import {
   calcJobBudgetCost,
   gradeFromScore
 } from './ruleEngine'
-import { http, isHttpMode } from './http'
+import { http, isHttpMode, download } from './http'
 import { deriveExtraFieldsForMock } from './jobSchema'
 
 // Simulate 150ms ~ 280ms backend latency with standard { code, data, message } response envelope
@@ -841,6 +841,11 @@ Object.assign(mockApi, {
 // 方法名与入参签名与 mockApi 保持一致；最后一个 operator / student 参数不发给后端，身份一律取自 token
 const enc = (id) => encodeURIComponent(id ?? '')
 
+// P1 第二批（报表导出、审计校验）只在 http 模式实现，mock 模式下统一提示
+const NEED_BACKEND = { code: 501, data: null, message: '该功能需要连接后端' }
+mockApi.exportReport = () => Promise.resolve({ ...NEED_BACKEND })
+mockApi.verifyAuditChain = () => Promise.resolve({ ...NEED_BACKEND })
+
 const httpApi = {
   fetchSnapshot() {
     return http.get('/api/snapshot')
@@ -980,6 +985,19 @@ const httpApi = {
 
   submitPublicFeedback({ code, rating, comment, clientId }) {
     return http.post(`/api/public/feedback/${enc((code || '').trim())}`, { rating, comment, clientId }, { skipAuthRedirect: true })
+  },
+
+  // 报表导出（P1 第二批 2.1）：type 为 jobs/hires/timesheets/payrolls/budgets，format 为 xlsx/csv；带 token 下载
+  exportReport({ type, format = 'xlsx', month, deptId } = {}) {
+    const q = new URLSearchParams({ format })
+    if (month) q.set('month', month)
+    if (deptId) q.set('deptId', deptId)
+    return download(`/api/reports/${enc(type)}/export?${q}`, `${type}.${format}`)
+  },
+
+  // 审计日志完整性校验（P1 第二批 2.2，校级管理员）：data 为 { ok, checked, brokenAt }
+  verifyAuditChain() {
+    return http.get('/api/audit/verify')
   }
 }
 
