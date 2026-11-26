@@ -50,6 +50,8 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .cors(cors -> {})
+                // P2 D.2：安全响应头（X-Content-Type-Options、X-Frame-Options、Referrer-Policy、CSP）
+                .headers(SecurityHeaders::configure)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()

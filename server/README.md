@@ -70,6 +70,9 @@ mvn test
 | `ConcurrentHireIntegrationTest` | 两个线程各自独立事务同时录用同一学生到两个岗位，只有一个成功（重复 3 次） | 是 |
 | `WritePermissionIntegrationTest` | 每个写接口的错角色 403 / 越权 404 / 参数 400，快照 `hoursSummary` | 是 |
 | `ReportExportIntegrationTest` | P1 报表导出：5 种报表 × xlsx/csv（POI 读回校验表头和行数）、csv 带 BOM、公式注入转义、导师/院系管理员数据范围、学生 403、导出写审计日志 | 是 |
+| `SensitiveDataIntegrationTest` | P2 D.1：SQL 直查手机号/邮箱为密文、快照本人明文他人打码、邮箱登录走 email_hash、改邮箱后新邮箱可登录旧邮箱不可、迁移幂等并能升级老库、报表与审计日志无明文 | 是 |
+| `LoginProtectionIntegrationTest` | P2 D.2：连续失败 5 次锁定、锁定期正确密码 429、成功清零、换标识试也算同一账号、不存在账号同样锁定、IP 限流、安全响应头 | 是 |
+| `FieldCryptoTest`、`LoginGuardTest` | 加解密、随机 IV、篡改检测、HKDF 测试向量、密钥非法时上下文启动失败；锁定到期、失败窗口、IP 滑动窗口、并发计数 | 否 |
 | `AuditChainIntegrationTest` | P1 审计防篡改：种子日志补算、改 opinion / 删日志 / 改 prev_hash 能被校验报出、回滚不留空洞、20 线程并发追加链不分叉、老库自动补列、非校级管理员 403 | 是 |
 
 只跑不依赖数据库的测试：`mvn test -Dtest='TimeServiceTest,UnitChecksTest,RuleEngineTest*'`。
@@ -103,6 +106,9 @@ mvn test
 | `app.db.init` | `if-empty` | `if-empty`：users 表不存在时建表导数据；`always`：每次启动重建；`never`：不动 |
 | `app.demo.reset-enabled` | `true` | 是否允许校级管理员调用 `POST /api/demo/reset` |
 | `app.cors.allowed-origins` | 5173、5174 | 允许跨域的前端地址 |
+| `app.crypto.key` | 开发默认值 | 手机号/邮箱 AES-256-GCM 密钥（Base64 的 32 字节）；**生产环境必须用环境变量 `APP_CRYPTO_KEY` 覆盖**，缺失或长度不对启动失败 |
+| `app.security.login.*` | 15 分钟 5 次锁 15 分钟；IP 每分钟 300 次 | 登录锁定与 IP 限流，见 `docs/非功能验证.md` |
+| `spring.datasource.hikari.*` | 最大 20 连接 | 连接池，取值理由见 `docs/非功能验证.md` |
 
 ## 6. 已实现接口（第一批）
 
@@ -218,3 +224,10 @@ node scripts/gen-seed-sql.mjs
 **旧库升级**：`app.db.init=if-empty` 时若发现缺少 P1 新表（`job_templates`、`feedback_rounds`、`service_feedback`），会按最新脚本重建演示数据。
 
 新增测试：`JobTypeSchemaIntegrationTest`、`JobTemplateIntegrationTest`、`FeedbackIntegrationTest`、`RenewalIntegrationTest`。
+
+## 10. P2 D 批：非功能（规格见 `docs/P2设计.md` D 批，验证结果见 `docs/非功能验证.md`）
+
+- **敏感信息加密**：`users.phone`、`users.email` 在库中为 `enc:v1:` 开头的 AES-256-GCM 密文（`crypto/EncryptedStringTypeHandler`），邮箱登录查 `email_hash`（HMAC-SHA256，密钥由 `app.crypto.key` 经 HKDF 派生）。启动、建表和演示重置时 `crypto/SensitiveDataMigrator` 把明文加密并补哈希（幂等，老库自动补列，**无需手动重建**）。直接用 SQL 查库只能看到密文。
+- **登录防护**：`security/login/LoginGuard`（账号锁定，锁定期返回 429 和剩余时间）+ `LoginRateLimitFilter`（IP 滑动窗口限流）；计数在进程内。
+- **安全头**：`security/SecurityHeaders`（nosniff、`X-Frame-Options: DENY`、Referrer-Policy、基础 CSP，`/mock-cas/**` 放宽内联脚本）。
+- **压测**：`node scripts/perf-test.mjs --base http://localhost:8090 --concurrency 50 --duration 60 [--scenario login-snapshot]`，会写数据，只对演示/测试库运行；所有请求来自同一 IP，需用 `-Dapp.security.login.ip-max-per-minute=1000000` 启动后端。

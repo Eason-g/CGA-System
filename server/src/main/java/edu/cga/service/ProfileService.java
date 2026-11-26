@@ -3,7 +3,9 @@ package edu.cga.service;
 import java.util.List;
 import java.util.regex.Pattern;
 
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import edu.cga.common.BizException;
+import edu.cga.crypto.FieldCrypto;
 import edu.cga.domain.entity.User;
 import edu.cga.domain.mapper.NotificationMapper;
 import edu.cga.domain.mapper.UserMapper;
@@ -45,6 +47,8 @@ public class ProfileService {
                 throw BizException.badRequest("邮箱格式不正确");
             }
             target.setEmail(e);
+            // 邮箱登录按 email_hash 检索（P2 D.1），改邮箱必须同步更新，否则新邮箱登录不了、旧邮箱还能登录
+            target.setEmailHash(FieldCrypto.get().emailHash(e));
         }
         if (phone != null) {
             String p = phone.trim();
@@ -68,6 +72,10 @@ public class ProfileService {
             target.setBio(b);
         }
         userMapper.updateById(target);
+        if (email != null && target.getEmailHash() == null) {
+            // 邮箱清空：updateById 默认跳过 null 字段，检索哈希要单独置空
+            userMapper.update(null, new UpdateWrapper<User>().set("email_hash", null).eq("id", target.getId()));
+        }
         audit.log("USER", target.getId(), operator, "更新个人主页信息", "已更新联系方式与技能标签", "原档案", "已更新");
         return target;
     }

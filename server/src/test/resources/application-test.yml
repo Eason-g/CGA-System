@@ -16,3 +16,7 @@ app:
     callback-secret: test-finance-callback-secret
     mock:
       auto-callback: false
+  security:
+    login:
+      # 全部测试类共用一个上下文且都从 127.0.0.1 登录，放宽 IP 限流；限流本身在 LoginProtectionIntegrationTest 里临时调低后测试
+      ip-max-per-minute: 100000

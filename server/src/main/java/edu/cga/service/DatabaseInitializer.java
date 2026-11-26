@@ -6,6 +6,7 @@ import java.util.List;
 import javax.sql.DataSource;
 
 import edu.cga.config.AppProperties;
+import edu.cga.crypto.SensitiveDataMigrator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.SmartInitializingSingleton;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Component;
  *   <li>app.db.init=if-empty：users 表不存在（或缺少后续版本新增的表）时执行 schema.sql + data.sql；</li>
  *   <li>always：每次启动都重建；never：不做任何处理；</li>
  *   <li>之后无论哪种模式，都把 password_hash 为空的用户设为演示密码的 BCrypt 哈希；</li>
+ *   <li>把明文手机号/邮箱加密并补 email_hash（P2 D.1，幂等，老库自动补列）；</li>
  *   <li>并为尚未入链的审计日志（种子数据、P0 老库）补算哈希链，老库缺列时自动补列。</li>
  * </ul>
  * {@link #rebuild()} 同时供 POST /api/demo/reset 与集成测试使用。
@@ -42,14 +44,16 @@ public class DatabaseInitializer implements SmartInitializingSingleton {
     private final PasswordEncoder passwordEncoder;
     private final AppProperties props;
     private final AuditChainService auditChain;
+    private final SensitiveDataMigrator sensitiveData;
 
     public DatabaseInitializer(DataSource dataSource, PasswordEncoder passwordEncoder, AppProperties props,
-                               AuditChainService auditChain) {
+                               AuditChainService auditChain, SensitiveDataMigrator sensitiveData) {
         this.dataSource = dataSource;
         this.jdbc = new JdbcTemplate(dataSource);
         this.passwordEncoder = passwordEncoder;
         this.props = props;
         this.auditChain = auditChain;
+        this.sensitiveData = sensitiveData;
     }
 
     @Override
@@ -69,12 +73,14 @@ public class DatabaseInitializer implements SmartInitializingSingleton {
                     rebuild();
                 } else {
                     initDemoPasswords();
+                    sensitiveData.migrate();
                     auditChain.initialize();
                 }
             }
             case NEVER -> {
                 if (usersTableExists()) {
                     initDemoPasswords();
+                    sensitiveData.migrate();
                     auditChain.initialize();
                 }
             }
@@ -89,6 +95,8 @@ public class DatabaseInitializer implements SmartInitializingSingleton {
         populator.addScript(new ClassPathResource("db/data.sql"));
         populator.execute(dataSource);
         initDemoPasswords();
+        // 种子数据的手机号、邮箱是明文，导入后立即加密并补邮箱检索哈希（P2 D.1）
+        sensitiveData.migrate();
         // 种子审计日志按时间顺序补算哈希链（P1 第二批 2.2）
         auditChain.initialize();
     }

@@ -63,15 +63,16 @@ CREATE TABLE users (
   major             VARCHAR(64)   NULL,
   gpa               VARCHAR(16)   NULL,
   skills            JSON          NULL,
-  email             VARCHAR(128)  NULL,
-  phone             VARCHAR(32)   NULL,
+  email             VARCHAR(512)  NULL COMMENT 'AES-256-GCM 密文（enc:v1:），种子明文在启动时加密',
+  email_hash        CHAR(64)      NULL COMMENT '小写邮箱的 HMAC-SHA256，用于邮箱登录',
+  phone             VARCHAR(255)  NULL COMMENT 'AES-256-GCM 密文（enc:v1:）',
   title             VARCHAR(64)   NULL COMMENT '职称/职务（教职工）',
   bio               VARCHAR(500)  NULL COMMENT '个人简介',
   PRIMARY KEY (id),
   UNIQUE KEY uk_users_username (username),
   UNIQUE KEY uk_users_student_no (student_no),
   KEY idx_users_dept (dept_id),
-  KEY idx_users_email (email)
+  KEY idx_users_email_hash (email_hash)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户';
 
 -- 经费池

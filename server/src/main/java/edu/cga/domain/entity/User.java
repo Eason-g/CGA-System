@@ -11,6 +11,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import edu.cga.crypto.EncryptedStringTypeHandler;
 import edu.cga.domain.JsonColumnTypeHandler;
 import lombok.Data;
 
@@ -51,7 +52,16 @@ public class User {
     @TableField(typeHandler = JsonColumnTypeHandler.class)
     private List<String> skills;
 
+    /** 库中为 AES-256-GCM 密文，读出时自动解密（P2 D.1） */
+    @TableField(typeHandler = EncryptedStringTypeHandler.class)
     private String email;
+
+    /** 小写邮箱的 HMAC-SHA256，只用于邮箱登录检索，不输出给前端 */
+    @JsonIgnore
+    private String emailHash;
+
+    /** 库中为 AES-256-GCM 密文，读出时自动解密 */
+    @TableField(typeHandler = EncryptedStringTypeHandler.class)
     private String phone;
     private String title;
     private String bio;
