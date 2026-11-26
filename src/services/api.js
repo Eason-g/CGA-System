@@ -1,0 +1,783 @@
+import { getDB, persistDB, resetDB, generateId, nowTimestamp, addAuditLog } from '@/mock/mockDB'
+import {
+  validateJobPublish,
+  buildWorkflowStepsForJob,
+  STEP_TO_JOB_STATUS,
+  validateStudentApplication,
+  validateTimesheetSubmission,
+  calcJobBudgetCost,
+  gradeFromScore
+} from './ruleEngine'
+
+// Simulate 150ms ~ 280ms backend latency with standard { code, data, message } response envelope
+function mockAsync(executor) {
+  const delay = 150 + Math.floor(Math.random() * 130)
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      try {
+        const result = executor(getDB())
+        if (result && typeof result === 'object' && 'code' in result) {
+          resolve(result)
+        } else {
+          resolve({ code: 200, data: result, message: '操作成功' })
+        }
+      } catch (err) {
+        resolve({ code: 500, data: null, message: err?.message || '系统内部错误' })
+      }
+    }, delay)
+  })
+}
+
+export const api = {
+  // Fetch full reactive DB snapshot
+  fetchSnapshot() {
+    return mockAsync((db) => JSON.parse(JSON.stringify(db)))
+  },
+
+  resetDemoData() {
+    return mockAsync(() => {
+      const fresh = resetDB()
+      return { code: 200, data: JSON.parse(JSON.stringify(fresh)), message: '已重置为初始演示数据' }
+    })
+  },
+
+  loginByUserId(userId) {
+    return mockAsync((db) => {
+      const user = db.users.find((u) => u.id === userId)
+      if (!user) return { code: 404, data: null, message: '演示账号不存在' }
+      return { code: 200, data: user, message: `已通过统一身份认证登录：${user.name}` }
+    })
+  },
+
+  loginByCredentials(account) {
+    return mockAsync((db) => {
+      const q = (account || '').trim().toLowerCase()
+      const user = db.users.find(
+        (u) =>
+          (u.username && u.username.toLowerCase() === q) ||
+          (u.studentNo && u.studentNo.toLowerCase() === q) ||
+          (u.email && u.email.toLowerCase() === q) ||
+          (u.phone && u.phone.replace(/-/g, '') === q.replace(/-/g, '')) ||
+          (u.name && u.name.toLowerCase() === q)
+      )
+      if (!user) return { code: 401, data: null, message: '学工号或校园邮箱未匹配，请核对后重试（或点击右下角查看体验账号）' }
+      return { code: 200, data: user, message: `欢迎回来，${user.name}` }
+    })
+  },
+
+  // P0-1: Create & submit a new TA/RA/GA job with hard budget & quota checks
+  createJob(payload, operator) {
+    return mockAsync((db) => {
+      const check = validateJobPublish(db, payload)
+      if (!check.ok) {
+        return { code: 400, data: check, message: check.errors.join('；') }
+      }
+
+      const steps = buildWorkflowStepsForJob(db, payload.type, payload.allowInternational)
+      // Step 0 is MENTOR_SUBMIT, advance to Step 1
+      const nextIndex = Math.min(1, steps.length - 1)
+      const nextStepKey = steps[nextIndex]
+      const initialStatus = STEP_TO_JOB_STATUS[nextStepKey] || 'PUBLISHED'
+
+      const newJob = {
+        id: generateId('JOB'),
+        type: payload.type,
+        title: payload.title.trim(),
+        deptId: payload.deptId,
+        mentorId: operator.id,
+        budgetId: payload.budgetId,
+        quota: Number(payload.quota),
+        hiredCount: 0,
+        hourlyRate: Number(payload.hourlyRate),
+        weeklyHours: Number(payload.weeklyHours),
+        weeks: Number(payload.weeks),
+        allowInternational: Boolean(payload.allowInternational),
+        status: initialStatus,
+        workflowInstanceId: generateId('WF'),
+        workflowSteps: steps,
+        currentStepIndex: nextIndex,
+        deadline: payload.deadline || '2026-12-30',
+        createdAt: nowTimestamp(),
+        skills: payload.skills || [],
+        description: payload.description || '',
+        extraFields: payload.extraFields || {}
+      }
+
+      // Freeze estimated budget in selected budget pool
+      const budget = db.budgets.find((b) => b.id === payload.budgetId)
+      const cost = calcJobBudgetCost(newJob)
+      const beforeFrozen = budget.frozenAmount
+      budget.frozenAmount += cost
+
+      db.jobs.unshift(newJob)
+      addAuditLog(db, {
+        targetType: 'JOB',
+        targetId: newJob.id,
+        operator,
+        action: '提交岗位发布申请',
+        opinion: `发布 ${newJob.type} 岗位「${newJob.title}」，招聘 ${newJob.quota} 人，冻结预计预算 ¥${cost.toLocaleString()}。`,
+        beforeValue: `冻结经费 ¥${beforeFrozen.toLocaleString()}`,
+        afterValue: `${initialStatus}（冻结经费 ¥${budget.frozenAmount.toLocaleString()}）`
+      })
+      persistDB()
+      return { code: 200, data: newJob, message: '岗位已提交并进入审批流' }
+    })
+  },
+
+  // Approve or reject job in workflow
+  reviewJob({ jobId, decision, opinion }, operator) {
+    return mockAsync((db) => {
+      const job = db.jobs.find((j) => j.id === jobId)
+      if (!job) return { code: 404, data: null, message: '岗位不存在' }
+
+      const beforeStatus = job.status
+      if (decision === 'REJECT') {
+        job.status = 'REJECTED'
+        // Release frozen budget
+        const budget = db.budgets.find((b) => b.id === job.budgetId)
+        if (budget) {
+          budget.frozenAmount = Math.max(0, budget.frozenAmount - calcJobBudgetCost(job))
+        }
+        addAuditLog(db, {
+          targetType: 'JOB',
+          targetId: job.id,
+          operator,
+          action: '驳回岗位申请',
+          opinion: opinion || '审核未通过，退回修改并释放冻结预算',
+          beforeValue: beforeStatus,
+          afterValue: 'REJECTED'
+        })
+      } else {
+        const nextIdx = Math.min((job.currentStepIndex || 1) + 1, job.workflowSteps.length - 1)
+        job.currentStepIndex = nextIdx
+        const stepKey = job.workflowSteps[nextIdx]
+        job.status = STEP_TO_JOB_STATUS[stepKey] || 'PUBLISHED'
+
+        const actionMap = {
+          DEPT_ADMIN: '院系初审通过',
+          INTL_OFFICER: '国际生办会签通过',
+          SCHOOL_ADMIN: '校级终审通过'
+        }
+        addAuditLog(db, {
+          targetType: 'JOB',
+          targetId: job.id,
+          operator,
+          action: actionMap[operator.role] || '审批通过',
+          opinion: opinion || '核验无误，同意进入下一流程节点',
+          beforeValue: beforeStatus,
+          afterValue: job.status
+        })
+      }
+
+      persistDB()
+      return { code: 200, data: job, message: decision === 'REJECT' ? '已驳回该岗位申请' : '审批通过并已流转' }
+    })
+  },
+
+  // P0-2: Student applies for a job (with hard compliance check & special approval branch)
+  submitApplication({ jobId, statement, resumeFileName, isSpecialApproval = false, specialReason = '' }, student) {
+    return mockAsync((db) => {
+      const job = db.jobs.find((j) => j.id === jobId)
+      if (!job) return { code: 404, data: null, message: '岗位不存在' }
+
+      const check = validateStudentApplication(db, student, job)
+      if (check.alreadyApplied) {
+        return { code: 400, data: check, message: '您已申请过该岗位，请勿重复投递' }
+      }
+      if (check.quotaFull) {
+        return { code: 400, data: check, message: '该岗位名额已招满' }
+      }
+      if (!check.passed && !isSpecialApproval) {
+        return { code: 403, data: check, message: '合规前置校验未通过，系统已拦截提交' }
+      }
+      if (isSpecialApproval && (!specialReason || specialReason.trim().length < 6)) {
+        return { code: 400, data: check, message: '发起特批申请必须填写不少于 6 个字的特批理由' }
+      }
+
+      const app = {
+        id: generateId('APP'),
+        jobId: job.id,
+        studentId: student.id,
+        status: isSpecialApproval ? 'PENDING_SPECIAL_APPROVAL' : 'SUBMITTED',
+        appliedAt: nowTimestamp(),
+        statement: statement || '已认真阅读岗位职责要求，申请加入团队。',
+        resumeFileName: resumeFileName || `${student.name}_个人简历.pdf`,
+        complianceCheckResult: { passed: check.passed, checks: check.checks },
+        isSpecialApproval: Boolean(isSpecialApproval),
+        specialReason: isSpecialApproval ? specialReason.trim() : '',
+        specialStatus: isSpecialApproval ? 'PENDING' : null,
+        interviewInfo: null,
+        score: null,
+        mentorComment: ''
+      }
+
+      db.applications.unshift(app)
+      addAuditLog(db, {
+        targetType: 'APPLICATION',
+        targetId: app.id,
+        operator: student,
+        action: isSpecialApproval ? '发起国际生办特批申请' : '提交岗位申请',
+        opinion: isSpecialApproval
+          ? `触发硬校验拦截，特批理由：${app.specialReason}`
+          : `通过合规校验并申请「${job.title}」`,
+        beforeValue: isSpecialApproval ? '合规拦截' : '未申请',
+        afterValue: app.status
+      })
+
+      persistDB()
+      return {
+        code: 200,
+        data: app,
+        message: isSpecialApproval ? '已提交特批申请，等待国际生办审核留痕' : '投递成功，等待导师筛选'
+      }
+    })
+  },
+
+  // International Officer reviews special approval application
+  reviewSpecialApproval({ applicationId, decision, opinion }, operator) {
+    return mockAsync((db) => {
+      const app = db.applications.find((a) => a.id === applicationId)
+      if (!app) return { code: 404, data: null, message: '申请单不存在' }
+
+      const beforeStatus = app.status
+      if (decision === 'APPROVE') {
+        app.status = 'SPECIAL_APPROVED'
+        app.specialStatus = 'APPROVED'
+      } else {
+        app.status = 'SPECIAL_REJECTED'
+        app.specialStatus = 'REJECTED'
+      }
+
+      const job = db.jobs.find((j) => j.id === app.jobId)
+      db.notifications.unshift({
+        id: generateId('NOTIF'),
+        userId: app.studentId,
+        channel: '站内信 + 模拟邮件',
+        title: `特批申请${decision === 'APPROVE' ? '已批准' : '未通过'}：${job?.title || ''}`,
+        content: opinion || (decision === 'APPROVE' ? '国际合作交流处已批准您的特批申请，单据已进入导师筛选环节。' : '您的特批申请未获批准。'),
+        read: false,
+        createdAt: nowTimestamp()
+      })
+
+      addAuditLog(db, {
+        targetType: 'APPLICATION',
+        targetId: app.id,
+        operator,
+        action: decision === 'APPROVE' ? '特批申请审核通过（留痕）' : '特批申请驳回（留痕）',
+        opinion: opinion || '已完成合规复核',
+        beforeValue: beforeStatus,
+        afterValue: app.status
+      })
+
+      persistDB()
+      return { code: 200, data: app, message: decision === 'APPROVE' ? '特批已通过并流转至导师选拔' : '已驳回特批申请' }
+    })
+  },
+
+  // Mentor schedules interview
+  scheduleInterview({ applicationId, time, location, note }, operator) {
+    return mockAsync((db) => {
+      const app = db.applications.find((a) => a.id === applicationId)
+      if (!app) return { code: 404, data: null, message: '申请单不存在' }
+      const job = db.jobs.find((j) => j.id === app.jobId)
+
+      const beforeStatus = app.status
+      app.status = 'INTERVIEW_SCHEDULED'
+      app.interviewInfo = { time, location, note }
+
+      db.notifications.unshift({
+        id: generateId('NOTIF'),
+        userId: app.studentId,
+        channel: '站内信 + 模拟邮件',
+        title: `面试邀请：${job?.title || ''}`,
+        content: `面试时间：${time}，地点：${location}。备注：${note || '请准时参加'}`,
+        read: false,
+        createdAt: nowTimestamp()
+      })
+
+      addAuditLog(db, {
+        targetType: 'APPLICATION',
+        targetId: app.id,
+        operator,
+        action: '安排面试并发送通知',
+        opinion: `时间：${time}，地点：${location}`,
+        beforeValue: beforeStatus,
+        afterValue: 'INTERVIEW_SCHEDULED'
+      })
+
+      persistDB()
+      return { code: 200, data: app, message: '已安排面试并生成站内信与模拟邮件通知' }
+    })
+  },
+
+  // Mentor scores & hires/rejects applicant (creates unsigned contract upon HIRE)
+  decideApplication({ applicationId, score, decision, comment }, operator) {
+    return mockAsync((db) => {
+      const app = db.applications.find((a) => a.id === applicationId)
+      if (!app) return { code: 404, data: null, message: '申请单不存在' }
+      const job = db.jobs.find((j) => j.id === app.jobId)
+
+      const beforeStatus = app.status
+      app.score = Number(score)
+      app.mentorComment = comment || ''
+
+      if (decision === 'HIRE') {
+        if (job.hiredCount >= job.quota) {
+          return { code: 400, data: null, message: '该岗位招聘名额已满，无法继续录用' }
+        }
+        app.status = 'HIRED'
+        job.hiredCount += 1
+
+        // Auto-create electronic contract waiting for student signature
+        const startDate = '2026-11-23'
+        const endDate = '2027-03-15'
+        const contract = {
+          id: generateId('CON'),
+          applicationId: app.id,
+          studentId: app.studentId,
+          jobId: job.id,
+          deptId: job.deptId,
+          startDate,
+          endDate,
+          weeklyHours: job.weeklyHours,
+          hourlyRate: job.hourlyRate,
+          status: 'PENDING_SIGN',
+          signedAt: null,
+          signatureDataUrl: null,
+          signatureText: null,
+          complianceAgreed: false
+        }
+        db.contracts.unshift(contract)
+
+        db.notifications.unshift({
+          id: generateId('NOTIF'),
+          userId: app.studentId,
+          channel: '站内信 + 模拟邮件',
+          title: `录用通知：${job.title}`,
+          content: `恭喜您通过选拔（面试评分 ${score} 分）！系统已生成电子聘用协议（${contract.id}），请尽快前往「工时与合同」手写签名确认。`,
+          read: false,
+          createdAt: nowTimestamp()
+        })
+
+        addAuditLog(db, {
+          targetType: 'APPLICATION',
+          targetId: app.id,
+          operator,
+          action: '评分并确认录用',
+          opinion: `面试评分 ${score} 分，评语：${comment || '同意录用'}；自动生成电子协议 ${contract.id}`,
+          beforeValue: beforeStatus,
+          afterValue: 'HIRED'
+        })
+      } else {
+        app.status = 'REJECTED'
+        db.notifications.unshift({
+          id: generateId('NOTIF'),
+          userId: app.studentId,
+          channel: '站内信',
+          title: `申请结果通知：${job?.title || ''}`,
+          content: `感谢您的投递，经综合评估本次未能录用。评语：${comment || '名额有限，欢迎关注其他岗位'}`,
+          read: false,
+          createdAt: nowTimestamp()
+        })
+
+        addAuditLog(db, {
+          targetType: 'APPLICATION',
+          targetId: app.id,
+          operator,
+          action: '选拔未录用',
+          opinion: `评分 ${score} 分，原因：${comment || '未通过选拔'}`,
+          beforeValue: beforeStatus,
+          afterValue: 'REJECTED'
+        })
+      }
+
+      persistDB()
+      return { code: 200, data: app, message: decision === 'HIRE' ? '已录用并自动下发电子聘用协议与通知' : '已更新选拔结果' }
+    })
+  },
+
+  // P0-3: Sign electronic contract with Canvas signature + intl compliance declaration
+  signContract({ contractId, signatureDataUrl, complianceAgreed }, student) {
+    return mockAsync((db) => {
+      const con = db.contracts.find((c) => c.id === contractId)
+      if (!con) return { code: 404, data: null, message: '电子协议不存在' }
+      if (!signatureDataUrl) return { code: 400, data: null, message: '请先在签名板手写确认签名' }
+      if (student.isInternational && !complianceAgreed) {
+        return { code: 400, data: null, message: '国际生必须勾选《国际生合法工时合规声明》方可生效' }
+      }
+
+      con.status = 'ACTIVE'
+      con.signedAt = nowTimestamp()
+      con.signatureDataUrl = signatureDataUrl
+      con.signatureText = student.name
+      con.complianceAgreed = true
+
+      addAuditLog(db, {
+        targetType: 'CONTRACT',
+        targetId: con.id,
+        operator: student,
+        action: '签署电子聘用协议',
+        opinion: student.isInternational
+          ? '已完成手写电子签名并勾选确认《国际生合法工时合规声明》'
+          : '已完成手写电子签名，聘用协议正式生效',
+        beforeValue: 'PENDING_SIGN',
+        afterValue: 'ACTIVE'
+      })
+
+      persistDB()
+      return { code: 200, data: con, message: '电子聘用协议签署成功，已正式生效' }
+    })
+  },
+
+  // Submit weekly timesheet with cross-job cumulative cap check
+  submitTimesheet({ contractId, weekNo, hours, workLog, milestoneRef }, student) {
+    return mockAsync((db) => {
+      const con = db.contracts.find((c) => c.id === contractId && c.studentId === student.id)
+      if (!con) return { code: 404, data: null, message: '有效聘用协议不存在' }
+      if (con.status !== 'ACTIVE') return { code: 400, data: null, message: '请先签署电子聘用协议后再填报工时' }
+
+      const check = validateTimesheetSubmission(db, student, weekNo, hours)
+      if (!check.ok) {
+        return { code: 403, data: check, message: check.message }
+      }
+
+      const ts = {
+        id: generateId('TS'),
+        contractId: con.id,
+        studentId: student.id,
+        jobId: con.jobId,
+        deptId: con.deptId,
+        weekNo: Number(weekNo),
+        month: db.meta.currentMonth || '2026-11',
+        hours: Number(hours),
+        workLog: workLog.trim(),
+        milestoneRef: milestoneRef || '',
+        status: 'PENDING',
+        submittedAt: nowTimestamp(),
+        mentorComment: ''
+      }
+
+      db.timesheets.unshift(ts)
+      addAuditLog(db, {
+        targetType: 'TIMESHEET',
+        targetId: ts.id,
+        operator: student,
+        action: '填报周工时记录',
+        opinion: `第 ${weekNo} 周填报 ${hours}h（跨岗累计 ${check.projectedHours}h/${check.maxHours}h）`,
+        beforeValue: `当周已报 ${check.existingHours}h`,
+        afterValue: `待导师审核（当周累计 ${check.projectedHours}h）`
+      })
+
+      persistDB()
+      return { code: 200, data: ts, message: '工时已提交，等待导师审核' }
+    })
+  },
+
+  // Mentor reviews timesheet (approve / reject)
+  reviewTimesheet({ timesheetId, decision, comment }, operator) {
+    return mockAsync((db) => {
+      const ts = db.timesheets.find((t) => t.id === timesheetId)
+      if (!ts) return { code: 404, data: null, message: '工时单不存在' }
+
+      const beforeStatus = ts.status
+      ts.status = decision === 'APPROVE' ? 'APPROVED' : 'REJECTED'
+      ts.mentorComment = comment || (decision === 'APPROVE' ? '工时核实无误，同意通过' : '工作记录不完整，请补充后重提')
+
+      addAuditLog(db, {
+        targetType: 'TIMESHEET',
+        targetId: ts.id,
+        operator,
+        action: decision === 'APPROVE' ? '审核通过周工时' : '驳回周工时填报',
+        opinion: ts.mentorComment,
+        beforeValue: beforeStatus,
+        afterValue: ts.status
+      })
+
+      persistDB()
+      return { code: 200, data: ts, message: decision === 'APPROVE' ? '已审核通过，工时将纳入本月薪酬核算' : '已驳回该工时单' }
+    })
+  },
+
+  // Toggle RA milestone status
+  toggleMilestone({ jobId, milestoneId }, operator) {
+    return mockAsync((db) => {
+      const job = db.jobs.find((j) => j.id === jobId)
+      const ms = job?.extraFields?.milestones?.find((m) => m.id === milestoneId)
+      if (!ms) return { code: 404, data: null, message: '里程碑不存在' }
+      const before = ms.done ? '已完成' : '进行中'
+      ms.done = !ms.done
+      addAuditLog(db, {
+        targetType: 'JOB',
+        targetId: job.id,
+        operator,
+        action: '更新助研阶段里程碑状态',
+        opinion: `里程碑「${ms.title}」`,
+        beforeValue: before,
+        afterValue: ms.done ? '已完成' : '进行中'
+      })
+      persistDB()
+      return { code: 200, data: ms, message: '已更新里程碑状态' }
+    })
+  },
+
+  // P0-4: Auto calculate payroll from approved timesheets & evaluation coefficient
+  generateMonthlyPayrolls({ month }, operator) {
+    return mockAsync((db) => {
+      const targetMonth = month || db.meta.currentMonth || '2026-11'
+      const activeContracts = db.contracts.filter((c) => c.status === 'ACTIVE')
+      let createdOrUpdated = 0
+
+      activeContracts.forEach((con) => {
+        const approvedTs = db.timesheets.filter(
+          (t) => t.contractId === con.id && t.month === targetMonth && t.status === 'APPROVED'
+        )
+        if (approvedTs.length === 0) return
+
+        const totalHours = approvedTs.reduce((sum, t) => sum + Number(t.hours || 0), 0)
+        const job = db.jobs.find((j) => j.id === con.jobId)
+        if (!job) return
+        const budget = db.budgets.find((b) => b.id === job.budgetId)
+
+        // Check latest evaluation for coefficient
+        const latestEval = db.evaluations.find((e) => e.contractId === con.id)
+        const coeff = latestEval ? Number(latestEval.coefficient) : 1.0
+        const amount = Math.round(totalHours * Number(con.hourlyRate) * coeff * 100) / 100
+
+        const existing = db.payrolls.find((p) => p.contractId === con.id && p.month === targetMonth)
+        if (existing) {
+          if (existing.financeStatus === 'PAID') return
+          existing.totalHours = totalHours
+          existing.coefficient = coeff
+          existing.amount = amount
+          existing.financeStatus = 'PENDING_PAY'
+          existing.calculatedAt = nowTimestamp()
+          createdOrUpdated += 1
+        } else {
+          db.payrolls.unshift({
+            id: generateId('PAY'),
+            studentId: con.studentId,
+            contractId: con.id,
+            jobId: con.jobId,
+            deptId: con.deptId,
+            month: targetMonth,
+            totalHours,
+            hourlyRate: con.hourlyRate,
+            coefficient: coeff,
+            amount,
+            budgetId: job.budgetId,
+            sourceType: budget?.sourceType || 'TA_FUND',
+            financeStatus: 'PENDING_PAY',
+            calculatedAt: nowTimestamp(),
+            paidAt: null,
+            voucherNo: null
+          })
+          createdOrUpdated += 1
+        }
+      })
+
+      addAuditLog(db, {
+        targetType: 'PAYROLL',
+        targetId: `BATCH_${targetMonth}`,
+        operator,
+        action: '执行月度薪酬自动核算',
+        opinion: `汇总 ${targetMonth} 已审核通过工时并应用考核绩效系数，共核算 ${createdOrUpdated} 笔单据转入待财务打款。`,
+        beforeValue: '待核算',
+        afterValue: `待财务打款（${createdOrUpdated} 笔）`
+      })
+
+      persistDB()
+      return { code: 200, data: { count: createdOrUpdated }, message: `已完成 ${targetMonth} 薪酬自动核算（更新 ${createdOrUpdated} 笔）` }
+    })
+  },
+
+  // Confirm finance payout -> real-time deducts budget pool usedAmount & updates status to PAID
+  confirmPayrollPayout({ payrollId }, operator) {
+    return mockAsync((db) => {
+      const pay = db.payrolls.find((p) => p.id === payrollId)
+      if (!pay) return { code: 404, data: null, message: '薪酬单不存在' }
+      if (pay.financeStatus === 'PAID') return { code: 400, data: null, message: '该笔薪酬已发放，请勿重复打款' }
+
+      const budget = db.budgets.find((b) => b.id === pay.budgetId)
+      if (!budget) return { code: 404, data: null, message: '关联经费池不存在' }
+
+      const remaining = budget.totalAmount - budget.usedAmount
+      if (pay.amount > remaining) {
+        return { code: 400, data: null, message: `经费池「${budget.name}」剩余总额不足，拦截打款` }
+      }
+
+      const beforeUsed = budget.usedAmount
+      budget.usedAmount = Math.round((budget.usedAmount + pay.amount) * 100) / 100
+      budget.frozenAmount = Math.max(0, Math.round((budget.frozenAmount - pay.amount) * 100) / 100)
+
+      const voucherNo = `CW-${pay.month.replace('-', '')}-${Math.floor(1000 + Math.random() * 9000)}`
+      pay.financeStatus = 'PAID'
+      pay.paidAt = nowTimestamp()
+      pay.voucherNo = voucherNo
+
+      db.notifications.unshift({
+        id: generateId('NOTIF'),
+        userId: pay.studentId,
+        channel: '站内信 + 模拟邮件',
+        title: `${pay.month} 三助薪酬已发放：¥${pay.amount.toFixed(2)}`,
+        content: `财务打款凭证号 ${voucherNo}，审核工时 ${pay.totalHours}h × ¥${pay.hourlyRate}/h × 考核系数 ${pay.coefficient}x。`,
+        read: false,
+        createdAt: nowTimestamp()
+      })
+
+      addAuditLog(db, {
+        targetType: 'PAYROLL',
+        targetId: pay.id,
+        operator,
+        action: '确认财务发放并联动扣减经费池',
+        opinion: `发放金额 ¥${pay.amount.toFixed(2)}，凭证号 ${voucherNo}，经费池「${budget.name}」实时扣减。`,
+        beforeValue: `待打款（经费已用 ¥${beforeUsed.toLocaleString()}）`,
+        afterValue: `已发放（经费已用 ¥${budget.usedAmount.toLocaleString()}）`
+      })
+
+      persistDB()
+      return { code: 200, data: pay, message: `财务打款成功（凭证 ${voucherNo}），经费池余额已实时扣减` }
+    })
+  },
+
+  // P1-2: Submit periodic evaluation using configurable weights
+  submitEvaluation({ contractId, period, dimensionScores, comment, courseEvalSync }, operator) {
+    return mockAsync((db) => {
+      const con = db.contracts.find((c) => c.id === contractId)
+      if (!con) return { code: 404, data: null, message: '聘用协议不存在' }
+      const job = db.jobs.find((j) => j.id === con.jobId)
+      if (!job) return { code: 404, data: null, message: '关联岗位不存在' }
+
+      const template = db.configs.evaluationTemplates[job.type] || []
+      const dimensions = template.map((dim) => ({
+        key: dim.key,
+        label: dim.label,
+        weight: dim.weight,
+        score: Number(dimensionScores[dim.key] ?? 85)
+      }))
+
+      const totalScore = Math.round(
+        dimensions.reduce((sum, d) => sum + (d.score * d.weight) / 100, 0) * 10
+      ) / 10
+      const gradeInfo = gradeFromScore(totalScore)
+
+      const evaluation = {
+        id: generateId('EV'),
+        contractId: con.id,
+        studentId: con.studentId,
+        jobId: con.jobId,
+        deptId: con.deptId,
+        period: period || '2026-11 周期考核',
+        jobType: job.type,
+        dimensions,
+        totalScore,
+        grade: gradeInfo.grade,
+        coefficient: gradeInfo.coefficient,
+        renewalEligible: gradeInfo.renewalEligible,
+        courseEvalSync: courseEvalSync || null,
+        evaluatorName: operator.name,
+        comment: comment || '',
+        evaluatedAt: nowTimestamp()
+      }
+
+      db.evaluations.unshift(evaluation)
+
+      // Update any un-paid payroll for this contract in current month to reflect new coefficient
+      const pendingPay = db.payrolls.find(
+        (p) => p.contractId === con.id && p.financeStatus !== 'PAID'
+      )
+      if (pendingPay) {
+        pendingPay.coefficient = gradeInfo.coefficient
+        pendingPay.amount = Math.round(pendingPay.totalHours * pendingPay.hourlyRate * gradeInfo.coefficient * 100) / 100
+      }
+
+      db.notifications.unshift({
+        id: generateId('NOTIF'),
+        userId: con.studentId,
+        channel: '站内信',
+        title: `周期考核结果公布：${gradeInfo.grade}（${totalScore} 分）`,
+        content: `岗位「${job.title}」考核分档为「${gradeInfo.grade}」，续聘资格：${gradeInfo.renewalEligible ? '可续聘' : '不予续聘'}，下周期薪酬系数：${gradeInfo.coefficient}x。`,
+        read: false,
+        createdAt: nowTimestamp()
+      })
+
+      addAuditLog(db, {
+        targetType: 'EVALUATION',
+        targetId: evaluation.id,
+        operator,
+        action: '提交周期性考核评价',
+        opinion: `加权得分 ${totalScore} 分，等级「${gradeInfo.grade}」，薪酬系数 ${gradeInfo.coefficient}x，续聘资格：${gradeInfo.renewalEligible ? '是' : '否'}`,
+        beforeValue: '待考核',
+        afterValue: `${gradeInfo.grade}（${gradeInfo.coefficient}x）`
+      })
+
+      persistDB()
+      return { code: 200, data: evaluation, message: `考核已提交：${gradeInfo.grade}（${totalScore}分，系数 ${gradeInfo.coefficient}x）` }
+    })
+  },
+
+  // P1-1: Save configurable approval workflows & evaluation weights (School Admin)
+  saveConfigs({ workflows, evaluationTemplates, globalRules }, operator) {
+    return mockAsync((db) => {
+      if (evaluationTemplates) {
+        for (const [type, dims] of Object.entries(evaluationTemplates)) {
+          const sum = dims.reduce((s, d) => s + Number(d.weight || 0), 0)
+          if (sum !== 100) {
+            return { code: 400, data: null, message: `${type} 考核评价维度权重之和必须等于 100%（当前 ${sum}%）` }
+          }
+        }
+        db.configs.evaluationTemplates = JSON.parse(JSON.stringify(evaluationTemplates))
+      }
+      if (workflows) {
+        db.configs.workflows = JSON.parse(JSON.stringify(workflows))
+      }
+      if (globalRules) {
+        db.configs.globalRules = { ...db.configs.globalRules, ...globalRules }
+      }
+
+      addAuditLog(db, {
+        targetType: 'CONFIG',
+        targetId: 'SYSTEM_CONFIG',
+        operator,
+        action: '更新校级审批流与考核模板配置',
+        opinion: '新配置已即时生效，将应用于所有新建岗位审批与周期考核单据。',
+        beforeValue: '原校级规则配置',
+        afterValue: '新校级规则配置（已生效）'
+      })
+
+      persistDB()
+      return { code: 200, data: db.configs, message: '配置已保存并即时生效' }
+    })
+  },
+
+  markNotificationsRead(userId) {
+    return mockAsync((db) => {
+      db.notifications.forEach((n) => {
+        if (n.userId === userId) n.read = true
+      })
+      persistDB()
+      return { code: 200, data: true, message: '已全部标为已读' }
+    })
+  },
+
+  updateUserProfile({ userId, email, phone, skills, bio }, operator) {
+    return mockAsync((db) => {
+      const target = db.users.find((u) => u.id === userId)
+      if (!target) return { code: 404, data: null, message: '用户不存在' }
+      if (email !== undefined) target.email = email.trim()
+      if (phone !== undefined) target.phone = phone.trim()
+      if (Array.isArray(skills)) target.skills = skills
+      if (bio !== undefined) target.bio = bio.trim()
+      addAuditLog(db, {
+        targetType: 'USER',
+        targetId: target.id,
+        operator,
+        action: '更新个人主页信息',
+        opinion: '已更新联系方式与技能标签',
+        beforeValue: '原档案',
+        afterValue: '已更新'
+      })
+      persistDB()
+      return { code: 200, data: target, message: '个人主页信息已保存' }
+    })
+  }
+}
