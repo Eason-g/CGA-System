@@ -883,8 +883,11 @@ const httpApi = {
     return http.post(`/api/jobs/${enc(jobId)}/review`, { decision, opinion })
   },
 
-  submitApplication({ jobId, statement, resumeFileName, isSpecialApproval = false, specialReason = '' }) {
-    return http.post('/api/applications', { jobId, statement, resumeFileName, isSpecialApproval, specialReason })
+  // attachmentIds：P1 第三批，本人已上传的简历与其他材料
+  submitApplication({ jobId, statement, resumeFileName, isSpecialApproval = false, specialReason = '', attachmentIds = [] }) {
+    return http.post('/api/applications', {
+      jobId, statement, resumeFileName, isSpecialApproval, specialReason, attachmentIds
+    })
   },
 
   reviewSpecialApproval({ applicationId, decision, opinion }) {

@@ -56,6 +56,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                         // P1：服务对象评价的公开接口（评价码查询与提交，有进程内限流）
                         .requestMatchers("/api/public/**").permitAll()
+                        // 财务系统回调：不带登录令牌，由 FinanceService 校验 HMAC-SHA256 签名（P1 第三批）
+                        .requestMatchers(HttpMethod.POST, "/api/integration/finance/callback").permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex

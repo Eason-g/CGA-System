@@ -12,6 +12,9 @@ DROP TABLE IF EXISTS service_feedback;
 DROP TABLE IF EXISTS feedback_rounds;
 DROP TABLE IF EXISTS job_templates;
 DROP TABLE IF EXISTS audit_chain_head;
+-- P1 第三批：材料附件、财务流水
+DROP TABLE IF EXISTS finance_transactions;
+DROP TABLE IF EXISTS attachments;
 DROP TABLE IF EXISTS audit_log;
 DROP TABLE IF EXISTS notifications;
 DROP TABLE IF EXISTS payrolls;
@@ -53,6 +56,7 @@ CREATE TABLE users (
   language_cert     VARCHAR(64)   NULL,
   language_level    DECIMAL(3,1)  NULL,
   language_valid    TINYINT(1)    NULL,
+  language_cert_status VARCHAR(16) NULL COMMENT '语言证明核验状态 PENDING/VERIFIED/REJECTED（空=种子数据）',
   max_weekly_hours  INT           NULL COMMENT '个人周工时上限（只能比全局规则更严）',
   student_no        VARCHAR(32)   NULL,
   degree            VARCHAR(32)   NULL,
@@ -132,6 +136,7 @@ CREATE TABLE applications (
   applied_at               DATETIME      NULL,
   statement                TEXT          NULL,
   resume_file_name         VARCHAR(128)  NULL,
+  attachment_ids           JSON          NULL COMMENT '申请附件 ID 列表（attachments.id）',
   compliance_check_result  JSON          NULL,
   is_special_approval      TINYINT(1)    NOT NULL DEFAULT 0,
   special_reason           TEXT          NULL,
@@ -227,10 +232,13 @@ CREATE TABLE payrolls (
   amount          DECIMAL(12,2)  NOT NULL DEFAULT 0,
   budget_id       VARCHAR(32)    NOT NULL,
   source_type     VARCHAR(20)    NULL,
-  finance_status  VARCHAR(16)    NOT NULL COMMENT 'PENDING_CALC/PENDING_PAY/PAID',
+  finance_status  VARCHAR(16)    NOT NULL COMMENT 'PENDING_CALC/PENDING_PAY/SUBMITTED/PAY_FAILED/PAID',
   calculated_at   DATETIME       NULL,
   paid_at         DATETIME       NULL,
   voucher_no      VARCHAR(32)    NULL,
+  finance_serial_no VARCHAR(40)  NULL COMMENT '最近一次提交财务的流水号',
+  submitted_at    DATETIME       NULL COMMENT '最近一次提交财务时间',
+  fail_reason     VARCHAR(255)   NULL COMMENT '发放失败原因',
   PRIMARY KEY (id),
   KEY idx_pay_student (student_id),
   KEY idx_pay_contract_month (contract_id, month),
@@ -329,3 +337,38 @@ CREATE TABLE audit_chain_head (
 
 INSERT INTO audit_chain_head (id, last_seq, last_hash)
 VALUES (1, 0, '0000000000000000000000000000000000000000000000000000000000000000');
+
+-- 材料附件（P1 第三批）：文件存 app.upload-dir，库里只存元数据
+CREATE TABLE attachments (
+  id              VARCHAR(32)   NOT NULL,
+  owner_id        VARCHAR(32)   NOT NULL COMMENT '上传人',
+  kind            VARCHAR(16)   NOT NULL COMMENT 'RESUME/LANG_CERT/VISA/OTHER',
+  original_name   VARCHAR(255)  NOT NULL COMMENT '原文件名',
+  stored_name     VARCHAR(64)   NOT NULL COMMENT '磁盘文件名（随机 ID）',
+  content_type    VARCHAR(64)   NOT NULL COMMENT '按文件头识别的真实类型',
+  size_bytes      BIGINT        NOT NULL,
+  sha256          CHAR(64)      NOT NULL,
+  verify_status   VARCHAR(16)   NULL COMMENT '语言证明/签证材料核验状态 PENDING/VERIFIED/REJECTED',
+  verify_opinion  VARCHAR(255)  NULL,
+  verified_by     VARCHAR(32)   NULL,
+  verified_at     DATETIME      NULL,
+  uploaded_at     DATETIME      NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_att_owner (owner_id),
+  KEY idx_att_kind_status (kind, verify_status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='材料附件';
+
+-- 财务流水（P1 第三批）：每次“提交财务”一条，回调按流水号幂等
+CREATE TABLE finance_transactions (
+  serial_no      VARCHAR(40)    NOT NULL COMMENT '财务流水号',
+  payroll_id     VARCHAR(32)    NOT NULL,
+  amount         DECIMAL(12,2)  NOT NULL,
+  status         VARCHAR(16)    NOT NULL COMMENT 'SUBMITTED/SUCCESS/FAILED',
+  voucher_no     VARCHAR(32)    NULL,
+  fail_reason    VARCHAR(255)   NULL,
+  submitted_by   VARCHAR(32)    NULL,
+  submitted_at   DATETIME       NOT NULL,
+  callback_at    DATETIME       NULL,
+  PRIMARY KEY (serial_no),
+  KEY idx_fin_payroll (payroll_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='财务流水';

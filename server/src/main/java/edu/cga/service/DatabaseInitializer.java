@@ -112,7 +112,7 @@ public class DatabaseInitializer implements SmartInitializingSingleton {
     }
 
     /** if-empty 模式下必须存在的后续版本新增表；新增表时在这里追加 */
-    private static final List<String> REQUIRED_TABLES = List.of("job_templates", "feedback_rounds", "service_feedback");
+    private static final List<String> REQUIRED_TABLES = List.of("job_templates", "feedback_rounds", "service_feedback", "attachments", "finance_transactions");
 
     /** 第一个缺失的表名；都存在返回 null */
     private String missingTable() {

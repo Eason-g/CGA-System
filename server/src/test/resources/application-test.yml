@@ -10,3 +10,9 @@ app:
     init: never
   demo:
     reset-enabled: true
+  # P1 第三批：上传写到系统临时目录（测试结束清理）；关闭模拟财务的自动回调，测试里直接调用回调接口
+  upload-dir: ${java.io.tmpdir}/cga-test-uploads-${CGA_TEST_DB:cga_test}
+  finance:
+    callback-secret: test-finance-callback-secret
+    mock:
+      auto-callback: false

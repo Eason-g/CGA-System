@@ -21,11 +21,4 @@ public interface ContractMapper extends BaseMapper<Contract> {
     @Select("SELECT * FROM contracts WHERE student_id = #{studentId} AND status IN ('ACTIVE', 'PENDING_SIGN')")
     List<Contract> selectAllocatingByStudent(@Param("studentId") String studentId);
 
-    /**
-     * 每个学生已占用的周工时合计（快照 users[].hoursSummary.allocated）。
-     * 只返回学生 ID 与合计两个值，不暴露外院合同明细。
-     */
-    @Select("SELECT student_id AS studentId, SUM(weekly_hours) AS allocated FROM contracts"
-            + " WHERE status IN ('ACTIVE', 'PENDING_SIGN') GROUP BY student_id")
-    List<Map<String, Object>> sumAllocatedHoursByStudent();
 }

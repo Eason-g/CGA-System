@@ -159,6 +159,25 @@ mvn test
 - **初始化**：重建或启动时把 `seq` 为空的日志（种子数据）按 `log_time, id` 顺序补算接到链尾；P0 时建的老库缺列时会自动 `ALTER TABLE` 补列并建链头表（`app.db.init=never` 时也会做这一步，否则写日志会失败）。
 - 时间戳截断到秒再参与哈希，与 DATETIME 精度一致。
 - 局限：哈希链能**发现**篡改，但不能**阻止**拥有数据库权限的人把整条链重算；要防住这一点需要把链头哈希定期存证到库外。
+## 6.3 P1 第三批：材料、合规与财务
+
+| 接口 | 权限 | 说明 |
+|---|---|---|
+| `POST /api/attachments`（multipart：`file`、`kind`） | STUDENT | `kind` = RESUME / LANG_CERT / VISA / OTHER；只收 pdf/jpg/png，按文件头识别真实类型，扩展名不符拒收；单个 ≤ 10MB（超限 400 JSON）；文件存 `app.upload-dir`，磁盘名为随机 ID |
+| `GET /api/attachments?ownerId=&applicationId=&kind=` | 已登录 | 可见范围内的附件元数据 |
+| `GET /api/attachments/{id}` | 上传人、其所投岗位导师、本院系管理员、国际生办（仅国际生）、校级管理员 | 下载；范围外 404（`scope/AttachmentScope.java`） |
+| `POST /api/applications` 新增 `attachmentIds` | STUDENT | 只能关联本人上传的附件，申请单保存 ID 列表 |
+| `GET /api/compliance/materials?status=PENDING` | INTL_OFFICER、SCHOOL_ADMIN | 合规核验列表（语言证明、签证材料 + 学生当前合规字段） |
+| `POST /api/users/{id}/compliance-verify` `{attachmentId, decision, languageLevel?, languageCert?, visaExpiry?, visaType?, opinion}` | INTL_OFFICER（仅国际生）、SCHOOL_ADMIN | 语言证明通过 → `languageValid=true`；写审计、发通知 |
+| `POST /api/payrolls/{id}/submit-finance` | SCHOOL_ADMIN | PENDING_PAY / PAY_FAILED → SUBMITTED，生成流水号，经费不变 |
+| `POST /api/integration/finance/callback` | 公开，校验签名 | 头 `X-Finance-Signature` = HMAC-SHA256(`app.finance.callback-secret`, 原始请求体)，错误 401；体 `{serialNo, success, voucherNo, reason}`；按流水号幂等 |
+| `POST /api/payrolls/{id}/simulate-finance-callback` `{success, reason}` | SCHOOL_ADMIN | 演示：模拟网关构造签名回调，走同一入口 |
+
+- 合规：学生上传语言证明后状态为“待核验”并把 `languageValid` 置 false，核验通过前申请校验语言项不通过（可特批）。录用时国际生签证有效期须覆盖聘期结束日（下周一 + 岗位周数），否则 403 且不可特批（`RuleEngine.checkVisaCoverage`，续聘可复用）；申请阶段在 `hints` 里给出提示、不拦截。
+- 财务：`FinanceGateway` 接口，默认 `MockFinanceGateway`（提交事务提交后延迟 `callback-delay` 自动回调，成功率 `success-rate`）。成功回调与原一步发放共用 `PayrollService.settlePayout`（锁经费行 → 薪酬行，冻结只扣本岗位剩余预留，超预留部分须经费可用额足够）。SUBMITTED、PAY_FAILED 计入“待发放”预算占用；已提交财务的薪酬不再被核算或考核改系数覆盖。
+- 新增表 `attachments`、`finance_transactions`，`users.language_cert_status`、`applications.attachment_ids`、`payrolls.finance_serial_no/submitted_at/fail_reason`。**已有本地库需重建一次**（`POST /api/demo/reset` 或临时 `app.db.init=always`）。
+- 配置：`app.upload-dir`（默认 `uploads`，即 `server/uploads/`，已忽略）、`app.finance.callback-secret`（生产用环境变量 `APP_FINANCE_CALLBACK_SECRET` 覆盖）、`app.finance.mock.auto-callback / callback-delay / success-rate`。测试中关闭自动回调、上传写系统临时目录并在测试类结束后清理。
+- 测试：`AttachmentIntegrationTest`、`ComplianceIntegrationTest`、`FinanceIntegrationTest`、`RuleEngineComplianceTest`。
 
 ## 7. 种子数据
 

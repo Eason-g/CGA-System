@@ -229,6 +229,25 @@ class RuleEngineTest {
         }
 
         @Test
+        void allocatedHoursIsPeakOfConcurrentContractsNotPlainSum() {
+            // 原合同 12h（到 2027-03-15）与续聘合同 12h（2027-03-16 起）不重叠：峰值 12h，不是 24h
+            Contract original = contract("S1", 12, "ACTIVE");
+            original.setStartDate(java.time.LocalDate.of(2026, 11, 23));
+            original.setEndDate(java.time.LocalDate.of(2027, 3, 15));
+            Contract renewal = contract("S1", 12, "PENDING_SIGN");
+            renewal.setStartDate(java.time.LocalDate.of(2027, 3, 16));
+            renewal.setEndDate(java.time.LocalDate.of(2027, 7, 5));
+            assertThat(RuleEngine.getStudentAllocatedWeeklyHours(List.of(original, renewal), "S1")).isEqualTo(12);
+
+            // 另一份与两者都重叠的 6h 合同：任一时刻最多两份同时有效，峰值 18h
+            Contract other = contract("S1", 6, "ACTIVE");
+            other.setStartDate(java.time.LocalDate.of(2027, 1, 4));
+            other.setEndDate(java.time.LocalDate.of(2027, 5, 1));
+            assertThat(RuleEngine.getStudentAllocatedWeeklyHours(List.of(original, renewal, other), "S1"))
+                    .isEqualTo(18);
+        }
+
+        @Test
         void allocatedHoursCountsActiveAndPendingSignOnly() {
             List<Contract> cs = List.of(contract("S1", 8, "ACTIVE"), contract("S1", 4, "PENDING_SIGN"),
                     contract("S1", 10, "TERMINATED"), contract("S2", 6, "ACTIVE"));

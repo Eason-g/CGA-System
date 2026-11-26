@@ -1,8 +1,6 @@
 package edu.cga.service;
 
-import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.temporal.TemporalAdjusters;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +9,7 @@ import edu.cga.common.BizException;
 import edu.cga.common.IdGenerator;
 import edu.cga.common.Num;
 import edu.cga.common.TimeService;
+import edu.cga.domain.entity.Attachment;
 import edu.cga.domain.entity.Contract;
 import edu.cga.domain.entity.Job;
 import edu.cga.domain.entity.JobApplication;
@@ -44,10 +43,13 @@ public class ApplicationService {
     private final AuditService audit;
     private final IdGenerator ids;
     private final TimeService time;
+    private final AttachmentService attachmentService;
 
     public ApplicationService(JobApplicationMapper applicationMapper, JobMapper jobMapper, UserMapper userMapper,
                               ContractMapper contractMapper, DataScope scope, ConfigService configService,
-                              AuditService audit, IdGenerator ids, TimeService time) {
+                              AuditService audit, IdGenerator ids, TimeService time,
+                              AttachmentService attachmentService) {
+        this.attachmentService = attachmentService;
         this.applicationMapper = applicationMapper;
         this.jobMapper = jobMapper;
         this.userMapper = userMapper;
@@ -68,6 +70,13 @@ public class ApplicationService {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public JobApplication submit(String jobId, String statement, String resumeFileName, boolean isSpecialApproval,
                                  String specialReason, CurrentUser operator) {
+        return submit(jobId, statement, resumeFileName, isSpecialApproval, specialReason, null, operator);
+    }
+
+    /** 同上，并关联本人上传的附件（P1 第三批：简历与其他材料） */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public JobApplication submit(String jobId, String statement, String resumeFileName, boolean isSpecialApproval,
+                                 String specialReason, List<String> attachmentIds, CurrentUser operator) {
         Job job = scope.requireVisible(jobMapper, scope.jobs(operator), jobId, "岗位不存在");
         // 锁学生行：同一学生的申请与录用、工时填报串行执行
         User student = userMapper.lockById(operator.id());
@@ -81,7 +90,7 @@ public class ApplicationService {
         List<JobApplication> myApps = applicationMapper.selectByStudent(student.getId());
         List<Contract> myContracts = contractMapper.selectAllocatingByStudent(student.getId());
         RuleEngine.ApplicationCheck check = RuleEngine.validateStudentApplication(student, job, myApps, myContracts,
-                configService.globalRules());
+                configService.globalRules(), time.today());
         if (check.alreadyApplied()) {
             throw new BizException(400, "您已申请过该岗位，请勿重复投递", check);
         }
@@ -97,6 +106,12 @@ public class ApplicationService {
         if (isSpecialApproval && (specialReason == null || specialReason.trim().length() < 6)) {
             throw new BizException(400, "发起特批申请必须填写不少于 6 个字的特批理由", check);
         }
+        List<Attachment> attachments = attachmentService.requireOwned(attachmentIds, student.getId());
+        if (resumeFileName == null || resumeFileName.isBlank()) {
+            // 附了简历的，简历文件名取上传的原文件名
+            resumeFileName = attachments.stream().filter(a -> Attachment.RESUME.equals(a.getKind()))
+                    .map(Attachment::getOriginalName).findFirst().orElse(null);
+        }
 
         JobApplication app = new JobApplication();
         app.setId(ids.next("APP"));
@@ -106,6 +121,7 @@ public class ApplicationService {
         app.setAppliedAt(time.now());
         app.setStatement(JobService.blankTo(statement, "已认真阅读岗位职责要求，申请加入团队。"));
         app.setResumeFileName(JobService.blankTo(resumeFileName, student.getName() + "_个人简历.pdf"));
+        app.setAttachmentIds(attachments.stream().map(Attachment::getId).toList());
         // projectedHours 记录申请时的累计工时，特批通过后录用复核以此为上限
         Map<String, Object> ccr = new LinkedHashMap<>();
         ccr.put("passed", check.passed());
@@ -113,6 +129,9 @@ public class ApplicationService {
         ccr.put("currentHours", check.currentHours());
         ccr.put("projectedHours", check.projectedHours());
         ccr.put("maxHours", check.maxHours());
+        if (!check.hints().isEmpty()) {
+            ccr.put("hints", check.hints());
+        }
         app.setComplianceCheckResult(ccr);
         app.setIsSpecialApproval(isSpecialApproval);
         app.setSpecialReason(isSpecialApproval ? specialReason.trim() : "");
@@ -216,9 +235,12 @@ public class ApplicationService {
 
         boolean hire = "HIRE".equals(decision);
         RuleEngine.HireCheck hireCheck = null;
+        // 聘期从下周一开始，持续岗位约定的周数；国际生签证有效期必须覆盖到结束日
+        LocalDate startDate = RuleEngine.contractStartFrom(time.today());
+        LocalDate endDate = RuleEngine.predictContractEnd(time.today(), Num.orZero(job.getWeeks()));
         if (hire) {
             List<Contract> contracts = contractMapper.selectAllocatingByStudent(student.getId());
-            hireCheck = RuleEngine.validateHire(app, job, student, contracts, configService.globalRules());
+            hireCheck = RuleEngine.validateHire(app, job, student, contracts, configService.globalRules(), endDate);
             if (!hireCheck.ok()) {
                 throw new BizException(403, String.join("；", hireCheck.errors()), hireCheck);
             }
@@ -236,9 +258,6 @@ public class ApplicationService {
             job.setHiredCount(Num.orZero(job.getHiredCount()) + 1);
             jobMapper.updateById(job);
 
-            // 聘期从下周一开始，持续岗位约定的周数
-            LocalDate startDate = time.today().with(TemporalAdjusters.next(DayOfWeek.MONDAY));
-            LocalDate endDate = startDate.plusWeeks(Math.max(1, Num.orZero(job.getWeeks())));
             Contract contract = new Contract();
             contract.setId(ids.next("CON"));
             contract.setApplicationId(app.getId());

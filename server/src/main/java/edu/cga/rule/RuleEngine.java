@@ -1,6 +1,9 @@
 package edu.cga.rule;
 
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -90,11 +93,14 @@ public final class RuleEngine {
     public record Check(String key, String label, boolean passed, boolean overridable, String detail) {
     }
 
-    /** validateStudentApplication 的结果 */
+    /**
+     * validateStudentApplication 的结果。
+     * hints 为提示性检查项（P1 第三批：签证有效期是否覆盖预计聘期），不影响 passed，也不参与特批判断。
+     */
     public record ApplicationCheck(boolean passed, boolean alreadyApplied, JobApplication existingApp,
                                    boolean quotaFull, List<Check> checks, int currentHours, int jobHours,
                                    int projectedHours, int maxHours, boolean canSpecialApprove,
-                                   String specialBlockedReason) {
+                                   String specialBlockedReason, List<Check> hints) {
     }
 
     /** validateHire 的结果 */
@@ -230,13 +236,33 @@ public final class RuleEngine {
         return personalCap != null && personalCap > 0 ? Math.min(personalCap, ruleCap) : ruleCap;
     }
 
-    /** 学生已占周工时：生效和待签合同的周工时之和 */
+    /**
+     * 学生已占周工时：生效和待签合同在<b>同一时间</b>叠加的周工时峰值。
+     * <p>
+     * 不是简单求和：续聘生成的新合同从原合同结束次日开始，两者在时间上不重叠，学生每周实际只干一份。
+     * 求和会把它算成两份，导致原合同到期前去应聘其他岗位被误拦。时间上重叠的合同照常相加。
+     * 没有起止日期的合同视为一直有效（保守处理）。
+     */
     public static int getStudentAllocatedWeeklyHours(Collection<Contract> contracts, String studentId) {
-        return contracts.stream()
+        List<Contract> mine = contracts.stream()
                 .filter(c -> Objects.equals(c.getStudentId(), studentId)
                         && ALLOCATING_CONTRACT_STATUSES.contains(c.getStatus()))
-                .mapToInt(c -> Num.orZero(c.getWeeklyHours()))
-                .sum();
+                .toList();
+        int peak = 0;
+        // 叠加量只会在某份合同开始的那一天上升，所以只需检查每份合同的开始日
+        for (Contract c : mine) {
+            LocalDate day = c.getStartDate() == null ? LocalDate.MIN : c.getStartDate();
+            int load = 0;
+            for (Contract d : mine) {
+                boolean started = d.getStartDate() == null || !d.getStartDate().isAfter(day);
+                boolean notEnded = d.getEndDate() == null || !d.getEndDate().isBefore(day);
+                if (started && notEnded) {
+                    load += Num.orZero(d.getWeeklyHours());
+                }
+            }
+            peak = Math.max(peak, load);
+        }
+        return peak;
     }
 
     /** 学生某周已填报工时（跨岗累计，不含已驳回） */
@@ -261,7 +287,19 @@ public final class RuleEngine {
                                                               Collection<JobApplication> applications,
                                                               Collection<Contract> contracts,
                                                               Map<String, Object> globalRules) {
+        return validateStudentApplication(student, job, applications, contracts, globalRules, null);
+    }
+
+    /**
+     * 同上；today 不为空时，国际生额外得到“签证有效期覆盖聘期”的提示项（只提示、不拦截，录用时才硬拦截）。
+     */
+    public static ApplicationCheck validateStudentApplication(User student, Job job,
+                                                              Collection<JobApplication> applications,
+                                                              Collection<Contract> contracts,
+                                                              Map<String, Object> globalRules,
+                                                              LocalDate today) {
         List<Check> checks = new ArrayList<>();
+        List<Check> hints = new ArrayList<>();
         JobApplication existingApp = applications.stream()
                 .filter(a -> Objects.equals(a.getStudentId(), student.getId())
                         && Objects.equals(a.getJobId(), job.getId())
@@ -289,6 +327,16 @@ public final class RuleEngine {
             checks.add(new Check("allowIntl", "岗位国际生开放资格校验", allowIntlOk, false,
                     allowIntlOk ? "该岗位已通过国际生办会签，面向国际学生开放"
                             : "该岗位未面向国际学生开放（仅限中国籍学生申请）"));
+
+            // 3. 签证有效期覆盖预计聘期（提示性，不拦截；录用时由 validateHire 硬拦截）
+            if (today != null && visaOk) {
+                LocalDate end = predictContractEnd(today, Num.orZero(job.getWeeks()));
+                boolean covered = checkVisaCoverage(student, end) == null;
+                hints.add(new Check("visaPeriod", "签证有效期覆盖聘期（提示）", covered, false,
+                        covered ? "签证有效期至 " + expiry + "，覆盖预计聘期（至 " + end + "）"
+                                : "签证有效期至 " + expiry + "，早于预计聘期结束日 " + end
+                                + "，录用时将被系统拦截，请尽快办理续签并上传新的签证材料"));
+            }
         }
 
         // 语言能力（岗位设置了 minLangScore 才校验）
@@ -299,8 +347,11 @@ public final class RuleEngine {
             boolean langOk = Boolean.TRUE.equals(student.getLanguageValid()) && stuScore.compareTo(reqScore) >= 0;
             String requirement = Objects.toString(extra.get("languageRequirement"), "");
             String cert = notBlank(student.getLanguageCert()) ? student.getLanguageCert() : "未提交";
+            // 新上传的语言证明在国际生办核验前视为未通过（可特批）
+            boolean pending = LANG_CERT_PENDING.equals(student.getLanguageCertStatus());
             checks.add(new Check("lang", "语言能力证明校验", langOk, true,
                     langOk ? "已认证 " + student.getLanguageCert() + "，满足岗位要求（" + requirement + "）"
+                            : pending ? "语言证明已提交，待国际生办核验（核验前视为未通过），岗位要求 " + requirement
                             : "当前认证 " + cert + "（等效 " + Num.plain(stuScore) + "），低于岗位最低要求 " + requirement));
         }
 
@@ -331,7 +382,7 @@ public final class RuleEngine {
             }
         }
         return new ApplicationCheck(allPassed, existingApp != null, existingApp, quotaFull, checks, currentHours,
-                jobHours, projectedHours, maxHours, canSpecialApprove, specialBlockedReason);
+                jobHours, projectedHours, maxHours, canSpecialApprove, specialBlockedReason, hints);
     }
 
     // ================================================================== 录用
@@ -344,6 +395,14 @@ public final class RuleEngine {
      */
     public static HireCheck validateHire(JobApplication app, Job job, User student, Collection<Contract> contracts,
                                          Map<String, Object> globalRules) {
+        return validateHire(app, job, student, contracts, globalRules, null);
+    }
+
+    /**
+     * 同上；contractEndDate 不为空时，国际生的签证有效期必须覆盖到该日期，否则拦截且不可特批。
+     */
+    public static HireCheck validateHire(JobApplication app, Job job, User student, Collection<Contract> contracts,
+                                         Map<String, Object> globalRules, LocalDate contractEndDate) {
         List<String> errors = new ArrayList<>();
         if (!HIREABLE_APP_STATUSES.contains(app.getStatus())) {
             String label = APP_STATUS_LABELS.getOrDefault(app.getStatus(), app.getStatus());
@@ -358,6 +417,13 @@ public final class RuleEngine {
             }
             if (!Boolean.TRUE.equals(job.getAllowInternational())) {
                 errors.add("该岗位未面向国际学生开放，不能录用国际生");
+            }
+            // 签证有效期必须覆盖整个聘期（硬性条件，特批也不能放行）
+            if (contractEndDate != null && Boolean.TRUE.equals(student.getVisaValid())) {
+                String coverageError = checkVisaCoverage(student, contractEndDate);
+                if (coverageError != null) {
+                    errors.add(coverageError);
+                }
             }
         }
 
@@ -379,6 +445,50 @@ public final class RuleEngine {
             }
         }
         return new HireCheck(errors.isEmpty(), errors, currentHours, jobHours, projectedHours, maxHours, hoursOverridden);
+    }
+
+    // ================================================================== 合规强化（P1 第三批）
+
+    /** 语言证明状态：学生新上传、待国际生办核验（核验前语言项视为未通过） */
+    public static final String LANG_CERT_PENDING = "PENDING";
+    /** 语言证明状态：国际生办核验通过 */
+    public static final String LANG_CERT_VERIFIED = "VERIFIED";
+    /** 语言证明状态：国际生办核验不通过 */
+    public static final String LANG_CERT_REJECTED = "REJECTED";
+
+    /** 签证到期预警天数（前端 scanAnomalies 的“签证 30 天内到期”与此一致） */
+    public static final int VISA_EXPIRY_WARNING_DAYS = 30;
+
+    /** 聘期开始日：今天之后的下一个周一（同 JS contractStartFrom） */
+    public static LocalDate contractStartFrom(LocalDate today) {
+        return today.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
+    }
+
+    /** 预计聘期结束日：开始日 + 岗位约定周数（至少 1 周）（同 JS predictContractEnd） */
+    public static LocalDate predictContractEnd(LocalDate today, int weeks) {
+        return contractStartFrom(today).plusWeeks(Math.max(1, weeks));
+    }
+
+    /**
+     * 签证有效期是否覆盖到 endDate（录用、续聘共用）。覆盖返回 null，否则返回拦截文案（不可特批）。
+     * 未登记有效期同样视为不覆盖。
+     */
+    public static String checkVisaCoverage(User student, LocalDate endDate) {
+        LocalDate expiry = student.getVisaExpiry();
+        if (expiry == null) {
+            return "该国际生未登记签证有效期，无法确认覆盖聘期结束日 " + endDate + "，不能录用（不可特批）";
+        }
+        if (expiry.isBefore(endDate)) {
+            return "该国际生签证有效期至 " + expiry + "，早于聘期结束日 " + endDate + "，签证须覆盖整个聘期，不能录用（不可特批）";
+        }
+        return null;
+    }
+
+    /** 国际生签证是否将在 VISA_EXPIRY_WARNING_DAYS 天内到期（含已过期） */
+    public static boolean isVisaExpiringSoon(User student, LocalDate today) {
+        LocalDate expiry = student.getVisaExpiry();
+        return Boolean.TRUE.equals(student.getIsInternational()) && expiry != null
+                && !expiry.isAfter(today.plusDays(VISA_EXPIRY_WARNING_DAYS));
     }
 
     // ================================================================== 工时填报

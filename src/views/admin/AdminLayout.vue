@@ -165,6 +165,10 @@ const navGroups = computed(() => {
           badge: pendingAppsCount.value,
           badgeTone: role === 'INTL_OFFICER' ? 'caution' : 'blue'
         },
+        // P1 第三批：语言证明 / 签证材料核验
+        ...(role === 'INTL_OFFICER' || role === 'SCHOOL_ADMIN'
+          ? [{ to: '/admin/compliance', label: '合规核验', icon: 'shield', badge: 0 }]
+          : []),
         { to: '/admin/timesheets', label: '工时与预警', icon: 'clock', badge: warningCount.value, badgeTone: 'error' },
         { to: '/admin/payroll', label: '薪酬与预算', icon: 'wallet', badge: 0 },
         { to: '/admin/evaluations', label: '考核评价', icon: 'award', badge: 0 }

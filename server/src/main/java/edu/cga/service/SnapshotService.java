@@ -176,10 +176,18 @@ public class SnapshotService {
      */
     @SuppressWarnings("unchecked")
     private void fillHoursSummary(List<User> rows) {
+        // 只取计算所需的列；合同明细留在服务端，返回给前端的只有每个学生的一个峰值数字
+        List<String> studentIds = rows.stream()
+                .filter(r -> CurrentUser.STUDENT.equals(r.getRole())).map(User::getId).toList();
         Map<String, Integer> allocated = new HashMap<>();
-        for (Map<String, Object> r : contractMapper.sumAllocatedHoursByStudent()) {
-            Object hours = r.get("allocated");
-            allocated.put(String.valueOf(r.get("studentId")), hours instanceof Number n ? n.intValue() : 0);
+        if (!studentIds.isEmpty()) {
+            List<Contract> contracts = contractMapper.selectList(new QueryWrapper<Contract>()
+                    .select("student_id", "weekly_hours", "start_date", "end_date", "status")
+                    .in("status", RuleEngine.ALLOCATING_CONTRACT_STATUSES)
+                    .in("student_id", studentIds));
+            for (String id : studentIds) {
+                allocated.put(id, RuleEngine.getStudentAllocatedWeeklyHours(contracts, id));
+            }
         }
         SysConfig rulesRow = sysConfigMapper.selectById(SysConfig.GLOBAL_RULES);
         Map<String, Object> rules = rulesRow != null && rulesRow.getConfigValue() instanceof Map<?, ?> m

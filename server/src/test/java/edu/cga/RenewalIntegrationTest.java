@@ -65,6 +65,13 @@ class RenewalIntegrationTest extends WriteApiTestBase {
         }
         assertThat(found).isTrue();
 
+        // 续聘合同与原合同时间不重叠：跨岗负荷仍是 12h，而不是两份相加的 24h（否则会误拦他应聘其他岗位）
+        for (JsonNode u : snap.path("users")) {
+            if ("U_CN_STU".equals(u.path("id").asString())) {
+                assertThat(u.path("hoursSummary").path("allocated").asInt()).isEqualTo(12);
+            }
+        }
+
         // 不能重复续聘
         apiPost("/api/contracts/CON_01/renew", MENTOR, null, 400);
         // 新合同还没生效，不能对它续聘
