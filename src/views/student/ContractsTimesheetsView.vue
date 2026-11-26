@@ -36,6 +36,10 @@
                 <span>{{ c.startDate }} ~ {{ c.endDate }}</span>
                 <span class="f-meta-sep">·</span>
                 <span>{{ c.weeklyHours }}h/周 · ¥{{ c.hourlyRate }}/h</span>
+                <template v-if="feedbackSummaries[c.id]?.count">
+                  <span class="f-meta-sep">·</span>
+                  <span>服务对象评价 {{ feedbackSummaries[c.id].avgRating }} 星（{{ feedbackSummaries[c.id].count }} 条）</span>
+                </template>
               </div>
             </div>
 
@@ -172,10 +176,11 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watchEffect } from 'vue'
+import { ref, reactive, computed, watchEffect, watch } from 'vue'
 import { useAppStore } from '@/stores/appStore'
 import { getStudentWeekLoggedHours, validateTimesheetSubmission, daysUntil, getMaxWeeklyHours } from '@/services/ruleEngine'
 import { api } from '@/services/api'
+import { isHttpMode } from '@/services/http'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import ContractSignModal from '@/components/ContractSignModal.vue'
@@ -189,6 +194,22 @@ const myContracts = computed(() => store.db.contracts.filter((c) => c.studentId 
 const activeSignedContracts = computed(() => myContracts.value.filter((c) => c.status === 'ACTIVE'))
 const myTimesheets = computed(() => store.db.timesheets.filter((t) => t.studentId === student.value?.id))
 const currentWeekLogged = computed(() => (student.value ? getStudentWeekLoggedHours(store.db, student.value.id, currentWeek.value) : 0))
+
+// P1：服务对象评价汇总（只有平均分和条数，看不到单条评价；仅 http 模式）
+const feedbackSummaries = ref({})
+watch(
+  () => activeSignedContracts.value.map((c) => c.id).join(','),
+  async () => {
+    if (!isHttpMode) return
+    const result = {}
+    for (const c of activeSignedContracts.value) {
+      const res = await api.getFeedbackSummary({ contractId: c.id })
+      if (res.code === 200 && res.data) result[c.id] = res.data
+    }
+    feedbackSummaries.value = result
+  },
+  { immediate: true }
+)
 
 const signingContract = ref(null)
 const submitting = ref(false)

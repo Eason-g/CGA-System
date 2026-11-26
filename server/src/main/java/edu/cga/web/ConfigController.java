@@ -26,10 +26,11 @@ public class ConfigController {
         this.configService = configService;
     }
 
-    /** 三项都可省略，省略的不修改 */
+    /** 各项都可省略，省略的不修改；jobTypeSchemas 为 P1 新增的岗位类型差异化字段 */
     public record ConfigRequest(Map<String, List<Map<String, Object>>> workflows,
                                 Map<String, List<Map<String, Object>>> evaluationTemplates,
-                                Map<String, Object> globalRules) {
+                                Map<String, Object> globalRules,
+                                Map<String, Object> jobTypeSchemas) {
     }
 
     /** PUT /api/configs：校级管理员 */
@@ -38,7 +39,7 @@ public class ConfigController {
     public ApiResponse<Map<String, Object>> save(@RequestBody ConfigRequest req,
                                                  @AuthenticationPrincipal CurrentUser user) {
         Map<String, Object> configs = configService.save(req.workflows(), req.evaluationTemplates(),
-                req.globalRules(), user);
+                req.globalRules(), req.jobTypeSchemas(), user);
         return ApiResponse.ok(configs, "配置已保存并即时生效");
     }
 }

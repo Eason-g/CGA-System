@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 /**
  * 数据库初始化器。
  * <ul>
- *   <li>app.db.init=if-empty：users 表不存在时执行 schema.sql + data.sql；</li>
+ *   <li>app.db.init=if-empty：users 表不存在（或缺少后续版本新增的表）时执行 schema.sql + data.sql；</li>
  *   <li>always：每次启动都重建；never：不做任何处理；</li>
  *   <li>之后无论哪种模式，都把 password_hash 为空的用户设为演示密码的 BCrypt 哈希。</li>
  * </ul>
@@ -59,6 +59,10 @@ public class DatabaseInitializer implements SmartInitializingSingleton {
                 if (!usersTableExists()) {
                     log.info("未发现 users 表，执行建表与种子数据导入");
                     rebuild();
+                } else if (missingTable() != null) {
+                    // 旧版本建的库缺少后续新增的表（如 P1 的 job_templates），演示库直接按最新脚本重建
+                    log.warn("数据库缺少 {} 表（由旧版本创建），按最新建表脚本重建演示数据", missingTable());
+                    rebuild();
                 } else {
                     initDemoPasswords();
                 }
@@ -96,9 +100,26 @@ public class DatabaseInitializer implements SmartInitializingSingleton {
     }
 
     private boolean usersTableExists() {
+        return tableExists("users");
+    }
+
+    /** if-empty 模式下必须存在的后续版本新增表；新增表时在这里追加 */
+    private static final List<String> REQUIRED_TABLES = List.of("job_templates", "feedback_rounds", "service_feedback");
+
+    /** 第一个缺失的表名；都存在返回 null */
+    private String missingTable() {
+        for (String t : REQUIRED_TABLES) {
+            if (!tableExists(t)) {
+                return t;
+            }
+        }
+        return null;
+    }
+
+    private boolean tableExists(String table) {
         Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'users'",
-                Integer.class);
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?",
+                Integer.class, table);
         return count != null && count > 0;
     }
 }

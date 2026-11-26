@@ -21,6 +21,7 @@ import MyApplicationsView from '@/views/student/MyApplicationsView.vue'
 import ContractsTimesheetsView from '@/views/student/ContractsTimesheetsView.vue'
 import MyPayrollView from '@/views/student/MyPayrollView.vue'
 import ProfileView from '@/views/ProfileView.vue'
+import FeedbackView from '@/views/FeedbackView.vue'
 
 const routes = [
   {
@@ -31,6 +32,13 @@ const routes = [
     path: '/login',
     name: 'Login',
     component: LoginView,
+    meta: { public: true }
+  },
+  {
+    // P1：服务对象评价公开页（无需登录，凭评价码评价）
+    path: '/feedback',
+    name: 'Feedback',
+    component: FeedbackView,
     meta: { public: true }
   },
   {

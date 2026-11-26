@@ -3,7 +3,6 @@ package edu.cga.service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -67,10 +66,12 @@ public class JobService {
     private final AuditService audit;
     private final IdGenerator ids;
     private final TimeService time;
+    private final JobTypeSchemaService jobTypeSchemas;
 
     public JobService(JobMapper jobMapper, BudgetMapper budgetMapper, DepartmentMapper departmentMapper,
                       DataScope scope, ConfigService configService, AuditService audit, IdGenerator ids,
-                      TimeService time) {
+                      TimeService time, JobTypeSchemaService jobTypeSchemas) {
+        this.jobTypeSchemas = jobTypeSchemas;
         this.jobMapper = jobMapper;
         this.budgetMapper = budgetMapper;
         this.departmentMapper = departmentMapper;
@@ -106,6 +107,7 @@ public class JobService {
     /**
      * 导师/院系管理员只能为本院系建岗，校级管理员不限；经费必须在操作人可见范围内。
      * 锁院系行（名额）和经费行（预算）后做硬校验，通过则把预计成本冻结到经费并记为岗位预留。
+     * 预算与名额校验通过后，再按 jobTypeSchemas 校验差异化字段与经费来源（{@link JobTypeSchemaService}）。
      */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Job createJob(JobDraft d, CurrentUser operator) {
@@ -129,6 +131,10 @@ public class JobService {
         if (!check.ok()) {
             throw new BizException(400, String.join("；", check.errors()), check);
         }
+        // P1：按岗位类型配置校验差异化字段与经费来源，并生成派生字段（languageRequirement、milestones）
+        LocalDate deadline = d.deadline() != null ? d.deadline() : time.today().plusDays(DEFAULT_DEADLINE_DAYS);
+        Map<String, Object> extraFields = jobTypeSchemas.prepareExtraFields(d.type(), d.extraFields(), budget,
+                d.weeks(), deadline);
 
         boolean allowIntl = Boolean.TRUE.equals(d.allowInternational());
         List<String> steps = RuleEngine.buildWorkflowStepsForJob(configService.workflows(), d.type(), allowIntl);
@@ -154,11 +160,11 @@ public class JobService {
         job.setWorkflowInstanceId(ids.next("WF"));
         job.setWorkflowSteps(steps);
         job.setCurrentStepIndex(nextIndex);
-        job.setDeadline(d.deadline() != null ? d.deadline() : time.today().plusDays(DEFAULT_DEADLINE_DAYS));
+        job.setDeadline(deadline);
         job.setCreatedAt(time.now());
         job.setSkills(d.skills() != null ? d.skills() : new ArrayList<>());
         job.setDescription(d.description() != null ? d.description() : "");
-        job.setExtraFields(d.extraFields() != null ? d.extraFields() : new LinkedHashMap<>());
+        job.setExtraFields(extraFields);
         job.setReservedAmount(cost);
 
         // 冻结预计预算

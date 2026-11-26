@@ -54,7 +54,8 @@ class SnapshotIntegrationTest extends IntegrationTestBase {
 
         // 与 mock db 相同的顶层结构
         assertThat(db.propertyNames()).containsExactly("meta", "departments", "users", "budgets", "configs", "jobs",
-                "applications", "contracts", "timesheets", "evaluations", "payrolls", "notifications", "auditLogs");
+                "applications", "contracts", "timesheets", "evaluations", "payrolls", "notifications", "auditLogs",
+                "jobTemplates");
 
         expected.forEach((collection, count) -> {
             if (collection.equals("notifications")) {
@@ -84,9 +85,10 @@ class SnapshotIntegrationTest extends IntegrationTestBase {
         assertThat(meta.path("currentMonth").asString()).isEqualTo("2026-11");
         assertThat(meta.path("today").asString()).isEqualTo("2026-11-20");
 
-        // configs 三项
+        // configs 四项（P1 新增 jobTypeSchemas）
         JsonNode configs = db.path("configs");
-        assertThat(configs.propertyNames()).containsExactlyInAnyOrder("workflows", "evaluationTemplates", "globalRules");
+        assertThat(configs.propertyNames()).containsExactlyInAnyOrder("workflows", "evaluationTemplates", "globalRules",
+                "jobTypeSchemas");
         assertThat(configs.path("workflows").path("TA").size()).isEqualTo(4);
         assertThat(configs.path("globalRules").path("maxWeeklyHoursIntl").asInt()).isEqualTo(20);
 

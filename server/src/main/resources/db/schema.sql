@@ -7,6 +7,10 @@
 
 SET NAMES utf8mb4;
 
+-- P1 第一批：岗位模板、服务对象评价
+DROP TABLE IF EXISTS service_feedback;
+DROP TABLE IF EXISTS feedback_rounds;
+DROP TABLE IF EXISTS job_templates;
 DROP TABLE IF EXISTS audit_log;
 DROP TABLE IF EXISTS notifications;
 DROP TABLE IF EXISTS payrolls;
@@ -264,3 +268,49 @@ CREATE TABLE audit_log (
   KEY idx_audit_target (target_type, target_id),
   KEY idx_audit_operator (operator_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审计日志';
+
+-- =====================================================================
+-- P1 第一批：配置化与考核
+-- =====================================================================
+
+-- 岗位模板（发布页“从模板创建 / 存为模板”）
+CREATE TABLE job_templates (
+  id          VARCHAR(32)  NOT NULL,
+  name        VARCHAR(64)  NOT NULL COMMENT '模板名称',
+  type        VARCHAR(8)   NOT NULL COMMENT 'TA/RA/GA',
+  dept_id     VARCHAR(32)  NULL COMMENT '所属院系；为空表示全校通用',
+  payload     JSON         NOT NULL COMMENT '除岗位名称外的发布表单字段',
+  created_by  VARCHAR(32)  NOT NULL COMMENT '创建人用户ID',
+  created_at  DATETIME     NULL,
+  PRIMARY KEY (id),
+  KEY idx_jt_dept (dept_id),
+  KEY idx_jt_creator (created_by)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='岗位模板';
+
+-- 服务评价轮：导师为一份生效合同开启，服务对象凭评价码匿名评价
+CREATE TABLE feedback_rounds (
+  id           VARCHAR(32)  NOT NULL,
+  contract_id  VARCHAR(32)  NOT NULL,
+  code         CHAR(8)      NOT NULL COMMENT '评价码：8 位大写字母和数字（去掉易混字符）',
+  opened_by    VARCHAR(32)  NOT NULL COMMENT '开启人用户ID',
+  opened_at    DATETIME     NULL,
+  deadline     DATE         NOT NULL COMMENT '截止日期（当天仍可提交）',
+  status       VARCHAR(16)  NOT NULL COMMENT 'OPEN/CLOSED',
+  closed_at    DATETIME     NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_fr_code (code),
+  KEY idx_fr_contract (contract_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='服务评价轮';
+
+-- 服务对象评价：只存浏览器随机 ID 的 SHA-256，用于“同一浏览器每轮只能提交一次”
+CREATE TABLE service_feedback (
+  id           VARCHAR(32)   NOT NULL,
+  round_id     VARCHAR(32)   NOT NULL,
+  rating       TINYINT       NOT NULL COMMENT '1–5 星',
+  comment      VARCHAR(200)  NULL,
+  client_hash  CHAR(64)      NOT NULL COMMENT '客户端随机 ID 的 SHA-256（十六进制）',
+  created_at   DATETIME      NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_sf_round_client (round_id, client_hash),
+  KEY idx_sf_round (round_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='服务对象评价';

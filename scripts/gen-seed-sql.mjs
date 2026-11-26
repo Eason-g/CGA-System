@@ -179,5 +179,11 @@ parts.push(insert('audit_log', db.auditLogs, {
   overrides: { operator_id: () => null, log_time: (l) => l.timestamp }
 }))
 
+// P1：岗位模板（dept_id 为空表示全校通用）
+parts.push(insert('job_templates', db.jobTemplates || [], {
+  columns: ['id', 'name', 'type', 'dept_id', 'payload', 'created_by', 'created_at'],
+  jsonColumns: ['payload']
+}))
+
 writeFileSync(outPath, parts.join('\n'), 'utf8')
 console.log(`已生成 ${path.relative(root, outPath)}（${counts}）`)

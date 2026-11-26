@@ -78,7 +78,10 @@ class BudgetIntegrationTest extends WriteApiTestBase {
     void rejectingJobReleasesReservedAmount() throws Exception {
         Budget before = budget("B_ECON_RA");
         JsonNode created = apiPost("/api/jobs", "zhao.minghua", Map.of("type", "RA", "title", "测试驳回", "deptId", "DEPT_ECON",
-                "budgetId", "B_ECON_RA", "quota", 1, "hourlyRate", 40, "weeklyHours", 5, "weeks", 10), 200);
+                "budgetId", "B_ECON_RA", "quota", 1, "hourlyRate", 40, "weeklyHours", 5, "weeks", 10,
+                // P1：RA 岗位的必填差异化字段（jobTypeSchemas）
+                "extraFields", Map.of("projectCode", "TEST-01", "projectName", "测试课题", "researchDirection", "测试方向")),
+                200);
         String jobId = created.path("data").path("id").asString();
         assertThat(budget("B_ECON_RA").getFrozenAmount())
                 .isEqualByComparingTo(before.getFrozenAmount().add(new BigDecimal("2000")));

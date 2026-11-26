@@ -161,3 +161,25 @@ node scripts/gen-seed-sql.mjs
 - JJWT 的 `jjwt-jackson` 运行时依赖 Jackson 2，与应用使用的 Jackson 3 包名不同，可以共存。
 - 数据库初始化器实现 `SmartInitializingSingleton`（而非 `ApplicationRunner`），在内嵌 Web 服务器开始监听端口之前完成建表与演示密码设置，避免第一次启动时登录偶发 401。
 - 薪酬发放除规格要求的 `amount ≤ total − used` 外，还要求超出本岗位剩余预留的部分不超过经费可用额，防止挪用其他岗位的预留。
+
+## 9. P1 第一批：配置化与考核（规格见 `docs/P1设计.md` 第一批）
+
+| 接口 | 权限 | 说明 |
+|---|---|---|
+| `PUT /api/configs` 增加 `jobTypeSchemas` | SCHOOL_ADMIN | 岗位类型差异化字段（按类型整体替换）；校验字段标识、类型、下拉选项、经费来源、默认值 |
+| `POST /api/jobs` | 同前 | 预算/名额校验通过后，再按 `jobTypeSchemas` 校验必填、下拉取值、经费来源（400）；后端生成 TA `languageRequirement`、RA `milestones`（`milestonesText` 每行一条，起点为申请截止日后的第一个周一，按聘期均分） |
+| `GET / POST /api/job-templates`，`DELETE /api/job-templates/{id}` | MENTOR、DEPT_ADMIN、SCHOOL_ADMIN | 可见全校通用 + 本院系；只有校级管理员可存全校通用；创建者或校级管理员可删除 |
+| `GET /api/feedback-rounds?contractId=` | MENTOR（本人岗位）、DEPT_ADMIN、SCHOOL_ADMIN | 评价轮（评价码、条数、均分、单条评价） |
+| `POST /api/feedback-rounds` `{contractId, deadline}` | 同上 | 为生效合同开启评价轮，生成 8 位评价码；默认 14 天，最长 90 天；同一合同同时只有一轮进行中 |
+| `POST /api/feedback-rounds/{id}/close` | 同上 | 关闭评价轮 |
+| `GET /api/contracts/{id}/feedback-summary` | 合同在数据范围内（含助理本人） | 只返回条数、平均星级、折算分 |
+| `GET / POST /api/public/feedback/{code}` | 公开 | 查询岗位与“X同学”、匿名提交 1–5 星；同一浏览器（clientId 的 SHA-256）每轮一次（409）；截止或关闭后 400；按 IP + 评价码限流（429） |
+| `POST /api/evaluations` 增加 `serviceOverrideReason` | 同前 | 合同有服务评价时 service 维度默认取“平均星级 × 20”；改动须填理由，理由写入审计日志 |
+| `POST /api/contracts/{id}/renew` | 岗位导师本人、SCHOOL_ADMIN | 考核合格、岗位仍发布、跨岗工时（只计与新聘期重叠的合同）与签证有效期覆盖新聘期复核通过后生成新的待签合同 |
+
+限流阈值（每 10 分钟，可用 `app.feedback.rate-limit.*` 覆盖）：同一 IP + 评价码查询 300 次、提交 150 次；同一 IP 查询总数 600 次。
+进程内计数，单实例有效；IP 取 `remoteAddr`，不信任 `X-Forwarded-For`。
+
+**旧库升级**：`app.db.init=if-empty` 时若发现缺少 P1 新表（`job_templates`、`feedback_rounds`、`service_feedback`），会按最新脚本重建演示数据。
+
+新增测试：`JobTypeSchemaIntegrationTest`、`JobTemplateIntegrationTest`、`FeedbackIntegrationTest`、`RenewalIntegrationTest`。

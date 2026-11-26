@@ -51,6 +51,9 @@ class MainFlowIntegrationTest extends WriteApiTestBase {
         draft.put("deadline", "2026-12-28");
         draft.put("skills", List.of("编译原理", "英语授课"));
         draft.put("description", "协助批改实验作业");
+        // P1：TA 岗位的必填差异化字段（jobTypeSchemas）
+        draft.put("extraFields", Map.of("courseCode", "CS3150", "courseName", "编译原理（双语）",
+                "semester", "2026-2027 春季学期", "minLangScore", 6.5));
         draft.put("operator", Map.of("id", "U_SCHOOL_ADMIN")); // 前端会多传 operator，后端忽略
         JsonNode created = apiPost("/api/jobs", MENTOR, draft, 200);
         assertThat(created.path("message").asString()).isEqualTo("岗位已提交并进入审批流");

@@ -34,7 +34,8 @@ public class EvaluationController {
             @Size(max = 64, message = "考核周期名称过长") String period,
             Map<String, Object> dimensionScores,
             @Size(max = 2000, message = "考核评语不能超过 2000 字") String comment,
-            Map<String, Object> courseEvalSync) {
+            Map<String, Object> courseEvalSync,
+            @Size(max = 500, message = "修改理由不能超过 500 字") String serviceOverrideReason) {
     }
 
     /** POST /api/evaluations：岗位导师本人、本院系管理员、校级管理员 */
@@ -43,7 +44,7 @@ public class EvaluationController {
     public ApiResponse<Evaluation> submit(@Valid @RequestBody EvaluationRequest req,
                                           @AuthenticationPrincipal CurrentUser user) {
         EvaluationService.EvaluationResult r = evaluationService.submit(req.contractId(), req.period(),
-                req.dimensionScores(), req.comment(), req.courseEvalSync(), user);
+                req.dimensionScores(), req.comment(), req.courseEvalSync(), req.serviceOverrideReason(), user);
         return ApiResponse.ok(r.evaluation(), r.message());
     }
 }

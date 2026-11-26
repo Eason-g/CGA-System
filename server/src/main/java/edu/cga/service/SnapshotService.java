@@ -62,13 +62,14 @@ public class SnapshotService {
     private final PayrollMapper payrollMapper;
     private final NotificationMapper notificationMapper;
     private final AuditLogMapper auditLogMapper;
+    private final JobTemplateService jobTemplateService;
 
     public SnapshotService(DataScope scope, TimeService time, DepartmentMapper departmentMapper,
                            UserMapper userMapper, BudgetMapper budgetMapper, SysConfigMapper sysConfigMapper,
                            JobMapper jobMapper, JobApplicationMapper applicationMapper, ContractMapper contractMapper,
                            TimesheetMapper timesheetMapper, EvaluationMapper evaluationMapper,
                            PayrollMapper payrollMapper, NotificationMapper notificationMapper,
-                           AuditLogMapper auditLogMapper) {
+                           AuditLogMapper auditLogMapper, JobTemplateService jobTemplateService) {
         this.scope = scope;
         this.time = time;
         this.departmentMapper = departmentMapper;
@@ -83,6 +84,7 @@ public class SnapshotService {
         this.payrollMapper = payrollMapper;
         this.notificationMapper = notificationMapper;
         this.auditLogMapper = auditLogMapper;
+        this.jobTemplateService = jobTemplateService;
     }
 
     /** 只读事务：保证一次快照里各集合来自同一时刻 */
@@ -114,6 +116,8 @@ public class SnapshotService {
                         .orderByDesc("created_at").orderByAsc("id")));
         db.put("auditLogs", auditLogMapper.selectList(
                 scope.auditLogs(u).applyTo(new QueryWrapper<AuditLog>()).orderByDesc("log_time").orderByAsc("id")));
+        // P1：岗位模板（全校通用 + 本院系，见 DataScope.jobTemplates）
+        db.put("jobTemplates", jobTemplateService.list(u));
         return db;
     }
 
@@ -127,10 +131,11 @@ public class SnapshotService {
         return meta;
     }
 
-    /** configs：{ workflows, evaluationTemplates, globalRules }，所有人可见 */
+    /** configs：{ workflows, evaluationTemplates, globalRules, jobTypeSchemas }，所有人可见 */
     public Map<String, Object> configs() {
         Map<String, Object> configs = new LinkedHashMap<>();
-        for (String key : List.of(SysConfig.WORKFLOWS, SysConfig.EVALUATION_TEMPLATES, SysConfig.GLOBAL_RULES)) {
+        for (String key : List.of(SysConfig.WORKFLOWS, SysConfig.EVALUATION_TEMPLATES, SysConfig.GLOBAL_RULES,
+                SysConfig.JOB_TYPE_SCHEMAS)) {
             SysConfig row = sysConfigMapper.selectById(key);
             configs.put(key, row != null ? row.getConfigValue() : Map.of());
         }

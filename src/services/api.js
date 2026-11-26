@@ -10,6 +10,7 @@ import {
   gradeFromScore
 } from './ruleEngine'
 import { http, isHttpMode } from './http'
+import { deriveExtraFieldsForMock } from './jobSchema'
 
 // Simulate 150ms ~ 280ms backend latency with standard { code, data, message } response envelope
 function mockAsync(executor) {
@@ -103,7 +104,11 @@ const mockApi = {
         createdAt: nowTimestamp(),
         skills: payload.skills || [],
         description: payload.description || '',
-        extraFields: payload.extraFields || {}
+        // 派生字段（TA 语言要求、RA 里程碑）在 http 模式由后端生成，这里模拟同样的规则
+        extraFields: deriveExtraFieldsForMock(payload.type, payload.extraFields, {
+          weeks: payload.weeks,
+          deadline: payload.deadline
+        })
       }
 
       // Freeze estimated budget in selected budget pool
@@ -747,8 +752,11 @@ const mockApi = {
   },
 
   // P1-1: Save configurable approval workflows & evaluation weights (School Admin)
-  saveConfigs({ workflows, evaluationTemplates, globalRules }, operator) {
+  saveConfigs({ workflows, evaluationTemplates, globalRules, jobTypeSchemas }, operator) {
     return mockAsync((db) => {
+      if (jobTypeSchemas) {
+        db.configs.jobTypeSchemas = { ...(db.configs.jobTypeSchemas || {}), ...JSON.parse(JSON.stringify(jobTypeSchemas)) }
+      }
       if (evaluationTemplates) {
         for (const [type, dims] of Object.entries(evaluationTemplates)) {
           const sum = dims.reduce((s, d) => s + Number(d.weight || 0), 0)
@@ -812,6 +820,22 @@ const mockApi = {
     })
   }
 }
+
+// P1 新功能（岗位模板保存/删除、服务评价、续聘）只在 http 模式实现，mock 模式统一提示
+const NEED_BACKEND = { code: 501, data: null, message: '该功能需要连接后端' }
+const backendOnly = () => Promise.resolve({ ...NEED_BACKEND })
+Object.assign(mockApi, {
+  listJobTemplates: () => mockAsync((db) => db.jobTemplates || []),
+  saveJobTemplate: backendOnly,
+  deleteJobTemplate: backendOnly,
+  listFeedbackRounds: backendOnly,
+  openFeedbackRound: backendOnly,
+  closeFeedbackRound: backendOnly,
+  getFeedbackSummary: backendOnly,
+  renewContract: backendOnly,
+  getPublicFeedback: backendOnly,
+  submitPublicFeedback: backendOnly
+})
 
 // ===== http 模式：调用 Java 后端（docs/后端设计.md 第 5 节）=====
 // 方法名与入参签名与 mockApi 保持一致；最后一个 operator / student 参数不发给后端，身份一律取自 token
@@ -894,12 +918,12 @@ const httpApi = {
     return http.post(`/api/payrolls/${enc(payrollId)}/payout`)
   },
 
-  submitEvaluation({ contractId, period, dimensionScores, comment, courseEvalSync }) {
-    return http.post('/api/evaluations', { contractId, period, dimensionScores, comment, courseEvalSync })
+  submitEvaluation({ contractId, period, dimensionScores, comment, courseEvalSync, serviceOverrideReason }) {
+    return http.post('/api/evaluations', { contractId, period, dimensionScores, comment, courseEvalSync, serviceOverrideReason })
   },
 
-  saveConfigs({ workflows, evaluationTemplates, globalRules }) {
-    return http.put('/api/configs', { workflows, evaluationTemplates, globalRules })
+  saveConfigs({ workflows, evaluationTemplates, globalRules, jobTypeSchemas }) {
+    return http.put('/api/configs', { workflows, evaluationTemplates, globalRules, jobTypeSchemas })
   },
 
   // userId 参数保留签名兼容，后端只标记当前登录用户的通知
@@ -910,6 +934,52 @@ const httpApi = {
   // 只能修改本人资料，userId 不发给后端
   updateUserProfile({ email, phone, skills, bio }) {
     return http.put('/api/users/me', { email, phone, skills, bio })
+  },
+
+  // ----- P1 第一批：岗位模板、服务对象评价、续聘 -----
+
+  listJobTemplates() {
+    return http.get('/api/job-templates')
+  },
+
+  // global=true 为全校通用（仅校级管理员）；payload 为除岗位名称外的发布表单字段
+  saveJobTemplate({ name, type, global = false, deptId, payload }) {
+    return http.post('/api/job-templates', { name, type, global, deptId, payload })
+  },
+
+  deleteJobTemplate({ templateId }) {
+    return http.del(`/api/job-templates/${enc(templateId)}`)
+  },
+
+  // 评价轮列表（含评价码、条数、均分与单条评价），仅导师/院系管理员/校级管理员
+  listFeedbackRounds({ contractId } = {}) {
+    return http.get(`/api/feedback-rounds${contractId ? `?contractId=${enc(contractId)}` : ''}`)
+  },
+
+  openFeedbackRound({ contractId, deadline }) {
+    return http.post('/api/feedback-rounds', { contractId, deadline: deadline || null })
+  },
+
+  closeFeedbackRound({ roundId }) {
+    return http.post(`/api/feedback-rounds/${enc(roundId)}/close`)
+  },
+
+  // 评价汇总 { count, avgRating, serviceScore }：助理本人也可查看
+  getFeedbackSummary({ contractId }) {
+    return http.get(`/api/contracts/${enc(contractId)}/feedback-summary`)
+  },
+
+  renewContract({ contractId }) {
+    return http.post(`/api/contracts/${enc(contractId)}/renew`)
+  },
+
+  // 公开评价页（无需登录）：401 不触发登出跳转
+  getPublicFeedback({ code }) {
+    return http.get(`/api/public/feedback/${enc((code || '').trim())}`, { skipAuthRedirect: true })
+  },
+
+  submitPublicFeedback({ code, rating, comment, clientId }) {
+    return http.post(`/api/public/feedback/${enc((code || '').trim())}`, { rating, comment, clientId }, { skipAuthRedirect: true })
   }
 }
 

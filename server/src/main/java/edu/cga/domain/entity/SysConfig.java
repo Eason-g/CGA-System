@@ -7,13 +7,15 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import edu.cga.domain.JsonColumnTypeHandler;
 import lombok.Data;
 
-/** 可配置化中心：config_key 为 workflows / evaluationTemplates / globalRules */
+/** 可配置化中心：config_key 为 workflows / evaluationTemplates / globalRules / jobTypeSchemas */
 @Data
 @TableName(value = "sys_config", autoResultMap = true)
 public class SysConfig {
     public static final String WORKFLOWS = "workflows";
     public static final String EVALUATION_TEMPLATES = "evaluationTemplates";
     public static final String GLOBAL_RULES = "globalRules";
+    /** P1：岗位类型差异化字段（发布页按它渲染，建岗按它校验） */
+    public static final String JOB_TYPE_SCHEMAS = "jobTypeSchemas";
 
     @TableId(type = IdType.INPUT)
     private String configKey;

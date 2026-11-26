@@ -175,6 +175,28 @@ public class DataScope {
                 evaluations(u).asInSubquery("target_id", "id", "evaluations").and("target_type = 'EVALUATION'"));
     }
 
+    // ------------------------------------------------------------------ P1：岗位模板 / 服务评价轮
+
+    /** 岗位模板：全校通用 + 本院系；校级管理员可见全部；学生、国际生办不可见 */
+    public SqlCondition jobTemplates(CurrentUser u) {
+        return switch (u.role()) {
+            case SCHOOL_ADMIN -> SqlCondition.ALL;
+            case MENTOR, DEPT_ADMIN -> SqlCondition.of("dept_id IS NULL OR dept_id = ?", u.deptId());
+            default -> SqlCondition.NONE;
+        };
+    }
+
+    /**
+     * 服务评价轮（含评价码与单条评价）：与考核同一范围——岗位导师、本院系管理员、校级管理员。
+     * 助理本人不可见（只能通过汇总接口看到平均分和条数），国际生办不可见。
+     */
+    public SqlCondition feedbackRounds(CurrentUser u) {
+        if (u.is(STUDENT)) {
+            return SqlCondition.NONE;
+        }
+        return evaluations(u).asInSubquery("contract_id", "id", "contracts");
+    }
+
     // ------------------------------------------------------------------ 按 ID 取数据
 
     /**

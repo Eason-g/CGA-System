@@ -26,7 +26,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * 安全配置：无状态 JWT 认证。
  * <ul>
- *   <li>POST /api/auth/login 公开，其余接口都需要登录；</li>
+ *   <li>POST /api/auth/login、/api/public/**（服务对象评价）公开，其余接口都需要登录；</li>
  *   <li>未登录返回 401、无权限返回 403，均为 { code, data, message } JSON；</li>
  *   <li>开启方法级 {@code @PreAuthorize}，角色以 ROLE_ 前缀授予，如 hasRole('SCHOOL_ADMIN')。</li>
  * </ul>
@@ -53,6 +53,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                        // P1：服务对象评价的公开接口（评价码查询与提交，有进程内限流）
+                        .requestMatchers("/api/public/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex

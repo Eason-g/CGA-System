@@ -13,7 +13,7 @@ function createEmptyDB() {
     departments: [],
     users: [],
     budgets: [],
-    configs: { workflows: {}, evaluationTemplates: {}, globalRules: {} },
+    configs: { workflows: {}, evaluationTemplates: {}, globalRules: {}, jobTypeSchemas: {} },
     jobs: [],
     applications: [],
     contracts: [],
@@ -21,7 +21,8 @@ function createEmptyDB() {
     evaluations: [],
     payrolls: [],
     notifications: [],
-    auditLogs: []
+    auditLogs: [],
+    jobTemplates: []
   }
 }
 

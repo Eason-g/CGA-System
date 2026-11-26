@@ -50,12 +50,17 @@ public class ConfigService {
         return read(SysConfig.EVALUATION_TEMPLATES);
     }
 
-    /** configs 全部三项，形状同 mock db.configs */
+    public Map<String, Object> jobTypeSchemas() {
+        return read(SysConfig.JOB_TYPE_SCHEMAS);
+    }
+
+    /** configs 全部配置项，形状同 mock db.configs */
     public Map<String, Object> all() {
         Map<String, Object> configs = new LinkedHashMap<>();
         configs.put(SysConfig.WORKFLOWS, workflows());
         configs.put(SysConfig.EVALUATION_TEMPLATES, evaluationTemplates());
         configs.put(SysConfig.GLOBAL_RULES, globalRules());
+        configs.put(SysConfig.JOB_TYPE_SCHEMAS, jobTypeSchemas());
         return configs;
     }
 
@@ -77,6 +82,21 @@ public class ConfigService {
     public Map<String, Object> save(Map<String, List<Map<String, Object>>> workflows,
                                     Map<String, List<Map<String, Object>>> evaluationTemplates,
                                     Map<String, Object> globalRules, CurrentUser operator) {
+        return save(workflows, evaluationTemplates, globalRules, null, operator);
+    }
+
+    /**
+     * 同上，另可保存岗位类型差异化字段 jobTypeSchemas（P1）：按岗位类型整体替换，未提交的类型保持原样；
+     * 字段定义的校验规则见 {@link JobTypeSchemaService#validateSchemas}。
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public Map<String, Object> save(Map<String, List<Map<String, Object>>> workflows,
+                                    Map<String, List<Map<String, Object>>> evaluationTemplates,
+                                    Map<String, Object> globalRules, Map<String, Object> jobTypeSchemas,
+                                    CurrentUser operator) {
+        if (jobTypeSchemas != null) {
+            JobTypeSchemaService.validateSchemas(jobTypeSchemas);
+        }
         // 先全部校验，再写入
         if (evaluationTemplates != null) {
             for (Map.Entry<String, List<Map<String, Object>>> e : evaluationTemplates.entrySet()) {
@@ -127,6 +147,15 @@ public class ConfigService {
         }
         if (workflows != null) {
             write(SysConfig.WORKFLOWS, workflows);
+        }
+        if (jobTypeSchemas != null) {
+            SysConfig row = sysConfigMapper.lockByKey(SysConfig.JOB_TYPE_SCHEMAS);
+            Map<String, Object> merged = new LinkedHashMap<>();
+            if (row != null && row.getConfigValue() instanceof Map<?, ?> old) {
+                old.forEach((k, v) -> merged.put(k.toString(), v));
+            }
+            merged.putAll(jobTypeSchemas);
+            write(SysConfig.JOB_TYPE_SCHEMAS, merged);
         }
         if (globalRules != null) {
             SysConfig row = sysConfigMapper.lockByKey(SysConfig.GLOBAL_RULES);
