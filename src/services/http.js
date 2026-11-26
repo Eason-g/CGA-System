@@ -99,3 +99,67 @@ export const http = {
   post: (url, body, options) => request('POST', url, body ?? {}, options),
   put: (url, body, options) => request('PUT', url, body ?? {}, options)
 }
+
+/** 从 Content-Disposition 取文件名：优先 filename*（RFC 5987，UTF-8 编码中文），其次 filename */
+function parseFileName(disposition, fallback) {
+  if (!disposition) return fallback
+  const star = /filename\*\s*=\s*([^']*)''([^;]+)/i.exec(disposition)
+  if (star) {
+    try {
+      return decodeURIComponent(star[2].trim().replace(/^"|"$/g, ''))
+    } catch {
+      // 编码异常时退回普通 filename
+    }
+  }
+  const plain = /filename\s*=\s*"?([^";]+)"?/i.exec(disposition)
+  return plain ? plain[1] : fallback
+}
+
+/**
+ * 下载文件（报表导出等）：带 Authorization 的 fetch，拿到 Blob 后用临时链接触发浏览器保存。
+ * 不能用裸 <a href>，因为裸链接带不上 token。
+ * 成功返回 { code: 200, data: { fileName, size }, message }；失败时后端返回 JSON，转成 { code, data, message }。
+ */
+export async function download(url, fallbackName = 'download') {
+  const headers = { Accept: '*/*' }
+  const token = getToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  let resp
+  try {
+    resp = await fetch(url, { method: 'GET', headers })
+  } catch {
+    return { ...NETWORK_ERROR }
+  }
+
+  const type = resp.headers.get('Content-Type') || ''
+  if (!resp.ok || type.includes('application/json')) {
+    let payload = null
+    try {
+      payload = await resp.json()
+    } catch {
+      payload = null
+    }
+    if (resp.status === 401) handleUnauthorized()
+    if (payload && typeof payload === 'object' && 'code' in payload) {
+      return { code: payload.code, data: payload.data ?? null, message: payload.message || '' }
+    }
+    return resp.status >= 500
+      ? { ...NETWORK_ERROR }
+      : { code: resp.status, data: null, message: `下载失败（HTTP ${resp.status}）` }
+  }
+
+  const blob = await resp.blob()
+  const fileName = parseFileName(resp.headers.get('Content-Disposition'), fallbackName)
+  const href = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = href
+  a.download = fileName
+  a.style.display = 'none'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // 稍后再释放，避免部分浏览器在保存开始前就失效
+  setTimeout(() => URL.revokeObjectURL(href), 10000)
+  return { code: 200, data: { fileName, size: blob.size }, message: `已导出 ${fileName}` }
+}

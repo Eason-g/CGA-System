@@ -8,6 +8,7 @@ import edu.cga.domain.mapper.UserMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -70,6 +71,8 @@ public class SecurityConfig {
         config.setAllowedOrigins(props.getCors().getAllowedOrigins());
         config.addAllowedMethod("*");
         config.addAllowedHeader("*");
+        // 报表导出：跨域时前端要能读到文件名（P1 第二批 2.1）
+        config.addExposedHeader(HttpHeaders.CONTENT_DISPOSITION);
         config.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", config);

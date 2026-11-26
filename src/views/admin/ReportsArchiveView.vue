@@ -11,9 +11,13 @@
     <section class="charts-grid">
       <!-- Chart 1: By Job Type (TA / RA / GA) -->
       <div class="acrylic-card p-20">
-        <div class="flex items-center justify-between mb-16">
+        <div class="flex items-center justify-between mb-16 gap-8 flex-wrap">
           <h2 class="text-lg fw-600">按岗位类型分布（TA / RA / GA）</h2>
-          <span class="text-xs text-muted">共 {{ visibleJobs.length }} 个岗位</span>
+          <div class="flex items-center gap-8">
+            <span class="text-xs text-muted">共 {{ visibleJobs.length }} 个岗位</span>
+            <button type="button" class="f-btn f-btn-subtle f-btn-sm" :disabled="!!exporting" @click="exportReport('jobs', 'xlsx')">导出 Excel</button>
+            <button type="button" class="f-btn f-btn-subtle f-btn-sm" :disabled="!!exporting" @click="exportReport('jobs', 'csv')">导出 CSV</button>
+          </div>
         </div>
 
         <div class="type-chart">
@@ -48,9 +52,13 @@
 
       <!-- Chart 2: By Department Quota & Budget -->
       <div class="acrylic-card p-20">
-        <div class="flex items-center justify-between mb-16">
+        <div class="flex items-center justify-between mb-16 gap-8 flex-wrap">
           <h2 class="text-lg fw-600">按院系聘用与预算执行统计</h2>
-          <span class="text-xs text-muted">单位：元</span>
+          <div class="flex items-center gap-8">
+            <span class="text-xs text-muted">单位：元</span>
+            <button type="button" class="f-btn f-btn-subtle f-btn-sm" :disabled="!!exporting" @click="exportReport('budgets', 'xlsx')">导出 Excel</button>
+            <button type="button" class="f-btn f-btn-subtle f-btn-sm" :disabled="!!exporting" @click="exportReport('budgets', 'csv')">导出 CSV</button>
+          </div>
         </div>
 
         <div class="flex-col gap-12">
@@ -73,11 +81,51 @@
       </div>
     </section>
 
+    <!-- 报表导出（P1 第二批 2.1）：内容由后端按本人数据范围生成 -->
+    <section class="acrylic-card p-20">
+      <div class="flex items-center justify-between mb-16 gap-12 flex-wrap">
+        <div>
+          <h2 class="text-lg fw-600">报表导出</h2>
+          <div class="text-xs text-muted mt-4">导出内容与您在系统中可见的数据范围一致，每次导出都会记入审计日志</div>
+        </div>
+        <div class="flex items-center gap-8 flex-wrap">
+          <select v-model="exportMonth" class="f-select" style="width: 130px;" aria-label="导出月份">
+            <option value="">全部月份</option>
+            <option v-for="m in monthOptions" :key="m" :value="m">{{ m }}</option>
+          </select>
+          <select v-if="canPickDept" v-model="exportDept" class="f-select" style="width: 170px;" aria-label="导出院系">
+            <option value="">全部可见院系</option>
+            <option v-for="d in store.db.departments" :key="d.id" :value="d.id">{{ d.name }}</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="export-list">
+        <div v-for="r in reportDefs" :key="r.type" class="export-row">
+          <FluentIcon :name="r.icon" :size="18" class="text-blue" />
+          <div class="flex-1">
+            <div class="text-sm fw-600">{{ r.title }}</div>
+            <div class="text-xs text-muted">{{ r.desc }}</div>
+          </div>
+          <button type="button" class="f-btn f-btn-primary f-btn-sm" :disabled="!!exporting" @click="exportReport(r.type, 'xlsx')">
+            {{ exporting === `${r.type}.xlsx` ? '导出中…' : '导出 Excel' }}
+          </button>
+          <button type="button" class="f-btn f-btn-subtle f-btn-sm" :disabled="!!exporting" @click="exportReport(r.type, 'csv')">
+            {{ exporting === `${r.type}.csv` ? '导出中…' : '导出 CSV' }}
+          </button>
+        </div>
+      </div>
+    </section>
+
     <!-- Electronic Archive Table -->
     <section class="acrylic-card table-card">
-      <div class="flex items-center justify-between p-16 border-b">
+      <div class="flex items-center justify-between p-16 border-b gap-8 flex-wrap">
         <h2 class="text-lg fw-600">电子归档目录</h2>
-        <span class="text-xs text-muted">点击导出完整可打印档案</span>
+        <div class="flex items-center gap-8">
+          <span class="text-xs text-muted">点击导出完整可打印档案</span>
+          <button type="button" class="f-btn f-btn-subtle f-btn-sm" :disabled="!!exporting" @click="exportReport('hires', 'xlsx')">聘用名单 Excel</button>
+          <button type="button" class="f-btn f-btn-subtle f-btn-sm" :disabled="!!exporting" @click="exportReport('hires', 'csv')">聘用名单 CSV</button>
+        </div>
       </div>
 
       <div v-if="visibleContracts.length" class="f-table-wrap">
@@ -125,8 +173,9 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useAppStore } from '@/stores/appStore'
+import { api } from '@/services/api'
 import { filterJobsByRole, filterByRoleDept } from '@/services/ruleEngine'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -137,6 +186,47 @@ const user = computed(() => store.currentUser)
 const visibleJobs = computed(() => filterJobsByRole(store.db, user.value))
 const visibleContracts = computed(() => filterByRoleDept(store.db, store.db.contracts, user.value, 'CONTRACT'))
 const visibleBudgets = computed(() => filterByRoleDept(store.db, store.db.budgets, user.value, 'BUDGET'))
+
+// ===== 报表导出 =====
+const reportDefs = [
+  { type: 'jobs', title: '岗位统计', icon: 'briefcase', desc: '类型、院系、名额、已聘、预计成本、状态' },
+  { type: 'hires', title: '聘用名单', icon: 'users', desc: '学生、学号、岗位、聘期、周工时、国际生、合同状态（按月份筛选聘期覆盖该月的合同）' },
+  { type: 'timesheets', title: '工时汇总', icon: 'clock', desc: '学生 × 月份的已审核 / 待审核 / 驳回工时' },
+  { type: 'payrolls', title: '薪酬发放', icon: 'wallet', desc: '月份、学生、岗位、经费来源、金额、状态、凭证号' },
+  { type: 'budgets', title: '经费执行', icon: 'chart', desc: '总额、已发、冻结、可用、执行率' }
+]
+
+const exportMonth = ref('')
+const exportDept = ref('')
+const exporting = ref('')
+
+// 院系管理员只能导出本院系，不显示院系筛选
+const canPickDept = computed(() => user.value?.role !== 'DEPT_ADMIN')
+
+// 可选月份：当前月份 + 工时、薪酬里出现过的月份（倒序）
+const monthOptions = computed(() => {
+  const set = new Set()
+  if (store.db.meta?.currentMonth) set.add(store.db.meta.currentMonth)
+  ;(store.db.payrolls || []).forEach((p) => p.month && set.add(p.month))
+  ;(store.db.timesheets || []).forEach((t) => t.month && set.add(t.month))
+  return [...set].sort().reverse()
+})
+
+async function exportReport(type, format) {
+  if (exporting.value) return
+  exporting.value = `${type}.${format}`
+  try {
+    const res = await api.exportReport({
+      type,
+      format,
+      month: exportMonth.value || undefined,
+      deptId: canPickDept.value ? exportDept.value || undefined : undefined
+    })
+    store.notify(res.message || (res.code === 200 ? '导出成功' : '导出失败'), res.code === 200 ? 'success' : 'error')
+  } finally {
+    exporting.value = ''
+  }
+}
 
 const totalQuota = computed(() => visibleJobs.value.reduce((s, j) => s + Number(j.quota || 0), 0))
 
@@ -220,6 +310,22 @@ const deptRows = computed(() => {
   height: 10px;
   border-radius: 2px;
   flex-shrink: 0;
+}
+
+.export-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.export-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  flex-wrap: wrap;
 }
 
 .table-card { overflow: hidden; }

@@ -2,7 +2,7 @@
 
 三助（TA/RA/GA）岗位一体化管理平台的 Java 后端。规格见 `docs/后端设计.md`。
 
-技术栈：Java 17（`maven.compiler.release=17`，JDK 17/21/25 均可编译）、Spring Boot 4.1.2、MyBatis-Plus 3.5.18（boot4 starter）、MySQL 5.7+、Spring Security + JJWT 0.13.0、Lombok。
+技术栈：Java 17（`maven.compiler.release=17`，JDK 17/21/25 均可编译）、Spring Boot 4.1.2、MyBatis-Plus 3.5.18（boot4 starter）、MySQL 5.7+、Spring Security + JJWT 0.13.0、Lombok、Apache POI 5.5.1（报表导出）。
 
 ## 1. 建库
 
@@ -69,6 +69,8 @@ mvn test
 | `BudgetIntegrationTest` | 建岗超预算/超名额拦截且冻结额不变、驳回释放预留、核算超预算拦截、发放 used/frozen 变化、考核改系数超预算保留原金额、配置校验 | 是 |
 | `ConcurrentHireIntegrationTest` | 两个线程各自独立事务同时录用同一学生到两个岗位，只有一个成功（重复 3 次） | 是 |
 | `WritePermissionIntegrationTest` | 每个写接口的错角色 403 / 越权 404 / 参数 400，快照 `hoursSummary` | 是 |
+| `ReportExportIntegrationTest` | P1 报表导出：5 种报表 × xlsx/csv（POI 读回校验表头和行数）、csv 带 BOM、公式注入转义、导师/院系管理员数据范围、学生 403、导出写审计日志 | 是 |
+| `AuditChainIntegrationTest` | P1 审计防篡改：种子日志补算、改 opinion / 删日志 / 改 prev_hash 能被校验报出、回滚不留空洞、20 线程并发追加链不分叉、老库自动补列、非校级管理员 403 | 是 |
 
 只跑不依赖数据库的测试：`mvn test -Dtest='TimeServiceTest,UnitChecksTest,RuleEngineTest*'`。
 
@@ -143,6 +145,20 @@ mvn test
 
 **快照补充**：`users` 中每个学生带 `hoursSummary: { allocated, max }`，allocated 按该生全校全部生效和待签合同汇总，
 只给合计、不给合同明细。
+
+## 6.2 报表与审计（P1 第二批）
+
+| 接口 | 权限 | 说明 |
+|---|---|---|
+| `GET /api/reports/{type}/export?format=xlsx\|csv&month=&deptId=` | MENTOR、DEPT_ADMIN、INTL_OFFICER、SCHOOL_ADMIN（学生 403） | type：`jobs` 岗位统计 / `hires` 聘用名单 / `timesheets` 工时汇总 / `payrolls` 薪酬发放 / `budgets` 经费执行。内容用 DataScope 同一套 SQL 条件过滤，与快照范围一致；`deptId` 只能在范围内再收窄。`month` 筛选工时、薪酬的月份，聘用名单取聘期覆盖该月的合同，岗位和经费不按月筛选。文件名如 `聘用名单_2026-11.xlsx`（`filename*` 编码中文，未传 month 时用当前月份）。每次导出写一条 `target_type=REPORT` 的审计日志 |
+| `GET /api/audit/verify` | SCHOOL_ADMIN | 从头重算哈希链，返回 `{ ok, checked, brokenAt: { id, seq, reason, detail } }`，reason 为「内容被改 / 链断开 / 被删除导致序号不连续」 |
+
+- **xlsx**：Apache POI `poi-ooxml` 5.5.1（2025-11 发布的 5.x 维护版，与 Boot 4.1.2 无冲突；未选 2026-10 刚发布的 6.0.0 大版本）。表头加粗、冻结首行、开启筛选；列宽按内容估算（中文按 2 个字符宽），没有用 `autoSizeColumn`，因为它依赖 AWT 字体，对中文估算不准。
+- **csv**：UTF-8 带 BOM、CRLF 换行。两种格式都对以 `= + - @`、制表符、回车开头的文本单元格加单引号防公式注入（数值单元格不处理）。
+- **哈希链**：`audit_log` 新增 `seq`、`prev_hash`、`hash`（seq 唯一索引），单行表 `audit_chain_head` 记录链尾。`AuditService.log` 统一交给 `AuditChainService.append`：在业务事务内时日志先暂存，到**提交前（beforeCommit）**才 `SELECT … FOR UPDATE` 锁链头、分配序号、计算哈希并插入。这样链头锁总是事务里最后拿的锁，不会和业务的锁顺序交叉造成死锁；业务回滚时日志一起丢弃，序号不留空洞。`seq` 不用 AUTO_INCREMENT，同样是为了回滚不产生空洞。
+- **初始化**：重建或启动时把 `seq` 为空的日志（种子数据）按 `log_time, id` 顺序补算接到链尾；P0 时建的老库缺列时会自动 `ALTER TABLE` 补列并建链头表（`app.db.init=never` 时也会做这一步，否则写日志会失败）。
+- 时间戳截断到秒再参与哈希，与 DATETIME 精度一致。
+- 局限：哈希链能**发现**篡改，但不能**阻止**拥有数据库权限的人把整条链重算；要防住这一点需要把链头哈希定期存证到库外。
 
 ## 7. 种子数据
 

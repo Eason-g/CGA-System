@@ -7,6 +7,7 @@
 
 SET NAMES utf8mb4;
 
+DROP TABLE IF EXISTS audit_chain_head;
 DROP TABLE IF EXISTS audit_log;
 DROP TABLE IF EXISTS notifications;
 DROP TABLE IF EXISTS payrolls;
@@ -260,7 +261,22 @@ CREATE TABLE audit_log (
   before_value   VARCHAR(255)  NULL,
   after_value    VARCHAR(255)  NULL,
   log_time       DATETIME      NULL COMMENT '前端字段 timestamp',
+  seq            BIGINT        NULL COMMENT '哈希链序号（从 1 连续递增，由链头加锁分配；种子日志在初始化时补算）',
+  prev_hash      CHAR(64)      NULL COMMENT '上一条日志的 hash，首条为 64 个 0',
+  hash           CHAR(64)      NULL COMMENT 'SHA-256(prev_hash|seq|内容字段|timestamp)',
   PRIMARY KEY (id),
+  UNIQUE KEY uk_audit_seq (seq),
   KEY idx_audit_target (target_type, target_id),
   KEY idx_audit_operator (operator_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审计日志';
+
+-- 审计哈希链链头（单行表）：追加日志前 SELECT ... FOR UPDATE 锁住它，保证并发写入时链不分叉
+CREATE TABLE audit_chain_head (
+  id         TINYINT   NOT NULL,
+  last_seq   BIGINT    NOT NULL DEFAULT 0 COMMENT '最后一条日志的序号',
+  last_hash  CHAR(64)  NOT NULL COMMENT '最后一条日志的 hash',
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审计哈希链链头';
+
+INSERT INTO audit_chain_head (id, last_seq, last_hash)
+VALUES (1, 0, '0000000000000000000000000000000000000000000000000000000000000000');
