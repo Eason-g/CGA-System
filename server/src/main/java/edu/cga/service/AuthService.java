@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 public class AuthService {
 
     public static final String LOGIN_FAILED = "账号或密码错误";
+    public static final String LOGIN_FAILED_EN = "Incorrect account or password";
 
     /** 账号不存在时也做一次 BCrypt 比对，避免通过响应时间判断账号是否存在 */
     private final String dummyHash;
@@ -64,7 +65,7 @@ public class AuthService {
             return new LoginResult(jwtService.issue(user), user);
         }
         loginGuard.recordFailure(lockKey);
-        throw new BizException(401, LOGIN_FAILED);
+        throw new BizException(401, LOGIN_FAILED, LOGIN_FAILED_EN, null);
     }
 
     /**
@@ -74,7 +75,8 @@ public class AuthService {
     public LoginResult loginBySso(String uid) {
         User user = resolveSsoUser(normalizeSsoUid(uid));
         if (user == null) {
-            throw BizException.forbidden("统一认证账号未在本系统开通");
+            throw BizException.forbidden("统一认证账号未在本系统开通",
+                    "This unified authentication account has not been registered in this system");
         }
         String lockKey = userLockKey(user);
         loginGuard.ensureNotLocked(lockKey);

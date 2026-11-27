@@ -111,6 +111,8 @@ public class LoginGuard {
         long seconds = Math.max(1, (remainingMs + 999) / 1000);
         long minutes = (seconds + 59) / 60;
         return new BizException(429, "登录失败次数过多，账号已临时锁定，请 " + minutes + " 分钟后再试",
+                "Too many failed login attempts; the account is temporarily locked. Please try again in " + minutes
+                        + " minute(s)",
                 Map.of("retryAfterSeconds", seconds));
     }
 
@@ -143,7 +145,8 @@ public class LoginGuard {
     public void checkIp(String ip) {
         long retry = acquireIp(ip);
         if (retry > 0) {
-            throw new BizException(429, "登录请求过于频繁，请稍后再试", Map.of("retryAfterSeconds", retry));
+            throw new BizException(429, "登录请求过于频繁，请稍后再试", "Too many login requests; please try again later",
+                    Map.of("retryAfterSeconds", retry));
         }
     }
 

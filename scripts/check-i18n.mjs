@@ -54,7 +54,9 @@ function walk(dir, files = []) {
 
 const skipDirs = [path.join(root, "src", "i18n"), path.join(root, "src", "mock")]
 // mock 后端（api.js 的 mockApi 部分）的提示保持中文：mock 只用于没装后端时的离线演示，见 docs/双语设计.md
-const skipFiles = [path.join(root, "src", "services", "api.js")]
+// ruleEngine.js 的校验文案按设计同时保留中文与英文（labelEn/detailEn/messageEn），中英一致由
+// scripts/gen-rule-en-parity.mjs 与后端 RuleEngineEnParityTest 逐字比对保证，不计入残留
+const skipFiles = [path.join(root, "src", "services", "api.js"), path.join(root, "src", "services", "ruleEngine.js")]
 const files = walk(path.join(root, "src")).filter((f) => !skipDirs.some((d) => f.startsWith(d)) && !skipFiles.includes(f))
 const report = []
 for (const file of files) {

@@ -77,7 +77,8 @@ public class PayrollService {
     }
 
     /** 被预算拦截的一笔核算 */
-    public record BlockedPayroll(String contractId, String studentId, BigDecimal amount, String reason) {
+    public record BlockedPayroll(String contractId, String studentId, BigDecimal amount, String reason,
+                                 String reasonEn) {
     }
 
     /** 核算结果 { count, blocked }；month 只用于拼接提示文案，不输出到 JSON */
@@ -143,7 +144,7 @@ public class PayrollService {
             RuleEngine.PayrollBudgetCheck check = RuleEngine.checkPayrollBudget(amount, job.getReservedAmount(),
                     committedOthers, budget, excessOthers);
             if (!check.ok()) {
-                blocked.add(new BlockedPayroll(con.getId(), con.getStudentId(), amount, check.reason()));
+                blocked.add(new BlockedPayroll(con.getId(), con.getStudentId(), amount, check.reason(), check.reasonEn()));
                 continue;
             }
 
@@ -238,7 +239,8 @@ public class PayrollService {
         BigDecimal used = Num.orZero(budget.getUsedAmount());
         // 规格要求：发放时再校验一次 amount ≤ total − used
         if (amount.compareTo(Num.orZero(budget.getTotalAmount()).subtract(used)) > 0) {
-            throw BizException.badRequest("经费池「" + budget.getName() + "」剩余总额不足，拦截打款");
+            throw BizException.badRequest("经费池「" + budget.getName() + "」剩余总额不足，拦截打款",
+                    "Budget pool \"" + budget.getName() + "\" has insufficient remaining funds; payout blocked");
         }
         Job job = jobMapper.selectById(pay.getJobId());
         BigDecimal reserved = job != null ? job.getReservedAmount() : BigDecimal.ZERO;
@@ -248,7 +250,9 @@ public class PayrollService {
         // 同经费池其他待发放薪酬已承诺的超额也要让出来，否则先发的会挤占后发的
         BigDecimal excessOthers = payrollMapper.sumUnpaidExcessByBudget(budget.getId(), pay.getId());
         if (amount.subtract(release).compareTo(RuleEngine.getBudgetAvailable(budget).subtract(excessOthers)) > 0) {
-            throw BizException.badRequest("经费池「" + budget.getName() + "」可用额不足（超出岗位预留部分无可用经费），拦截打款");
+            throw BizException.badRequest("经费池「" + budget.getName() + "」可用额不足（超出岗位预留部分无可用经费），拦截打款",
+                    "Budget pool \"" + budget.getName() + "\" has insufficient available funds (no funds available for the"
+                            + " amount beyond the position reserve); payout blocked");
         }
         return release;
     }

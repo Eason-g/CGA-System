@@ -74,6 +74,8 @@ mvn test
 | `LoginProtectionIntegrationTest` | P2 D.2：连续失败 5 次锁定、锁定期正确密码 429、成功清零、换标识试也算同一账号、不存在账号同样锁定、IP 限流、安全响应头 | 是 |
 | `FieldCryptoTest`、`LoginGuardTest` | 加解密、随机 IV、篡改检测、HKDF 测试向量、密钥非法时上下文启动失败；锁定到期、失败窗口、IP 滑动窗口、并发计数 | 否 |
 | `AuditChainIntegrationTest` | P1 审计防篡改：种子日志补算、改 opinion / 删日志 / 改 prev_hash 能被校验报出、回滚不留空洞、20 线程并发追加链不分叉、老库自动补列、非校级管理员 403 | 是 |
+| `BilingualMessageIntegrationTest` | 双语：`Accept-Language: en-US` 时申请拦截、特批不可发起、录用超限、工时超限、建岗超预算、登录失败带 `messageEn`；推荐条目带 `reasonsEn`、`blockersEn`；不带头/zh-CN 时无 `messageEn`、`message` 不变；快照院系带 `nameEn`；老库自动补院系英文名列 | 是 |
+| `RuleEngineEnParityTest` | Java 与 JS 规则引擎中英文案逐字一致：期望值 `src/test/resources/rule-en-parity.json` 由 `node scripts/gen-rule-en-parity.mjs` 调用 `src/services/ruleEngine.js` 生成（`--check` 只核对） | 否 |
 
 只跑不依赖数据库的测试：`mvn test -Dtest='TimeServiceTest,UnitChecksTest,RuleEngineTest*'`。
 

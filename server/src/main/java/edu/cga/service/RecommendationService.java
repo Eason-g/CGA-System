@@ -92,15 +92,22 @@ public class RecommendationService {
         this.time = time;
     }
 
-    /** 单项因子：value 为 0–1 的取值，points 为它对总分的贡献（满分 100 中的分数） */
-    public record Factor(String key, String label, Number weight, double value, double points, String detail) {
+    /** 因子英文名（双语界面用） */
+    public static final Map<String, String> WEIGHT_LABELS_EN = Map.of(
+            "skill", "Skill match", "hours", "Remaining weekly hours", "language", "Language requirement",
+            "dept", "Same department", "deadline", "Deadline proximity");
+
+    /** 单项因子：value 为 0–1 的取值，points 为它对总分的贡献（满分 100 中的分数）；labelEn、detailEn 为英文 */
+    public record Factor(String key, String label, Number weight, double value, double points, String detail,
+                         String labelEn, String detailEn) {
     }
 
     /** 一个岗位的推荐结果 */
     public record Item(String jobId, String title, String type, String deptId, BigDecimal hourlyRate,
                        Integer weeklyHours, LocalDate deadline, int score, boolean applicable,
                        boolean needsSpecialApproval, List<String> reasons, List<String> blockers,
-                       List<String> matchedSkills, List<Factor> factors) {
+                       List<String> matchedSkills, List<Factor> factors,
+                       List<String> reasonsEn, List<String> blockersEn) {
     }
 
     /** 学生本人的推荐列表 */
@@ -150,13 +157,20 @@ public class RecommendationService {
                       LocalDate today) {
         List<String> reasons = new ArrayList<>();
         List<String> blockers = new ArrayList<>();
+        // reasonsEn、blockersEn 与 reasons、blockers 一一对应
+        List<String> reasonsEn = new ArrayList<>();
+        List<String> blockersEn = new ArrayList<>();
 
         // 1. 合规：硬性条件、名额、截止日
         List<RuleEngine.Check> hardFailures = check.checks().stream()
                 .filter(c -> !c.passed() && !c.overridable()).toList();
-        hardFailures.forEach(c -> blockers.add(c.label() + "未通过：" + c.detail()));
+        hardFailures.forEach(c -> {
+            blockers.add(c.label() + "未通过：" + c.detail());
+            blockersEn.add(c.labelEn() + " not passed: " + c.detailEn());
+        });
         if (check.quotaFull()) {
             blockers.add("该岗位名额已招满");
+            blockersEn.add("This position's quota is full");
         }
         Long daysLeft = job.getDeadline() == null ? null : ChronoUnit.DAYS.between(today, job.getDeadline());
         boolean applicable = blockers.isEmpty();
@@ -171,61 +185,84 @@ public class RecommendationService {
         String skillDetail = jobSkills.isEmpty() ? "岗位未列技能要求"
                 : "技能匹配 " + matched.size() + "/" + jobSkills.size()
                 + (matched.isEmpty() ? "" : "：" + String.join("、", matched));
+        String skillDetailEn = jobSkills.isEmpty() ? "No skill requirements listed for this position"
+                : "Skill match " + matched.size() + "/" + jobSkills.size()
+                + (matched.isEmpty() ? "" : ": " + String.join(", ", matched));
 
         // 3. 剩余工时（与申请校验的 hours 项同口径）
         RuleEngine.Check hoursCheck = findCheck(check, "hours");
         double hoursValue;
         String hoursDetail;
+        String hoursDetailEn;
         if (hoursCheck != null && !hoursCheck.passed()) {
             hoursValue = 0;
             hoursDetail = "录用后周工时 " + check.projectedHours() + "h，超出上限 " + check.maxHours() + "h";
+            hoursDetailEn = "Weekly hours after hiring " + check.projectedHours() + "h, exceeding the limit of "
+                    + check.maxHours() + "h";
             if (hoursCheck.overridable()) {
                 blockers.add("跨岗周工时将超上限（" + check.projectedHours() + "h > " + check.maxHours() + "h），需国际生办特批");
+                blockersEn.add("Cross-job weekly hours would exceed the limit (" + check.projectedHours() + "h > "
+                        + check.maxHours() + "h); International Office special approval required");
             }
         } else if (check.maxHours() > 0 && check.projectedHours() > check.maxHours() * HOURS_CAUTION_RATIO) {
             hoursValue = 0.6;
             hoursDetail = "录用后周工时 " + check.projectedHours() + "/" + check.maxHours() + "h，接近上限";
+            hoursDetailEn = "Weekly hours after hiring " + check.projectedHours() + "/" + check.maxHours()
+                    + "h, close to the limit";
         } else {
             hoursValue = 1;
             hoursDetail = "录用后周工时 " + check.projectedHours() + "/" + check.maxHours() + "h，余量充足";
+            hoursDetailEn = "Weekly hours after hiring " + check.projectedHours() + "/" + check.maxHours()
+                    + "h, ample capacity";
         }
 
         // 4. 语言要求
         RuleEngine.Check langCheck = findCheck(check, "lang");
         double langValue;
         String langDetail;
+        String langDetailEn;
         if (langCheck == null) {
             langValue = 1;
             langDetail = "岗位无语言成绩要求";
+            langDetailEn = "No language score requirement";
         } else if (langCheck.passed()) {
             langValue = 1;
             langDetail = "语言能力满足岗位要求";
+            langDetailEn = "Language proficiency meets the position requirement";
         } else {
             langValue = 0;
             langDetail = "语言能力未达岗位要求";
+            langDetailEn = "Language proficiency below the position requirement";
             blockers.add("语言要求未满足，需特批：" + langCheck.detail());
+            blockersEn.add("Language requirement not met; special approval required: " + langCheck.detailEn());
         }
 
         // 5. 同院系
         boolean sameDept = Objects.equals(student.getDeptId(), job.getDeptId());
         double deptValue = sameDept ? 1 : 0;
         String deptDetail = sameDept ? "本院系岗位" : "跨院系岗位";
+        String deptDetailEn = sameDept ? "Position in your department" : "Position in another department";
 
         // 6. 截止临近
         double deadlineValue;
         String deadlineDetail;
+        String deadlineDetailEn;
         if (daysLeft == null) {
             deadlineValue = 0.5;
             deadlineDetail = "未设置截止日期";
+            deadlineDetailEn = "No application deadline set";
         } else if (daysLeft < 0) {
             deadlineValue = 0;
             deadlineDetail = "已截止";
+            deadlineDetailEn = "Applications closed";
         } else if (daysLeft <= DEADLINE_URGENT_DAYS) {
             deadlineValue = 1;
             deadlineDetail = daysLeft == 0 ? "今天截止" : daysLeft + " 天后截止";
+            deadlineDetailEn = daysLeft == 0 ? "Closes today" : "Closes in " + daysLeft + " day(s)";
         } else {
             deadlineValue = Math.max(0, (double) (DEADLINE_FAR_DAYS - daysLeft) / (DEADLINE_FAR_DAYS - DEADLINE_URGENT_DAYS));
             deadlineDetail = daysLeft + " 天后截止";
+            deadlineDetailEn = "Closes in " + daysLeft + " day(s)";
         }
 
         List<Factor> factors = new ArrayList<>();
@@ -233,6 +270,8 @@ public class RecommendationService {
                 "dept", deptValue, "deadline", deadlineValue);
         Map<String, String> details = Map.of("skill", skillDetail, "hours", hoursDetail, "language", langDetail,
                 "dept", deptDetail, "deadline", deadlineDetail);
+        Map<String, String> detailsEn = Map.of("skill", skillDetailEn, "hours", hoursDetailEn,
+                "language", langDetailEn, "dept", deptDetailEn, "deadline", deadlineDetailEn);
         double weightSum = weights.values().stream().mapToDouble(Number::doubleValue).sum();
         double total = 0;
         for (Map.Entry<String, Double> e : values.entrySet()) {
@@ -240,7 +279,8 @@ public class RecommendationService {
             double points = weightSum <= 0 ? 0 : w.doubleValue() * e.getValue() / weightSum * 100;
             total += points;
             factors.add(new Factor(e.getKey(), WEIGHT_LABELS.get(e.getKey()), w, round(e.getValue(), 2),
-                    round(points, 1), details.get(e.getKey())));
+                    round(points, 1), details.get(e.getKey()), WEIGHT_LABELS_EN.get(e.getKey()),
+                    detailsEn.get(e.getKey())));
         }
         int score = applicable ? (int) Math.round(total) : 0;
 
@@ -249,15 +289,19 @@ public class RecommendationService {
             factors.stream()
                     .filter(f -> f.points() > 0 && f.value() >= 0.5)
                     .sorted(Comparator.comparingDouble(Factor::points).reversed())
-                    .forEach(f -> reasons.add(f.detail()));
+                    .forEach(f -> {
+                        reasons.add(f.detail());
+                        reasonsEn.add(f.detailEn());
+                    });
             if (reasons.isEmpty()) {
                 reasons.add("满足申请条件");
+                reasonsEn.add("Meets the application requirements");
             }
         }
         boolean needsSpecial = applicable && !blockers.isEmpty();
         return new Item(job.getId(), job.getTitle(), job.getType(), job.getDeptId(), job.getHourlyRate(),
                 job.getWeeklyHours(), job.getDeadline(), score, applicable, needsSpecial, reasons, blockers,
-                matched, factors);
+                matched, factors, reasonsEn, blockersEn);
     }
 
     // ================================================================== 权重配置

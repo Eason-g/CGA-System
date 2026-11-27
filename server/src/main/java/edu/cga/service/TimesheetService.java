@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import edu.cga.common.BiText;
 import edu.cga.common.BizException;
 import edu.cga.common.IdGenerator;
 import edu.cga.common.Num;
@@ -71,11 +72,13 @@ public class TimesheetService {
             throw BizException.notFound("有效聘用协议不存在");
         }
         if (!"ACTIVE".equals(con.getStatus())) {
-            throw BizException.badRequest("请先签署电子聘用协议后再填报工时");
+            throw BizException.badRequest("请先签署电子聘用协议后再填报工时",
+                    "Please sign the electronic employment contract before logging hours");
         }
         int currentWeek = time.currentWeekNo();
         if (weekNo > currentWeek) {
-            throw BizException.badRequest("填报周次不能晚于当前教学周（第 " + currentWeek + " 周）");
+            throw BizException.badRequest("填报周次不能晚于当前教学周（第 " + currentWeek + " 周）",
+                    "The reporting week cannot be later than the current teaching week (week " + currentWeek + ")");
         }
 
         LocalDate weekStart = time.weekStart(weekNo);
@@ -89,9 +92,10 @@ public class TimesheetService {
         LocalDate workStart = con.getStartDate() != null && con.getStartDate().isAfter(weekStart)
                 ? con.getStartDate() : weekStart;
         if (workStart.isAfter(workThrough)) {
-            throw BizException.badRequest("填报周次不在合同已履行的聘期内");
+            throw BizException.badRequest("填报周次不在合同已履行的聘期内",
+                    "The reporting week is outside the period already served under the contract");
         }
-        String eligibility = RuleEngine.checkWorkingEligibility(student, workThrough);
+        BiText eligibility = RuleEngine.workingEligibilityText(student, workThrough);
         if (eligibility != null) {
             throw BizException.forbidden(eligibility);
         }
@@ -104,7 +108,7 @@ public class TimesheetService {
         RuleEngine.TimesheetCheck check = RuleEngine.validateTimesheetSubmission(student, weekNo, hours, weekSheets,
                 configService.globalRulesForWrite());
         if (!check.ok()) {
-            throw new BizException(403, check.message(), check);
+            throw new BizException(403, check.message(), check.messageEn(), check);
         }
 
         Timesheet ts = new Timesheet();

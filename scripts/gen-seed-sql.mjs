@@ -92,7 +92,7 @@ SET NAMES utf8mb4;
 `)
 
 parts.push(insert('departments', db.departments, {
-  columns: ['id', 'name', 'short_name', 'quota_limit']
+  columns: ['id', 'name', 'short_name', 'name_en', 'short_name_en', 'quota_limit']
 }))
 
 parts.push(insert('users', db.users, {

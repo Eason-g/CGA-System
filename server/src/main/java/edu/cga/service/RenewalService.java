@@ -61,7 +61,7 @@ public class RenewalService {
     /** 续聘复核结果；被拦截时作为 403 的 data 返回，前端可展示 errors */
     public record RenewalCheck(boolean ok, List<String> errors, String evaluationId, String grade,
                                LocalDate newStartDate, LocalDate newEndDate, int currentHours, int jobHours,
-                               int projectedHours, int maxHours) {
+                               int projectedHours, int maxHours, List<String> errorsEn) {
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -84,7 +84,8 @@ public class RenewalService {
 
         // 状态类条件：400
         if (!"ACTIVE".equals(con.getStatus())) {
-            throw BizException.badRequest("只能对生效中的聘用协议发起续聘");
+            throw BizException.badRequest("只能对生效中的聘用协议发起续聘",
+                    "Renewal can only be initiated for an active employment contract");
         }
         if (!"PUBLISHED".equals(job.getStatus())) {
             throw BizException.badRequest("岗位「" + job.getTitle() + "」已不在发布状态，不能续聘");
@@ -104,27 +105,39 @@ public class RenewalService {
 
         // 合规类条件：403，一次列出全部原因
         List<String> errors = new ArrayList<>();
+        List<String> errorsEn = new ArrayList<>();
         Evaluation latest = evaluationMapper.selectOne(new QueryWrapper<Evaluation>().eq("contract_id", con.getId())
                 .orderByDesc("evaluated_at").orderByDesc("id").last("LIMIT 1"));
         if (latest == null) {
             errors.add("该聘用协议还没有周期考核记录，不能续聘");
+            errorsEn.add("This contract has no periodic evaluation record yet; cannot renew");
         } else if (!Boolean.TRUE.equals(latest.getRenewalEligible())) {
             errors.add("最近一次考核（" + latest.getPeriod() + "）为「" + latest.getGrade() + "」（"
                     + Num.plain(latest.getTotalScore()) + " 分），不具备续聘资格");
+            errorsEn.add("The latest evaluation (" + latest.getPeriod() + ") was \"" + gradeEn(latest.getGrade()) + "\" ("
+                    + Num.plain(latest.getTotalScore()) + " points); not eligible for renewal");
         }
         if (RuleEngine.checkEnrollment(student) != null) {
             errors.add("仅在读学生可续聘，当前学籍状态为「" + RuleEngine.enrollmentStatusOf(student) + "」");
+            errorsEn.add("Only enrolled students can be renewed; current enrollment status is \""
+                    + RuleEngine.enrollmentStatusEn(RuleEngine.enrollmentStatusOf(student)) + "\"");
         }
         if (Boolean.TRUE.equals(student.getIsInternational())) {
             if (!RuleEngine.hasValidVisa(student, null)) {
                 errors.add("该国际生无有效学习类居留许可，不能续聘");
+                errorsEn.add("This international student has no valid study residence permit; cannot renew");
             } else if (student.getVisaExpiry() == null || student.getVisaExpiry().isBefore(newEnd)) {
                 String expiry = student.getVisaExpiry() == null ? "未登记" : student.getVisaExpiry().toString();
                 errors.add("该国际生签证（居留许可）有效期至 " + expiry + "，未覆盖新聘期（" + newStart + " 至 " + newEnd
                         + "），不能续聘");
+                errorsEn.add("This international student's visa (residence permit) is valid until "
+                        + (student.getVisaExpiry() == null ? "not registered" : student.getVisaExpiry().toString())
+                        + ", which does not cover the new employment period (" + newStart + " to " + newEnd
+                        + "); cannot renew");
             }
             if (!RuleEngine.allowsInternationalEmployment(job)) {
                 errors.add("该岗位未面向国际学生开放，不能续聘国际生");
+                errorsEn.add("This position is not open to international students; international students cannot be renewed");
             }
         }
         int currentHours = RuleEngine.getStudentAllocatedWeeklyHours(allocating, student.getId(), newStart, newEnd);
@@ -134,12 +147,15 @@ public class RenewalService {
         if (projectedHours > maxHours) {
             errors.add("续聘后新聘期内跨岗累计周工时将达 " + projectedHours + "h（同期已占 " + currentHours + "h + 本岗 "
                     + jobHours + "h），超出上限 " + maxHours + "h/周，系统已拦截续聘");
+            errorsEn.add("After renewal, cross-job weekly hours in the new employment period would reach " + projectedHours
+                    + "h (concurrently allocated " + currentHours + "h + this position " + jobHours
+                    + "h), exceeding the limit of " + maxHours + "h/week; renewal has been blocked");
         }
         RenewalCheck check = new RenewalCheck(errors.isEmpty(), errors, latest == null ? null : latest.getId(),
                 latest == null ? null : latest.getGrade(), newStart, newEnd, currentHours, jobHours, projectedHours,
-                maxHours);
+                maxHours, errorsEn);
         if (!errors.isEmpty()) {
-            throw new BizException(403, String.join("；", errors), check);
+            throw new BizException(403, String.join("；", errors), String.join("; ", errorsEn), check);
         }
 
         Contract renewed = new Contract();
@@ -167,4 +183,16 @@ public class RenewalService {
         return renewed;
     }
 
+    /** 考核分档的英文（优秀/合格/不合格），其他值原样返回 */
+    static String gradeEn(String grade) {
+        if (grade == null) {
+            return "";
+        }
+        return switch (grade) {
+            case "优秀" -> "Excellent";
+            case "合格" -> "Pass";
+            case "不合格" -> "Fail";
+            default -> grade;
+        };
+    }
 }

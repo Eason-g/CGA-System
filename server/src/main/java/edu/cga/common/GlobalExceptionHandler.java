@@ -2,6 +2,7 @@ package edu.cga.common;
 
 import java.util.stream.Collectors;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -27,9 +28,13 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    /** 业务异常；请求头 Accept-Language 为英文且异常带英文文案时，额外输出 messageEn（message 仍为中文） */
     @ExceptionHandler(BizException.class)
-    public ResponseEntity<ApiResponse<Object>> handleBiz(BizException e) {
-        return build(e.getCode(), e.getMessage(), e.getData());
+    public ResponseEntity<ApiResponse<Object>> handleBiz(BizException e, HttpServletRequest request) {
+        String messageEn = Lang.isEnglish(request) ? e.getMessageEn() : null;
+        HttpStatus status = HttpStatus.resolve(e.getCode());
+        return ResponseEntity.status(status != null ? status : HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.fail(e.getCode(), e.getMessage(), messageEn, e.getData()));
     }
 
     /** @RequestBody 上的 @Valid 校验失败 */
