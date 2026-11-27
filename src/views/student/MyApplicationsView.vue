@@ -1,8 +1,8 @@
 <template>
   <div class="portal-page">
     <header class="flex items-center justify-between flex-wrap gap-12 mb-16">
-      <h1 class="text-title">我的投递</h1>
-      <router-link to="/student/jobs" class="f-btn f-btn-primary f-btn-sm">浏览岗位</router-link>
+      <h1 class="text-title">{{ t('nav.applications') }}</h1>
+      <router-link to="/student/jobs" class="f-btn f-btn-primary f-btn-sm">{{ t('apps.browse') }}</router-link>
     </header>
 
     <div v-if="myApps.length" class="flex-col gap-12">
@@ -14,31 +14,31 @@
             </span>
             <h2 class="text-lg fw-600">{{ store.getJob(app.jobId)?.title }}</h2>
             <span class="f-pill" :class="`f-pill-${APP_STATUS_MAP[app.status]?.tone || 'neutral'}`">
-              {{ APP_STATUS_MAP[app.status]?.label || app.status }}
+              {{ localized(APP_STATUS_MAP[app.status], 'label') || app.status }}
             </span>
-            <span v-if="app.isSpecialApproval" class="f-pill f-pill-caution">特批留痕</span>
+            <span v-if="app.isSpecialApproval" class="f-pill f-pill-caution">{{ t('apps.specialTag') }}</span>
           </div>
 
           <div class="flex items-center gap-8">
             <button type="button" class="f-expand-trigger" @click="toggle(app.id)">
-              <span>{{ expandedIds.has(app.id) ? '收起' : '详情' }}</span>
+              <span>{{ expandedIds.has(app.id) ? t('common.collapse') : t('common.details') }}</span>
               <FluentIcon :name="expandedIds.has(app.id) ? 'chevron-up' : 'chevron-down'" :size="14" />
             </button>
             <router-link v-if="app.status === 'HIRED'" to="/student/contracts" class="f-btn f-btn-primary f-btn-sm">
-              合同管理 →
+              {{ t('apps.manageContract') }}
             </router-link>
           </div>
         </div>
 
         <div class="f-meta-line mt-8">
-          <span class="tabular-nums">投递于 {{ app.appliedAt.slice(0, 16) }}</span>
+          <span class="tabular-nums">{{ t('apps.appliedAt', { time: app.appliedAt.slice(0, 16) }) }}</span>
           <template v-if="app.interviewInfo">
             <span class="f-meta-sep">·</span>
-            <span class="text-blue fw-600">面试：{{ app.interviewInfo.time }}（{{ app.interviewInfo.location }}）</span>
+            <span class="text-blue fw-600">{{ t('apps.interview', { time: app.interviewInfo.time, place: app.interviewInfo.location }) }}</span>
           </template>
           <template v-if="app.score !== null && app.score !== undefined">
             <span class="f-meta-sep">·</span>
-            <span class="tabular-nums fw-600">评分 {{ app.score }}</span>
+            <span class="tabular-nums fw-600">{{ t('apps.score', { n: app.score }) }}</span>
           </template>
         </div>
 
@@ -47,14 +47,14 @@
           <div>
             <div v-for="c in app.complianceCheckResult?.checks || []" :key="c.key" class="flex items-center gap-6">
               <FluentIcon :name="c.passed ? 'check-circle' : 'x-circle'" :size="14" :class="c.passed ? 'text-success' : 'text-error'" />
-              <span><strong>{{ c.label }}</strong>：{{ c.detail }}</span>
+              <span><strong>{{ localized(c, 'label') }}</strong>{{ t('common.colon') }}{{ localized(c, 'detail') }}</span>
             </div>
           </div>
           <div v-if="app.isSpecialApproval" class="text-caution">
-            <strong>特批理由：</strong>{{ app.specialReason }}
+            <strong>{{ t('apps.specialReason') }}</strong>{{ app.specialReason }}
           </div>
-          <div v-if="app.mentorComment" class="text-muted">导师评语：{{ app.mentorComment }}</div>
-          <div class="text-muted">简历附件：{{ app.resumeFileName }}</div>
+          <div v-if="app.mentorComment" class="text-muted">{{ t('apps.mentorComment') }}{{ app.mentorComment }}</div>
+          <div class="text-muted">{{ t('apps.resume') }}{{ app.resumeFileName }}</div>
         </div>
       </article>
     </div>
@@ -62,8 +62,8 @@
     <div v-else class="acrylic-card">
       <EmptyState
         icon="file"
-        description="暂无投递记录"
-        action-text="前往岗位大厅"
+        :description="t('apps.empty')"
+        :action-text="t('apps.emptyAction')"
         @action="router.push('/student/jobs')"
       />
     </div>
@@ -75,10 +75,12 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/appStore'
 import { APP_STATUS_MAP } from '@/services/ruleEngine'
+import { useI18n } from '@/i18n'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
 
 const store = useAppStore()
+const { t, localized } = useI18n()
 const router = useRouter()
 const expandedIds = ref(new Set())
 
@@ -95,4 +97,9 @@ function toggle(id) {
 .portal-page { max-width: 1200px; margin: 24px auto 0; padding: 0 24px; }
 .min-w-0 { min-width: 0; }
 @media (max-width: 960px) { .portal-page { padding: 0 16px; } }
+@media (max-width: 768px) {
+  .portal-page { margin-top: 16px; }
+  .acrylic-card > .flex > .flex.items-center.gap-8:last-child { width: 100%; justify-content: space-between; }
+  .f-expand-panel { font-size: 14px; }
+}
 </style>

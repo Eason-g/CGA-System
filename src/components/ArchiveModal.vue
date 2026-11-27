@@ -1,17 +1,17 @@
 <template>
   <div class="f-overlay" @click.self="$emit('close')">
-    <div class="f-modal xl archive-printable" role="dialog" aria-modal="true" aria-label="三助聘用全流程电子归档视图">
+    <div class="f-modal xl archive-printable" role="dialog" aria-modal="true" :aria-label="t('archive.dialogLabel')">
       <header class="f-modal-header no-print">
         <div>
-          <div class="text-xs text-muted">全生命周期电子归档 · 可直接打印或另存为 PDF</div>
-          <h2 class="text-sub mt-4">聘用电子档案（{{ contractId }}）</h2>
+          <div class="text-xs text-muted">{{ t('archive.headerHint') }}</div>
+          <h2 class="text-sub mt-4">{{ t('archive.headerTitle', { id: contractId }) }}</h2>
         </div>
         <div class="flex items-center gap-8">
           <button type="button" class="f-btn f-btn-primary" @click="printArchive">
             <FluentIcon name="print" :size="16" />
-            <span>打印 / 导出 PDF</span>
+            <span>{{ t('archive.print') }}</span>
           </button>
-          <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="$emit('close')">
+          <button type="button" class="f-btn f-btn-subtle f-btn-sm" :aria-label="t('common.close')" @click="$emit('close')">
             <FluentIcon name="close" :size="18" />
           </button>
         </div>
@@ -20,37 +20,37 @@
       <div v-if="contract" class="f-modal-body archive-body">
         <div class="archive-banner">
           <div>
-            <div class="text-xs text-muted">{{ store.currentUniversity.name }} · 高校“三助”（TA/RA/GA）一体化管理平台</div>
-            <h1 class="archive-h1">三助岗位聘用全流程电子归档凭证</h1>
+            <div class="text-xs text-muted">{{ store.schoolName }} · {{ t('archive.platform') }}</div>
+            <h1 class="archive-h1">{{ t('archive.docTitle') }}</h1>
           </div>
           <div class="text-right text-xs text-muted tabular-nums">
-            <div>归档编号：ARC-{{ contract.id }}</div>
-            <div>生成日期：2026-11-20</div>
+            <div>{{ t('archive.archiveNo', { id: contract.id }) }}</div>
+            <div>{{ t('archive.generatedOn', { date: todayStr }) }}</div>
           </div>
         </div>
 
         <!-- 1. Basic & Contract -->
         <section class="archive-sec">
-          <h3 class="archive-sec-title">一、聘用基本信息与电子协议</h3>
+          <h3 class="archive-sec-title">{{ t('archive.sec1') }}</h3>
           <div class="archive-kv">
-            <div><span class="k">受聘学生：</span><strong>{{ student?.name }}</strong>（{{ student?.studentNo }} · {{ student?.degree }}）</div>
-            <div><span class="k">国际生属性：</span><strong>{{ student?.isInternational ? `国际生（${student.visaType}）` : '中国籍学生' }}</strong></div>
-            <div><span class="k">设岗院系：</span><strong>{{ store.getDeptName(contract.deptId) }}</strong></div>
-            <div><span class="k">岗位名称：</span><strong>[{{ job?.type }}] {{ job?.title }}</strong></div>
-            <div><span class="k">聘用周期：</span><strong class="tabular-nums">{{ contract.startDate }} ~ {{ contract.endDate }}</strong></div>
-            <div><span class="k">约定工时与酬金：</span><strong class="tabular-nums">{{ contract.weeklyHours }}h/周 · ¥{{ contract.hourlyRate }}/h</strong></div>
-            <div><span class="k">经费来源：</span><strong>{{ budget?.name }}（{{ budget?.code }}）</strong></div>
-            <div><span class="k">协议签署时间：</span><strong class="tabular-nums">{{ contract.signedAt || '待签署' }}</strong></div>
+            <div><span class="k">{{ t('archive.student') }}</span><strong>{{ student?.name }}</strong> ({{ student?.studentNo }} · {{ student?.degree }})</div>
+            <div><span class="k">{{ t('archive.intlStatus') }}</span><strong>{{ student?.isInternational ? t('archive.intlYes', { visa: student.visaType }) : t('archive.intlNo') }}</strong></div>
+            <div><span class="k">{{ t('archive.dept') }}</span><strong>{{ store.getDeptName(contract.deptId) }}</strong></div>
+            <div><span class="k">{{ t('archive.job') }}</span><strong>[{{ job?.type }}] {{ job?.title }}</strong></div>
+            <div><span class="k">{{ t('archive.period') }}</span><strong class="tabular-nums">{{ contract.startDate }} ~ {{ contract.endDate }}</strong></div>
+            <div><span class="k">{{ t('sign.hoursPay') }}</span><strong class="tabular-nums">{{ t('unit.hoursPerWeek', { n: contract.weeklyHours }) }} · ¥{{ contract.hourlyRate }}/h</strong></div>
+            <div><span class="k">{{ t('archive.fund') }}</span><strong>{{ budget?.name }} ({{ budget?.code }})</strong></div>
+            <div><span class="k">{{ t('archive.signedAt') }}</span><strong class="tabular-nums">{{ contract.signedAt || t('contractStatus.PENDING_SIGN') }}</strong></div>
           </div>
 
           <div class="signature-box mt-12">
-            <div class="text-xs text-muted">乙方电子签章与合规声明确认：</div>
+            <div class="text-xs text-muted">{{ t('archive.signature') }}</div>
             <div class="flex items-center gap-16 mt-6">
-              <img v-if="contract.signatureDataUrl" :src="contract.signatureDataUrl" alt="手写签名" class="sig-img" />
-              <div v-else class="sig-text-stamp">{{ contract.signatureText || '未签署' }}</div>
+              <img v-if="contract.signatureDataUrl" :src="contract.signatureDataUrl" :alt="t('archive.signatureAlt')" class="sig-img" />
+              <div v-else class="sig-text-stamp">{{ contract.signatureText || t('archive.unsigned') }}</div>
               <div class="text-xs text-muted">
-                <div>《工时合规红线及岗位履职承诺》：{{ contract.complianceAgreed ? '已勾选确认 ✓' : '未确认' }}</div>
-                <div v-if="student?.isInternational">《国际生合法工时合规声明》：{{ contract.complianceAgreed ? '已强制签署确认 ✓' : '待签署' }}</div>
+                <div>{{ t('archive.pledge') }}{{ contract.complianceAgreed ? t('archive.pledgeYes') : t('archive.pledgeNo') }}</div>
+                <div v-if="student?.isInternational">{{ t('archive.intlDecl') }}{{ contract.complianceAgreed ? t('archive.intlDeclYes') : t('contractStatus.PENDING_SIGN') }}</div>
               </div>
             </div>
           </div>
@@ -58,40 +58,40 @@
 
         <!-- 2. Application & Compliance -->
         <section v-if="application" class="archive-sec">
-          <h3 class="archive-sec-title">二、申请与前置合规校验记录</h3>
+          <h3 class="archive-sec-title">{{ t('archive.sec2') }}</h3>
           <div class="text-xs mb-8">
-            申请单号：<span class="fw-600">{{ application.id }}</span> · 面试得分：<span class="fw-600">{{ application.score ?? '-' }}</span> · 特批标记：<span class="fw-600">{{ application.isSpecialApproval ? '是（已留痕）' : '否' }}</span>
+            {{ t('archive.appNo') }}<span class="fw-600">{{ application.id }}</span> · {{ t('archive.interviewScore') }}<span class="fw-600">{{ application.score ?? '-' }}</span> · {{ t('archive.specialFlag') }}<span class="fw-600">{{ application.isSpecialApproval ? t('archive.specialYes') : t('archive.specialNo') }}</span>
           </div>
           <div class="archive-checks">
             <div v-for="c in application.complianceCheckResult?.checks || []" :key="c.key" class="text-xs">
-              [{{ c.passed ? '✓' : '✕' }}] <strong>{{ c.label }}</strong>：{{ c.detail }}
+              [{{ c.passed ? '✓' : '✕' }}] <strong>{{ localized(c, 'label') }}</strong>{{ t('common.colon') }}{{ localized(c, 'detail') }}
             </div>
           </div>
         </section>
 
         <!-- 3. Timesheets -->
         <section class="archive-sec">
-          <h3 class="archive-sec-title">三、在岗工时审核明细（共 {{ timesheets.length }} 条，审核通过 {{ totalApprovedHours }} 小时）</h3>
+          <h3 class="archive-sec-title">{{ t('archive.sec3', { n: timesheets.length, h: totalApprovedHours }) }}</h3>
           <table class="archive-table">
             <thead>
               <tr>
-                <th>周次</th>
-                <th>月份</th>
-                <th>工时(h)</th>
-                <th>工作日志与里程碑</th>
-                <th>状态</th>
+                <th>{{ t('contracts.tsWeek') }}</th>
+                <th>{{ t('archive.colMonth') }}</th>
+                <th>{{ t('archive.colHours') }}</th>
+                <th>{{ t('archive.colLog') }}</th>
+                <th>{{ t('common.status') }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="t in timesheets" :key="t.id">
-                <td class="tabular-nums">第 {{ t.weekNo }} 周</td>
-                <td class="tabular-nums">{{ t.month }}</td>
-                <td class="tabular-nums fw-600">{{ t.hours }}</td>
-                <td>{{ t.workLog }}</td>
-                <td>{{ t.status === 'APPROVED' ? '已通过' : t.status === 'REJECTED' ? '已驳回' : '待审核' }}</td>
+              <tr v-for="ts in timesheets" :key="ts.id">
+                <td class="tabular-nums">{{ t('unit.weekNo', { n: ts.weekNo }) }}</td>
+                <td class="tabular-nums">{{ ts.month }}</td>
+                <td class="tabular-nums fw-600">{{ ts.hours }}</td>
+                <td>{{ ts.workLog }}</td>
+                <td>{{ ts.status === 'APPROVED' ? t('tsStatus.APPROVED') : ts.status === 'REJECTED' ? t('tsStatus.REJECTED') : t('tsStatus.PENDING') }}</td>
               </tr>
               <tr v-if="!timesheets.length">
-                <td colspan="5" class="text-muted">暂无工时记录</td>
+                <td colspan="5" class="text-muted">{{ t('contracts.tsEmpty') }}</td>
               </tr>
             </tbody>
           </table>
@@ -99,52 +99,52 @@
 
         <!-- 4. Evaluations & Payrolls -->
         <section class="archive-sec">
-          <h3 class="archive-sec-title">四、周期考核评价与薪酬发放记录</h3>
+          <h3 class="archive-sec-title">{{ t('archive.sec4') }}</h3>
           <div class="archive-two-col">
             <div>
-              <div class="text-xs fw-600 mb-6">考核评价（{{ evaluations.length }}）</div>
+              <div class="text-xs fw-600 mb-6">{{ t('archive.evaluations', { n: evaluations.length }) }}</div>
               <div v-for="ev in evaluations" :key="ev.id" class="archive-mini-card">
                 <div class="flex justify-between text-xs fw-600">
                   <span>{{ ev.period }}</span>
-                  <span>{{ ev.totalScore }} 分 · {{ ev.grade }}（{{ ev.coefficient }}x）</span>
+                  <span>{{ t('archive.evalScore', { score: ev.totalScore, grade: ev.grade, k: ev.coefficient }) }}</span>
                 </div>
-                <div class="text-xs text-muted mt-4">续聘资格：{{ ev.renewalEligible ? '可续聘' : '不予续聘' }} · {{ ev.comment }}</div>
+                <div class="text-xs text-muted mt-4">{{ t('archive.renewal') }}{{ ev.renewalEligible ? t('archive.renewYes') : t('archive.renewNo') }} · {{ ev.comment }}</div>
               </div>
-              <div v-if="!evaluations.length" class="text-xs text-muted">暂无考核评价</div>
+              <div v-if="!evaluations.length" class="text-xs text-muted">{{ t('archive.noEval') }}</div>
             </div>
 
             <div>
-              <div class="text-xs fw-600 mb-6">薪酬发放（{{ payrolls.length }}）</div>
+              <div class="text-xs fw-600 mb-6">{{ t('archive.payrolls', { n: payrolls.length }) }}</div>
               <div v-for="p in payrolls" :key="p.id" class="archive-mini-card">
                 <div class="flex justify-between text-xs fw-600 tabular-nums">
-                  <span>{{ p.month }}（{{ p.totalHours }}h × ¥{{ p.hourlyRate }} × {{ p.coefficient }}x）</span>
+                  <span>{{ p.month }} ({{ p.totalHours }}h × ¥{{ p.hourlyRate }} × {{ p.coefficient }}x)</span>
                   <span class="text-blue">¥{{ p.amount.toFixed(2) }}</span>
                 </div>
                 <div class="text-xs text-muted mt-4">
-                  状态：{{ p.financeStatus === 'PAID' ? `已发放（凭证 ${p.voucherNo}）` : p.financeStatus === 'PENDING_PAY' ? '待财务打款' : '待核算' }}
+                  {{ t('archive.payStatus') }}{{ p.financeStatus === 'PAID' ? t('archive.paidWithVoucher', { no: p.voucherNo }) : localized(FINANCE_STATUS_MAP[p.financeStatus], 'label') || localized(FINANCE_STATUS_MAP.PENDING_CALC, 'label') }}
                 </div>
               </div>
-              <div v-if="!payrolls.length" class="text-xs text-muted">暂无薪酬记录</div>
+              <div v-if="!payrolls.length" class="text-xs text-muted">{{ t('archive.noPayroll') }}</div>
             </div>
           </div>
         </section>
 
         <!-- 5. Audit Chain -->
         <section class="archive-sec">
-          <h3 class="archive-sec-title">五、全流程审计留痕链（{{ relatedLogs.length }} 条）</h3>
+          <h3 class="archive-sec-title">{{ t('archive.sec5', { n: relatedLogs.length }) }}</h3>
           <table class="archive-table">
             <thead>
               <tr>
-                <th>时间</th>
-                <th>操作人 / 角色</th>
-                <th>操作节点</th>
-                <th>审批意见 / 数值变更</th>
+                <th>{{ t('archive.colTime') }}</th>
+                <th>{{ t('archive.colOperator') }}</th>
+                <th>{{ t('archive.colAction') }}</th>
+                <th>{{ t('archive.colOpinion') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="log in relatedLogs" :key="log.id">
                 <td class="tabular-nums">{{ log.timestamp }}</td>
-                <td>{{ log.operatorName }}（{{ log.operatorRole }}）</td>
+                <td>{{ log.operatorName }} ({{ log.operatorRole }})</td>
                 <td class="fw-600">{{ log.action }}</td>
                 <td>{{ log.opinion }}</td>
               </tr>
@@ -159,6 +159,8 @@
 <script setup>
 import { computed } from 'vue'
 import { useAppStore } from '@/stores/appStore'
+import { FINANCE_STATUS_MAP, getTodayStr } from '@/services/ruleEngine'
+import { useI18n } from '@/i18n'
 import FluentIcon from './FluentIcon.vue'
 
 const props = defineProps({
@@ -167,6 +169,8 @@ const props = defineProps({
 
 defineEmits(['close'])
 const store = useAppStore()
+const { t, localized } = useI18n()
+const todayStr = getTodayStr()
 
 const contract = computed(() => store.db.contracts.find((c) => c.id === props.contractId))
 const student = computed(() => (contract.value ? store.getUser(contract.value.studentId) : null))
@@ -307,6 +311,21 @@ function printArchive() {
 .mt-6 { margin-top: 6px; }
 .mb-6 { margin-bottom: 6px; }
 .mb-8 { margin-bottom: 8px; }
+
+@media (max-width: 768px) {
+  .f-modal-header { flex-wrap: wrap; }
+  .archive-banner { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .archive-banner .text-right { text-align: left; }
+  .archive-h1 { font-size: 18px; }
+  .archive-kv { font-size: 14px; }
+  .archive-kv > div { overflow-wrap: anywhere; }
+  .signature-box > .flex { flex-wrap: wrap; }
+  .sig-img { max-width: 100%; height: auto; max-height: 64px; }
+  /* 档案表格只在自身范围内横向滚动 */
+  .archive-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; font-size: 13px; }
+  .archive-table th, .archive-table td { white-space: nowrap; }
+  .archive-table td:nth-child(4) { white-space: normal; min-width: 180px; }
+}
 
 @media (max-width: 720px) {
   .archive-kv,

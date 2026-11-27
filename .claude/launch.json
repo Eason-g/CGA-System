@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "cga-web", "runtimeExecutable": "npx", "runtimeArgs": ["vite", "--port", "5174", "--strictPort"], "port": 5174 },
+    { "name": "cga-api", "runtimeExecutable": "mvn", "runtimeArgs": ["-f", "server/pom.xml", "-q", "spring-boot:run"], "port": 8088 }
+  ]
+}

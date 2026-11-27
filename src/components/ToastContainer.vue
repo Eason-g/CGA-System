@@ -11,7 +11,7 @@
         :size="16"
       />
       <span class="toast-msg">{{ t.message }}</span>
-      <button class="toast-close" type="button" @click="store.dismissToast(t.id)" aria-label="关闭通知">
+      <button class="toast-close" type="button" @click="store.dismissToast(t.id)" :aria-label="$t('toast.close')">
         <FluentIcon name="close" :size="14" />
       </button>
     </div>
@@ -112,5 +112,9 @@ const store = useAppStore()
     transform: translateX(0);
     opacity: 1;
   }
+}
+
+@media (max-width: 768px) {
+  .toast-stack { top: 12px; left: 12px; right: 12px; max-width: none; }
 }
 </style>

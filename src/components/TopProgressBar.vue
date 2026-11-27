@@ -1,5 +1,5 @@
 <template>
-  <div v-if="store.isLoading" class="top-progress-wrap" role="progressbar" aria-label="加载中">
+  <div v-if="store.isLoading" class="top-progress-wrap" role="progressbar" :aria-label="$t('common.loading')">
     <div class="top-progress-bar" />
   </div>
 </template>

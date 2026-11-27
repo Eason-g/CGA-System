@@ -3,7 +3,7 @@
     <div class="empty-icon">
       <FluentIcon :name="icon" :size="48" />
     </div>
-    <p class="empty-desc">{{ description }}</p>
+    <p class="empty-desc">{{ description || $t('empty.default') }}</p>
     <button v-if="actionText" type="button" class="f-btn f-btn-primary" @click="$emit('action')">
       {{ actionText }}
     </button>
@@ -15,7 +15,7 @@ import FluentIcon from './FluentIcon.vue'
 
 defineProps({
   icon: { type: String, default: 'file' },
-  description: { type: String, default: '当前筛选条件下暂无数据记录' },
+  description: { type: String, default: '' },
   actionText: { type: String, default: '' }
 })
 

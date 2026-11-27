@@ -5,9 +5,22 @@ import {
   STEP_TO_JOB_STATUS,
   validateStudentApplication,
   validateTimesheetSubmission,
+  validateHire,
   calcJobBudgetCost,
-  gradeFromScore
+  gradeFromScore,
+  contractStartFrom,
+  predictContractEnd,
+  defaultJobDeadline,
+  getTodayStr,
+  getTeachingWeekStart,
+  checkWorkingEligibility,
+  allowsInternationalEmployment,
+  getStudentAllocatedWeeklyHours,
+  getMaxWeeklyHours,
+  localDateStr
 } from './ruleEngine'
+import { http, isHttpMode, download } from './http'
+import { deriveExtraFieldsForMock } from './jobSchema'
 
 // Simulate 150ms ~ 280ms backend latency with standard { code, data, message } response envelope
 function mockAsync(executor) {
@@ -28,7 +41,8 @@ function mockAsync(executor) {
   })
 }
 
-export const api = {
+// ===== mock 模式：直接读写 localStorage 中的演示数据库（保留，VITE_API_MODE=mock 时使用）=====
+const mockApi = {
   // Fetch full reactive DB snapshot
   fetchSnapshot() {
     return mockAsync((db) => JSON.parse(JSON.stringify(db)))
@@ -52,7 +66,7 @@ export const api = {
   loginByCredentials(account) {
     return mockAsync((db) => {
       const q = (account || '').trim().toLowerCase()
-      const user = db.users.find(
+      const matches = db.users.filter(
         (u) =>
           (u.username && u.username.toLowerCase() === q) ||
           (u.studentNo && u.studentNo.toLowerCase() === q) ||
@@ -60,6 +74,7 @@ export const api = {
           (u.phone && u.phone.replace(/-/g, '') === q.replace(/-/g, '')) ||
           (u.name && u.name.toLowerCase() === q)
       )
+      const user = matches.length === 1 ? matches[0] : null
       if (!user) return { code: 401, data: null, message: '学工号或校园邮箱未匹配，请核对后重试（或点击右下角查看体验账号）' }
       return { code: 200, data: user, message: `欢迎回来，${user.name}` }
     })
@@ -96,11 +111,15 @@ export const api = {
         workflowInstanceId: generateId('WF'),
         workflowSteps: steps,
         currentStepIndex: nextIndex,
-        deadline: payload.deadline || '2026-12-30',
+        deadline: payload.deadline || defaultJobDeadline(),
         createdAt: nowTimestamp(),
         skills: payload.skills || [],
         description: payload.description || '',
-        extraFields: payload.extraFields || {}
+        // 派生字段（TA 语言要求、RA 里程碑）在 http 模式由后端生成，这里模拟同样的规则
+        extraFields: deriveExtraFieldsForMock(payload.type, payload.extraFields, {
+          weeks: payload.weeks,
+          deadline: payload.deadline || defaultJobDeadline()
+        })
       }
 
       // Freeze estimated budget in selected budget pool
@@ -175,10 +194,14 @@ export const api = {
   },
 
   // P0-2: Student applies for a job (with hard compliance check & special approval branch)
-  submitApplication({ jobId, statement, resumeFileName, isSpecialApproval = false, specialReason = '' }, student) {
+  submitApplication({ jobId, statement, resumeFileName, isSpecialApproval = false, specialReason = '' }, studentRef) {
     return mockAsync((db) => {
       const job = db.jobs.find((j) => j.id === jobId)
       if (!job) return { code: 404, data: null, message: '岗位不存在' }
+      // 以库中学籍为准，不信任调用方传入的签证、工时等字段
+      const student = db.users.find((u) => u.id === studentRef?.id && u.role === 'STUDENT')
+      if (!student) return { code: 403, data: null, message: '仅学生本人可提交岗位申请' }
+      if (job.status !== 'PUBLISHED') return { code: 400, data: null, message: '该岗位未发布或已关闭，不能申请' }
 
       const check = validateStudentApplication(db, student, job)
       if (check.alreadyApplied) {
@@ -189,6 +212,9 @@ export const api = {
       }
       if (!check.passed && !isSpecialApproval) {
         return { code: 403, data: check, message: '合规前置校验未通过，系统已拦截提交' }
+      }
+      if (isSpecialApproval && !check.canSpecialApprove) {
+        return { code: 403, data: check, message: `不能发起特批：${check.specialBlockedReason}` }
       }
       if (isSpecialApproval && (!specialReason || specialReason.trim().length < 6)) {
         return { code: 400, data: check, message: '发起特批申请必须填写不少于 6 个字的特批理由' }
@@ -202,7 +228,14 @@ export const api = {
         appliedAt: nowTimestamp(),
         statement: statement || '已认真阅读岗位职责要求，申请加入团队。',
         resumeFileName: resumeFileName || `${student.name}_个人简历.pdf`,
-        complianceCheckResult: { passed: check.passed, checks: check.checks },
+        // projectedHours 记录申请时的累计工时，特批通过后录用复核以此为上限
+        complianceCheckResult: {
+          passed: check.passed,
+          checks: check.checks,
+          currentHours: check.currentHours,
+          projectedHours: check.projectedHours,
+          maxHours: check.maxHours
+        },
         isSpecialApproval: Boolean(isSpecialApproval),
         specialReason: isSpecialApproval ? specialReason.trim() : '',
         specialStatus: isSpecialApproval ? 'PENDING' : null,
@@ -239,8 +272,20 @@ export const api = {
       const app = db.applications.find((a) => a.id === applicationId)
       if (!app) return { code: 404, data: null, message: '申请单不存在' }
 
+      if (app.status !== 'PENDING_SPECIAL_APPROVAL') {
+        return { code: 400, data: null, message: '该申请不处于待特批状态' }
+      }
+      const job = db.jobs.find((j) => j.id === app.jobId)
+      const student = db.users.find((u) => u.id === app.studentId)
       const beforeStatus = app.status
       if (decision === 'APPROVE') {
+        if (!student || !job) return { code: 404, data: null, message: '学生或岗位不存在' }
+        const today = db.meta.today || getTodayStr()
+        const eligibility = checkWorkingEligibility(student, today)
+        if (eligibility) return { code: 403, data: null, message: eligibility }
+        if (student.isInternational && !allowsInternationalEmployment(job)) {
+          return { code: 403, data: null, message: '该岗位未完成国际生会签，不可特批' }
+        }
         app.status = 'SPECIAL_APPROVED'
         app.specialStatus = 'APPROVED'
       } else {
@@ -248,7 +293,6 @@ export const api = {
         app.specialStatus = 'REJECTED'
       }
 
-      const job = db.jobs.find((j) => j.id === app.jobId)
       db.notifications.unshift({
         id: generateId('NOTIF'),
         userId: app.studentId,
@@ -316,21 +360,31 @@ export const api = {
       const app = db.applications.find((a) => a.id === applicationId)
       if (!app) return { code: 404, data: null, message: '申请单不存在' }
       const job = db.jobs.find((j) => j.id === app.jobId)
+      if (!job) return { code: 404, data: null, message: '关联岗位不存在' }
+      const student = db.users.find((u) => u.id === app.studentId)
+      if (!student) return { code: 404, data: null, message: '申请人不存在' }
+
+      // 先做全部校验，通过后才修改数据，避免拦截时留下半截状态
+      let hireCheck = null
+      if (decision === 'HIRE') {
+        hireCheck = validateHire(db, app, job, student)
+        if (!hireCheck.ok) {
+          return { code: 403, data: hireCheck, message: hireCheck.errors.join('；') }
+        }
+      }
 
       const beforeStatus = app.status
       app.score = Number(score)
       app.mentorComment = comment || ''
 
       if (decision === 'HIRE') {
-        if (job.hiredCount >= job.quota) {
-          return { code: 400, data: null, message: '该岗位招聘名额已满，无法继续录用' }
-        }
         app.status = 'HIRED'
         job.hiredCount += 1
 
         // Auto-create electronic contract waiting for student signature
-        const startDate = '2026-11-23'
-        const endDate = '2027-03-15'
+        // 聘期与后端一致：下周一开始，持续岗位约定周数（mock 模式“今天”为 TODAY_STR）
+        const startDate = contractStartFrom()
+        const endDate = predictContractEnd(job.weeks)
         const contract = {
           id: generateId('CON'),
           applicationId: app.id,
@@ -364,7 +418,10 @@ export const api = {
           targetId: app.id,
           operator,
           action: '评分并确认录用',
-          opinion: `面试评分 ${score} 分，评语：${comment || '同意录用'}；自动生成电子协议 ${contract.id}`,
+          opinion:
+            `面试评分 ${score} 分，评语：${comment || '同意录用'}；自动生成电子协议 ${contract.id}；` +
+            `录用复核跨岗累计 ${hireCheck.projectedHours}h/${hireCheck.maxHours}h` +
+            (hireCheck.hoursOverridden ? '（超限部分依据国际生办特批放行）' : ''),
           beforeValue: beforeStatus,
           afterValue: 'HIRED'
         })
@@ -397,10 +454,26 @@ export const api = {
   },
 
   // P0-3: Sign electronic contract with Canvas signature + intl compliance declaration
-  signContract({ contractId, signatureDataUrl, complianceAgreed }, student) {
+  signContract({ contractId, signatureDataUrl, complianceAgreed }, studentRef) {
     return mockAsync((db) => {
-      const con = db.contracts.find((c) => c.id === contractId)
+      const student = db.users.find((u) => u.id === studentRef?.id)
+      const con = db.contracts.find((c) => c.id === contractId && c.studentId === student?.id)
       if (!con) return { code: 404, data: null, message: '电子协议不存在' }
+      if (con.status !== 'PENDING_SIGN' || (con.endDate && con.endDate < getTodayStr())) {
+        return { code: 400, data: null, message: '电子协议已过期或不处于待签署状态' }
+      }
+      const eligibility = checkWorkingEligibility(student, con.endDate)
+      if (eligibility) return { code: 403, data: null, message: eligibility }
+      // 签署前复核跨岗工时；超限时只认已通过的特批，且不超过特批时记录的工时（与后端一致）
+      const signPeak = getStudentAllocatedWeeklyHours(db, student.id, con.startDate, con.endDate)
+      const signLimit = getMaxWeeklyHours(db, student)
+      if (signPeak > signLimit) {
+        const signApp = db.applications.find((a) => a.id === con.applicationId)
+        const ceiling = Number(signApp?.complianceCheckResult?.projectedHours)
+        if (!(signApp?.specialStatus === 'APPROVED' && Number.isFinite(ceiling) && signPeak <= ceiling)) {
+          return { code: 403, data: null, message: `跨岗累计周工时 ${signPeak}h 超出上限 ${signLimit}h/周，且无对应特批，不能签署` }
+        }
+      }
       if (!signatureDataUrl) return { code: 400, data: null, message: '请先在签名板手写确认签名' }
       if (student.isInternational && !complianceAgreed) {
         return { code: 400, data: null, message: '国际生必须勾选《国际生合法工时合规声明》方可生效' }
@@ -430,12 +503,28 @@ export const api = {
   },
 
   // Submit weekly timesheet with cross-job cumulative cap check
-  submitTimesheet({ contractId, weekNo, hours, workLog, milestoneRef }, student) {
+  submitTimesheet({ contractId, weekNo, hours, workLog, milestoneRef }, studentRef) {
     return mockAsync((db) => {
+      const student = db.users.find((u) => u.id === studentRef?.id && u.role === 'STUDENT')
+      if (!student) return { code: 403, data: null, message: '仅学生本人可填报工时' }
       const con = db.contracts.find((c) => c.id === contractId && c.studentId === student.id)
       if (!con) return { code: 404, data: null, message: '有效聘用协议不存在' }
       if (con.status !== 'ACTIVE') return { code: 400, data: null, message: '请先签署电子聘用协议后再填报工时' }
 
+      const today = db.meta.today || getTodayStr()
+      const weekStart = getTeachingWeekStart(db, Number(weekNo))
+      if (!weekStart || weekStart > today || Number(weekNo) > db.meta.currentWeekNo) {
+        return { code: 400, data: null, message: '填报周次超出当前教学范围' }
+      }
+      const weekEnd = new Date(weekStart + 'T00:00:00')
+      weekEnd.setDate(weekEnd.getDate() + 6)
+      const workThrough = [localDateStr(weekEnd), today, con.endDate].filter(Boolean).sort()[0]
+      const workStart = con.startDate && con.startDate > weekStart ? con.startDate : weekStart
+      if (workStart > workThrough) {
+        return { code: 400, data: null, message: '填报周次不在合同已履行的聘期内' }
+      }
+      const eligibility = checkWorkingEligibility(student, workThrough)
+      if (eligibility) return { code: 403, data: null, message: eligibility }
       const check = validateTimesheetSubmission(db, student, weekNo, hours)
       if (!check.ok) {
         return { code: 403, data: check, message: check.message }
@@ -448,7 +537,7 @@ export const api = {
         jobId: con.jobId,
         deptId: con.deptId,
         weekNo: Number(weekNo),
-        month: db.meta.currentMonth || '2026-11',
+        month: weekStart.slice(0, 7),
         hours: Number(hours),
         workLog: workLog.trim(),
         milestoneRef: milestoneRef || '',
@@ -523,7 +612,7 @@ export const api = {
   // P0-4: Auto calculate payroll from approved timesheets & evaluation coefficient
   generateMonthlyPayrolls({ month }, operator) {
     return mockAsync((db) => {
-      const targetMonth = month || db.meta.currentMonth || '2026-11'
+      const targetMonth = month || db.meta.currentMonth || getTodayStr().slice(0, 7)
       const activeContracts = db.contracts.filter((c) => c.status === 'ACTIVE')
       let createdOrUpdated = 0
 
@@ -533,7 +622,12 @@ export const api = {
         )
         if (approvedTs.length === 0) return
 
-        const totalHours = approvedTs.reduce((sum, t) => sum + Number(t.hours || 0), 0)
+        const batches = db.payrolls.filter((p) => p.contractId === con.id && p.month === targetMonth)
+        if (batches.some((p) => p.financeStatus === 'SUBMITTED')) return
+        const paidHours = batches.filter((p) => p.financeStatus === 'PAID')
+          .reduce((sum, p) => sum + Number(p.totalHours || 0), 0)
+        const totalHours = Number((approvedTs.reduce((sum, t) => sum + Number(t.hours || 0), 0) - paidHours).toFixed(1))
+        if (totalHours <= 0) return
         const job = db.jobs.find((j) => j.id === con.jobId)
         if (!job) return
         const budget = db.budgets.find((b) => b.id === job.budgetId)
@@ -543,9 +637,8 @@ export const api = {
         const coeff = latestEval ? Number(latestEval.coefficient) : 1.0
         const amount = Math.round(totalHours * Number(con.hourlyRate) * coeff * 100) / 100
 
-        const existing = db.payrolls.find((p) => p.contractId === con.id && p.month === targetMonth)
+        const existing = batches.find((p) => p.financeStatus !== 'PAID')
         if (existing) {
-          if (existing.financeStatus === 'PAID') return
           existing.totalHours = totalHours
           existing.coefficient = coeff
           existing.amount = amount
@@ -666,7 +759,7 @@ export const api = {
         studentId: con.studentId,
         jobId: con.jobId,
         deptId: con.deptId,
-        period: period || '2026-11 周期考核',
+        period: period || (db.meta.currentMonth || getTodayStr().slice(0, 7)) + ' 周期考核',
         jobType: job.type,
         dimensions,
         totalScore,
@@ -716,8 +809,18 @@ export const api = {
   },
 
   // P1-1: Save configurable approval workflows & evaluation weights (School Admin)
-  saveConfigs({ workflows, evaluationTemplates, globalRules }, operator) {
+  saveConfigs({ workflows, evaluationTemplates, globalRules, jobTypeSchemas }, operator) {
     return mockAsync((db) => {
+      if (globalRules) {
+        const limits = ['maxWeeklyHoursDefault', 'maxWeeklyHoursIntl']
+        if (limits.some((key) => Object.hasOwn(globalRules, key)
+            && (!Number.isInteger(Number(globalRules[key])) || globalRules[key] < 1 || globalRules[key] > 40))) {
+          return { code: 400, data: null, message: '周工时上限必须为 1–40 的整数' }
+        }
+      }
+      if (jobTypeSchemas) {
+        db.configs.jobTypeSchemas = { ...(db.configs.jobTypeSchemas || {}), ...JSON.parse(JSON.stringify(jobTypeSchemas)) }
+      }
       if (evaluationTemplates) {
         for (const [type, dims] of Object.entries(evaluationTemplates)) {
           const sum = dims.reduce((s, d) => s + Number(d.weight || 0), 0)
@@ -745,7 +848,15 @@ export const api = {
       })
 
       persistDB()
-      return { code: 200, data: db.configs, message: '配置已保存并即时生效' }
+      // 与后端一致：调低国际生上限不拦截保存，只提示现有合同超过新上限的学生（可能已获特批）
+      const overCap = db.users
+        .filter((u) => u.role === 'STUDENT' && u.isInternational)
+        .map((u) => ({ u, peak: getStudentAllocatedWeeklyHours(db, u.id, db.meta.today || getTodayStr()), limit: getMaxWeeklyHours(db, u) }))
+        .filter(({ peak, limit }) => peak > limit)
+        .map(({ u, peak, limit }) => `${u.name}（${peak}h > ${limit}h）`)
+      const message = overCap.length === 0 ? '配置已保存并即时生效'
+        : `配置已保存并即时生效。注意：以下国际生现有合同超过新的周工时上限（可能已获特批），请核对：${overCap.join('、')}`
+      return { code: 200, data: db.configs, message }
     })
   },
 
@@ -763,7 +874,15 @@ export const api = {
     return mockAsync((db) => {
       const target = db.users.find((u) => u.id === userId)
       if (!target) return { code: 404, data: null, message: '用户不存在' }
-      if (email !== undefined) target.email = email.trim()
+      if (email !== undefined) {
+        const address = email.trim()
+        const normalized = address.toLowerCase()
+        if (normalized && db.users.some((u) => u.id !== userId
+          && [u.email, u.username, u.studentNo].some((value) => value?.toLowerCase() === normalized))) {
+          return { code: 409, data: null, message: '邮箱已被占用' }
+        }
+        target.email = address
+      }
       if (phone !== undefined) target.phone = phone.trim()
       if (Array.isArray(skills)) target.skills = skills
       if (bio !== undefined) target.bio = bio.trim()
@@ -781,3 +900,205 @@ export const api = {
     })
   }
 }
+
+// P1 新功能（岗位模板保存/删除、服务评价、续聘）只在 http 模式实现，mock 模式统一提示
+const NEED_BACKEND = { code: 501, data: null, message: '该功能需要连接后端' }
+const backendOnly = () => Promise.resolve({ ...NEED_BACKEND })
+Object.assign(mockApi, {
+  listJobTemplates: () => mockAsync((db) => db.jobTemplates || []),
+  saveJobTemplate: backendOnly,
+  deleteJobTemplate: backendOnly,
+  listFeedbackRounds: backendOnly,
+  openFeedbackRound: backendOnly,
+  closeFeedbackRound: backendOnly,
+  getFeedbackSummary: backendOnly,
+  renewContract: backendOnly,
+  getPublicFeedback: backendOnly,
+  submitPublicFeedback: backendOnly
+})
+
+// ===== http 模式：调用 Java 后端（docs/后端设计.md 第 5 节）=====
+// 方法名与入参签名与 mockApi 保持一致；最后一个 operator / student 参数不发给后端，身份一律取自 token
+const enc = (id) => encodeURIComponent(id ?? '')
+
+// P1 第二批（报表导出、审计校验）只在 http 模式实现，mock 模式下统一提示（NEED_BACKEND 定义见上）
+mockApi.exportReport = backendOnly
+mockApi.verifyAuditChain = backendOnly
+
+const httpApi = {
+  fetchSnapshot() {
+    return http.get('/api/snapshot')
+  },
+
+  // 仅校级管理员可成功，其他角色返回后端的 403 文案
+  resetDemoData() {
+    return http.post('/api/demo/reset')
+  },
+
+  // 真实后端没有“按用户 ID 免密登录”接口，体验账号改由 store.loginAs 用演示密码走正常登录
+  loginByUserId() {
+    return Promise.resolve({ code: 400, data: null, message: '真实后端模式不支持按用户 ID 登录，请使用账号密码' })
+  },
+
+  // 成功时 data 为 { token, user }；密码错误等 401 不触发全局登出跳转
+  loginByCredentials(account, password) {
+    return http.post(
+      '/api/auth/login',
+      { account: (account || '').trim(), password: password || '' },
+      { skipAuthRedirect: true }
+    )
+  },
+
+  // 用本地 token 恢复登录：返回当前用户（token 失效由 store 自行清理，不触发全局跳转）
+  fetchCurrentUser() {
+    return http.get('/api/auth/me', { skipAuthRedirect: true })
+  },
+
+  createJob(payload) {
+    return http.post('/api/jobs', payload)
+  },
+
+  reviewJob({ jobId, decision, opinion }) {
+    return http.post(`/api/jobs/${enc(jobId)}/review`, { decision, opinion })
+  },
+
+  // attachmentIds：P1 第三批，本人已上传的简历与其他材料
+  submitApplication({ jobId, statement, resumeFileName, isSpecialApproval = false, specialReason = '', attachmentIds = [] }) {
+    return http.post('/api/applications', {
+      jobId, statement, resumeFileName, isSpecialApproval, specialReason, attachmentIds
+    })
+  },
+
+  reviewSpecialApproval({ applicationId, decision, opinion }) {
+    return http.post(`/api/applications/${enc(applicationId)}/special-review`, { decision, opinion })
+  },
+
+  scheduleInterview({ applicationId, time, location, note }) {
+    return http.post(`/api/applications/${enc(applicationId)}/interview`, { time, location, note })
+  },
+
+  decideApplication({ applicationId, score, decision, comment }) {
+    return http.post(`/api/applications/${enc(applicationId)}/decision`, { score, decision, comment })
+  },
+
+  signContract({ contractId, signatureDataUrl, complianceAgreed }) {
+    return http.post(`/api/contracts/${enc(contractId)}/sign`, { signatureDataUrl, complianceAgreed })
+  },
+
+  submitTimesheet({ contractId, weekNo, hours, workLog, milestoneRef }) {
+    return http.post('/api/timesheets', { contractId, weekNo, hours, workLog, milestoneRef })
+  },
+
+  reviewTimesheet({ timesheetId, decision, comment }) {
+    return http.post(`/api/timesheets/${enc(timesheetId)}/review`, { decision, comment })
+  },
+
+  toggleMilestone({ jobId, milestoneId }) {
+    return http.post(`/api/jobs/${enc(jobId)}/milestones/${enc(milestoneId)}/toggle`)
+  },
+
+  generateMonthlyPayrolls({ month } = {}) {
+    return http.post('/api/payrolls/generate', { month })
+  },
+
+  confirmPayrollPayout({ payrollId }) {
+    return http.post(`/api/payrolls/${enc(payrollId)}/payout`)
+  },
+
+  // P2 C.1：syncTeachingEval 为 true 时后端重新拉取评教结果写入 courseEvalSync（前端不再传评教数字）；
+  // serviceDefaultSource 为服务维度默认值来源 FEEDBACK / TEACHING_EVAL
+  submitEvaluation({ contractId, period, dimensionScores, comment, serviceOverrideReason, syncTeachingEval = false, serviceDefaultSource = null }) {
+    return http.post('/api/evaluations', { contractId, period, dimensionScores, comment, serviceOverrideReason, syncTeachingEval, serviceDefaultSource })
+  },
+
+  saveConfigs({ workflows, evaluationTemplates, globalRules, jobTypeSchemas }) {
+    return http.put('/api/configs', { workflows, evaluationTemplates, globalRules, jobTypeSchemas })
+  },
+
+  // userId 参数保留签名兼容，后端只标记当前登录用户的通知
+  markNotificationsRead() {
+    return http.post('/api/notifications/read-all')
+  },
+
+  // 只能修改本人资料，userId 不发给后端
+  updateUserProfile({ email, phone, skills, bio }) {
+    return http.put('/api/users/me', { email, phone, skills, bio })
+  },
+
+  // ----- P1 第一批：岗位模板、服务对象评价、续聘 -----
+
+  listJobTemplates() {
+    return http.get('/api/job-templates')
+  },
+
+  // global=true 为全校通用（仅校级管理员）；payload 为除岗位名称外的发布表单字段
+  saveJobTemplate({ name, type, global = false, deptId, payload }) {
+    return http.post('/api/job-templates', { name, type, global, deptId, payload })
+  },
+
+  deleteJobTemplate({ templateId }) {
+    return http.del(`/api/job-templates/${enc(templateId)}`)
+  },
+
+  // 评价轮列表（含评价码、条数、均分与单条评价），仅导师/院系管理员/校级管理员
+  listFeedbackRounds({ contractId } = {}) {
+    return http.get(`/api/feedback-rounds${contractId ? `?contractId=${enc(contractId)}` : ''}`)
+  },
+
+  openFeedbackRound({ contractId, deadline }) {
+    return http.post('/api/feedback-rounds', { contractId, deadline: deadline || null })
+  },
+
+  closeFeedbackRound({ roundId }) {
+    return http.post(`/api/feedback-rounds/${enc(roundId)}/close`)
+  },
+
+  // 评价汇总 { count, avgRating, serviceScore }：助理本人也可查看
+  getFeedbackSummary({ contractId }) {
+    return http.get(`/api/contracts/${enc(contractId)}/feedback-summary`)
+  },
+
+  renewContract({ contractId }) {
+    return http.post(`/api/contracts/${enc(contractId)}/renew`)
+  },
+
+  // 公开评价页（无需登录）：401 不触发登出跳转
+  getPublicFeedback({ code }) {
+    return http.get(`/api/public/feedback/${enc((code || '').trim())}`, { skipAuthRedirect: true })
+  },
+
+  submitPublicFeedback({ code, rating, comment, clientId }) {
+    return http.post(`/api/public/feedback/${enc((code || '').trim())}`, { rating, comment, clientId }, { skipAuthRedirect: true })
+  },
+
+  // 报表导出（P1 第二批 2.1）：type 为 jobs/hires/timesheets/payrolls/budgets，format 为 xlsx/csv；带 token 下载
+  exportReport({ type, format = 'xlsx', month, deptId } = {}) {
+    const q = new URLSearchParams({ format })
+    if (month) q.set('month', month)
+    if (deptId) q.set('deptId', deptId)
+    return download(`/api/reports/${enc(type)}/export?${q}`, `${type}.${format}`)
+  },
+
+  // 审计日志完整性校验（P1 第二批 2.2，校级管理员）：data 为 { ok, checked, brokenAt }
+  verifyAuditChain() {
+    return http.get('/api/audit/verify')
+  }
+}
+
+// ----- P2 C 批：评教联动与智能推荐（只在 http 模式实现，mock 模式提示需要后端） -----
+Object.assign(httpApi, {
+  // 评教结果预览：{ available, source, courseCode, semester, responseCount, avgRating, satisfactionRate, serviceScore, message }
+  getTeachingEval({ contractId }) {
+    return http.get(`/api/integration/teaching-eval?contractId=${enc(contractId)}`)
+  },
+  // 学生本人的岗位推荐：{ weights, items: [{ jobId, score, applicable, reasons, blockers, factors }], topJobIds }
+  getRecommendations() {
+    return http.get('/api/recommendations')
+  }
+})
+mockApi.getTeachingEval = backendOnly
+mockApi.getRecommendations = backendOnly
+
+export const api = isHttpMode ? httpApi : mockApi
+// 供脚本直接测试 mock 后端（scripts/verify-p0-fixes.mjs）
+export { mockApi }

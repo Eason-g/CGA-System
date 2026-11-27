@@ -1,0 +1,109 @@
+server:
+  port: ${SERVER_PORT:8088}
+  tomcat:
+    # 超出上传上限时仍读完请求体再返回 400 JSON，避免浏览器看到连接被重置
+    max-swallow-size: 32MB
+
+spring:
+  application:
+    name: cga-server
+  profiles:
+    # 本机数据库账号放在 application-local.yml（不入库），见 server/README.md
+    include: local
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/cga?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    # 连接池（P2 D.3），取值依据见 docs/非功能验证.md：
+    # 本机（20 逻辑核）实测 200 并发“登录 + 快照”时 20 个连接与 40 个连接吞吐相同（约 520 req/s），瓶颈在 CPU 而不在等连接；
+    # 写接口有 FOR UPDATE 行锁，同一行上的事务只能排队，连接再多也不会更快，只会让更多事务在 MySQL 里等锁；
+    # 20 也远低于 MySQL 默认 max_connections=151，给开发库、测试库和运维连接留出余量
+    hikari:
+      pool-name: cga-hikari
+      maximum-pool-size: 20
+      minimum-idle: 10
+      # 等待连接的上限：超过 5 秒仍拿不到连接说明已严重过载，快速失败返回 500，比让请求无限排队更好
+      connection-timeout: 5000
+      # 空闲连接 10 分钟回收（保留 minimum-idle 个，应付突发流量时不必现建连接）；连接最长存活 30 分钟，远小于 MySQL wait_timeout（默认 8 小时）
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      # 借出连接 30 秒未归还时打印警告，便于发现连接泄漏
+      leak-detection-threshold: 30000
+  jackson:
+    time-zone: Asia/Shanghai
+  # 材料上传（P1 第三批）：单个文件 ≤ 10MB；超限由 UploadExceptionHandler 返回 { code: 400 } JSON
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: input
+
+app:
+  # 演示日期：留空则使用系统日期；填写后系统“今天”固定为该日期（周次、月份都由它推算）
+  today: 2026-11-20
+  # 学期第一天（第 1 周的周一），用于计算当前教学周次
+  semester-start: 2026-08-31
+  # 种子用户的初始密码（启动时把空的 password_hash 设为它的 BCrypt 哈希）
+  demo-password: Cga@2026
+  jwt:
+    # 开发默认密钥（至少 32 字节）。生产环境必须通过环境变量 APP_JWT_SECRET 覆盖！
+    secret: ${APP_JWT_SECRET:cga-dev-only-secret-change-me-in-production-0123456789}
+    ttl: 8h
+  crypto:
+    # 手机号、邮箱的 AES-256-GCM 加密密钥（Base64 编码的 32 字节；邮箱检索哈希的 HMAC 密钥由它经 HKDF 派生）。
+    # 下面是仅供本机开发与演示的默认值，生产环境必须通过环境变量 APP_CRYPTO_KEY 覆盖（openssl rand -base64 32）！
+    # 缺失或长度不对时应用启动失败；更换密钥前须先用旧密钥解密，否则已加密数据无法读出。
+    key: ${APP_CRYPTO_KEY:Og08Htbp4HsGmbDL2tbzBwa+tZqTWJMDQIhYRHIkvG4=}
+  security:
+    login:
+      # 同一账号在 failure-window 内连续失败 max-failures 次，锁定 lock-duration；锁定期间返回 429
+      failure-window: 15m
+      max-failures: 5
+      lock-duration: 15m
+      # 同一 IP 每分钟登录请求上限（按一个机房 100 人左右共用出口估算，见 LoginProtectionProperties）
+      ip-max-per-minute: 300
+      # 计入 IP 限流的 POST 接口（含 P2 B 批的统一认证换票接口，接口尚未上线时这一项不起作用）
+      ip-limited-paths:
+        - /api/auth/login
+        - /api/auth/sso/exchange
+  db:
+    # 数据库初始化：if-empty（users 表不存在时建表并导入种子数据）/ always（每次启动重建）/ never（不动）
+    init: if-empty
+  demo:
+    # 是否允许校级管理员调用 POST /api/demo/reset 重置演示数据
+    reset-enabled: true
+  # 材料上传存储目录（相对启动目录，即 server/uploads/，已加入 .gitignore）
+  upload-dir: uploads
+  finance:
+    # 财务回调 HMAC-SHA256 签名密钥。生产环境必须通过环境变量 APP_FINANCE_CALLBACK_SECRET 覆盖！
+    callback-secret: ${APP_FINANCE_CALLBACK_SECRET:cga-dev-only-finance-callback-secret-change-me}
+    mock:
+      # 模拟财务系统：提交后由定时任务自动回调；成功率 0–1
+      auto-callback: true
+      callback-delay: 3s
+      success-rate: 1.0
+  # P2 B.4：学校名称，由 GET /api/public/site 返回，前端登录页、侧栏、归档页统一读取
+  school-name: 示范高校
+  # 英文界面显示的校名
+  school-name-en: Demo University
+  # P2 B.1：统一身份认证。provider=mock 为模拟 CAS（演示用）；对接真实 CAS 时新增 SsoProvider 实现并改这里
+  sso:
+    enabled: true
+    provider: mock
+    # 票据有效期（一次性、绑定 service）
+    ticket-ttl: 60s
+  # P2 B.2/B.3：模拟学籍系统、科研系统的演示数据（resources/integration/*.json）
+  integration:
+    sis-data: classpath:integration/sis-students.json
+    research-data:
+      - classpath:integration/research-projects.json
+  cors:
+    allowed-origins:
+      - http://localhost:5173
+      - http://localhost:5174

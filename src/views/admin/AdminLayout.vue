@@ -2,11 +2,12 @@
   <div class="admin-shell ambient-canvas" @click="roleMenuOpen = false">
     <!-- Mobile Top Bar (< 960px) -->
     <header class="mobile-topbar">
-      <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="mobileNavOpen = true" aria-label="打开菜单">
+      <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="mobileNavOpen = true" :aria-label="$t('admin.layout.openMenu')">
         <FluentIcon name="menu" :size="19" />
       </button>
-      <div class="fw-600 text-sm">三助管理工作台</div>
-      <span class="f-pill f-pill-blue">{{ user?.roleLabel }}</span>
+      <div class="fw-600 text-sm">{{ $t('admin.layout.workbench') }}</div>
+      <span class="f-pill f-pill-blue topbar-role">{{ userRoleLabel }}</span>
+      <LanguageSwitch compact class="topbar-lang" />
     </header>
 
     <div v-if="mobileNavOpen" class="mobile-backdrop" @click="mobileNavOpen = false" />
@@ -19,16 +20,16 @@
             <FluentIcon name="campus" :size="18" />
           </div>
           <div class="min-w-0 flex-1">
-            <div class="fw-600 text-sm truncate">{{ store.currentUniversity.name }}</div>
-            <div class="text-xs text-subtle truncate">三助平台 · {{ scopeLabel }}</div>
+            <div class="fw-600 text-sm truncate">{{ store.schoolName }}</div>
+            <div class="text-xs text-subtle truncate">{{ $t('admin.layout.platform') }} · {{ scopeLabel }}</div>
           </div>
-          <button type="button" class="f-btn f-btn-subtle f-btn-sm mobile-close" @click="mobileNavOpen = false">
+          <button type="button" class="f-btn f-btn-subtle f-btn-sm mobile-close" :aria-label="$t('admin.layout.closeMenu')" @click="mobileNavOpen = false">
             <FluentIcon name="close" :size="16" />
           </button>
         </div>
 
-        <nav class="sidebar-nav mt-20" aria-label="主导航">
-          <div v-for="group in navGroups" :key="group.title" class="nav-group">
+        <nav class="sidebar-nav mt-20" :aria-label="$t('admin.layout.mainNav')">
+          <div v-for="group in navGroups" :key="group.key" class="nav-group">
             <div class="nav-group-title">{{ group.title }}</div>
             <router-link
               v-for="item in group.items"
@@ -52,10 +53,10 @@
         <div v-if="roleMenuOpen" class="role-popover">
           <router-link to="/admin/profile" class="popover-item" @click="roleMenuOpen = false">
             <FluentIcon name="user" :size="14" class="text-blue" />
-            <span class="flex-1 fw-600">进入个人主页</span>
+            <span class="flex-1 fw-600">{{ $t('admin.layout.goProfile') }}</span>
           </router-link>
           <div class="popover-divider" />
-          <div class="popover-header">快速切换演示身份</div>
+          <div class="popover-header">{{ $t('admin.layout.switchDemo') }}</div>
           <button
             v-for="u in store.presetUsers"
             :key="u.id"
@@ -65,27 +66,30 @@
             @click="onSwitchRole(u.id)"
           >
             <span class="pop-dot" :class="u.portal" />
-            <span class="flex-1 truncate">{{ u.roleLabel }} · {{ u.name }}</span>
+            <span class="flex-1 truncate">{{ roleLabel(u.role, u.roleLabel) }} · {{ u.name }}</span>
             <FluentIcon v-if="u.id === user?.id" name="check" :size="13" class="text-blue" />
           </button>
           <div class="popover-divider" />
           <div class="popover-actions">
             <button type="button" class="popover-act-btn" @click="handleReset">
               <FluentIcon name="refresh" :size="13" />
-              <span>重置数据</span>
+              <span>{{ $t('admin.layout.resetData') }}</span>
             </button>
             <button type="button" class="popover-act-btn danger" @click="handleLogout">
               <FluentIcon name="logout" :size="13" />
-              <span>退出登录</span>
+              <span>{{ $t('admin.layout.logout') }}</span>
             </button>
           </div>
         </div>
 
+        <div class="sidebar-lang">
+          <LanguageSwitch />
+        </div>
         <button type="button" class="profile-trigger" @click="roleMenuOpen = !roleMenuOpen">
           <div class="profile-avatar">{{ user?.name?.slice(0, 1) || 'A' }}</div>
           <div class="min-w-0 flex-1 text-left">
             <div class="fw-600 text-xs truncate">{{ user?.name }}</div>
-            <div class="text-xs text-muted truncate">{{ user?.roleLabel }}</div>
+            <div class="text-xs text-muted truncate">{{ userRoleLabel }}</div>
           </div>
           <FluentIcon :name="roleMenuOpen ? 'chevron-down' : 'chevron-up'" :size="14" class="text-subtle" />
         </button>
@@ -107,6 +111,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/appStore'
 import { filterJobsByRole, filterByRoleDept, scanAnomalies } from '@/services/ruleEngine'
 import FluentIcon from '@/components/FluentIcon.vue'
+import LanguageSwitch from '@/components/LanguageSwitch.vue'
+import { t } from '@/i18n'
+import { roleLabel, deptShortName } from './adminI18n'
 
 const store = useAppStore()
 const route = useRoute()
@@ -115,13 +122,15 @@ const mobileNavOpen = ref(false)
 const roleMenuOpen = ref(false)
 
 const user = computed(() => store.currentUser)
+const userRoleLabel = computed(() => roleLabel(user.value?.role, user.value?.roleLabel))
 
 const scopeLabel = computed(() => {
   if (!user.value) return '-'
-  if (user.value.role === 'SCHOOL_ADMIN') return '全校视野'
-  if (user.value.role === 'DEPT_ADMIN') return `${store.getDeptShortName(user.value.deptId)}隔离`
-  if (user.value.role === 'INTL_OFFICER') return '国际生会签'
-  if (user.value.role === 'MENTOR') return `${store.getDeptShortName(user.value.deptId)} · 导师`
+  const dept = deptShortName(store.db, user.value.deptId)
+  if (user.value.role === 'SCHOOL_ADMIN') return t('admin.layout.scopeSchool')
+  if (user.value.role === 'DEPT_ADMIN') return t('admin.layout.scopeDept', { dept })
+  if (user.value.role === 'INTL_OFFICER') return t('admin.layout.scopeIntl')
+  if (user.value.role === 'MENTOR') return t('admin.layout.scopeMentor', { dept })
   return '-'
 })
 
@@ -148,35 +157,42 @@ const navGroups = computed(() => {
   const role = user.value?.role
   return [
     {
-      title: '概览',
-      items: [{ to: '/admin/dashboard', label: '工作台总览', icon: 'dashboard', badge: 0 }]
+      key: 'overview',
+      title: t('admin.layout.groups.overview'),
+      items: [{ to: '/admin/dashboard', label: t('admin.layout.nav.dashboard'), icon: 'dashboard', badge: 0 }]
     },
     {
-      title: '聘用与业务',
+      key: 'business',
+      title: t('admin.layout.groups.business'),
       items: [
-        { to: '/admin/jobs', label: '岗位与审批', icon: 'briefcase', badge: pendingJobsCount.value, badgeTone: 'caution' },
+        { to: '/admin/jobs', label: t('admin.layout.nav.jobs'), icon: 'briefcase', badge: pendingJobsCount.value, badgeTone: 'caution' },
         ...(role === 'MENTOR' || role === 'SCHOOL_ADMIN' || role === 'DEPT_ADMIN'
-          ? [{ to: '/admin/jobs/publish', label: '发布新岗位', icon: 'plus', badge: 0 }]
+          ? [{ to: '/admin/jobs/publish', label: t('admin.layout.nav.publish'), icon: 'plus', badge: 0 }]
           : []),
         {
           to: '/admin/applications',
-          label: role === 'INTL_OFFICER' ? '国际生特批' : '选拔与特批',
+          label: role === 'INTL_OFFICER' ? t('admin.layout.nav.applicationsIntl') : t('admin.layout.nav.applications'),
           icon: 'users',
           badge: pendingAppsCount.value,
           badgeTone: role === 'INTL_OFFICER' ? 'caution' : 'blue'
         },
-        { to: '/admin/timesheets', label: '工时与预警', icon: 'clock', badge: warningCount.value, badgeTone: 'error' },
-        { to: '/admin/payroll', label: '薪酬与预算', icon: 'wallet', badge: 0 },
-        { to: '/admin/evaluations', label: '考核评价', icon: 'award', badge: 0 }
+        // P1 第三批：语言证明 / 签证材料核验
+        ...(role === 'INTL_OFFICER' || role === 'SCHOOL_ADMIN'
+          ? [{ to: '/admin/compliance', label: t('admin.layout.nav.compliance'), icon: 'shield', badge: 0 }]
+          : []),
+        { to: '/admin/timesheets', label: t('admin.layout.nav.timesheets'), icon: 'clock', badge: warningCount.value, badgeTone: 'error' },
+        { to: '/admin/payroll', label: t('admin.layout.nav.payroll'), icon: 'wallet', badge: 0 },
+        { to: '/admin/evaluations', label: t('admin.layout.nav.evaluations'), icon: 'award', badge: 0 }
       ]
     },
     {
-      title: '治理与归档',
+      key: 'governance',
+      title: t('admin.layout.groups.governance'),
       items: [
-        ...(role === 'SCHOOL_ADMIN' ? [{ to: '/admin/config', label: '可配置化中心', icon: 'settings', badge: 0 }] : []),
-        { to: '/admin/reports', label: '报表与归档', icon: 'chart', badge: 0 },
-        { to: '/admin/audit', label: '审计留痕', icon: 'history', badge: 0 },
-        { to: '/admin/profile', label: '个人主页', icon: 'user', badge: 0 }
+        ...(role === 'SCHOOL_ADMIN' ? [{ to: '/admin/config', label: t('admin.layout.nav.config'), icon: 'settings', badge: 0 }] : []),
+        { to: '/admin/reports', label: t('admin.layout.nav.reports'), icon: 'chart', badge: 0 },
+        { to: '/admin/audit', label: t('admin.layout.nav.audit'), icon: 'history', badge: 0 },
+        { to: '/admin/profile', label: t('admin.layout.nav.profile'), icon: 'user', badge: 0 }
       ]
     }
   ]
@@ -348,6 +364,12 @@ function handleLogout() {
 .nav-badge.error { background: var(--color-error-bg); color: var(--color-error); }
 
 /* Bottom User Profile + Floating Role Switcher */
+.sidebar-lang {
+  display: flex;
+  justify-content: flex-start;
+  padding: 0 4px 8px;
+}
+
 .sidebar-bottom {
   position: relative;
   padding-top: 10px;
@@ -501,5 +523,30 @@ function handleLogout() {
   }
   .admin-sidebar.open { transform: translateX(0); }
   .admin-main { margin-left: 0; padding: 20px 16px 40px; }
+}
+
+/* 手机（≤768px）：侧栏为抽屉，触控目标 ≥ 40px */
+@media (max-width: 768px) {
+  .mobile-topbar { height: 56px; padding: 0 8px 0 4px; gap: 8px; }
+  .mobile-topbar > .f-btn { width: 44px; min-height: 44px; padding: 0; }
+  .mobile-topbar > .fw-600 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+  .mobile-topbar > .f-pill { flex-shrink: 1; min-width: 0; max-width: 38vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-topbar > .topbar-lang { flex-shrink: 0; }
+  .admin-sidebar {
+    width: min(300px, 86vw);
+    padding: 16px 12px calc(12px + env(safe-area-inset-bottom));
+    box-shadow: 8px 0 32px rgba(15, 23, 42, 0.16);
+  }
+  .admin-sidebar:not(.open) { box-shadow: none; visibility: hidden; transition: transform 220ms cubic-bezier(0.2, 0, 0, 1), visibility 0s 220ms; }
+  .admin-sidebar.open { visibility: visible; transition: transform 220ms cubic-bezier(0.2, 0, 0, 1); }
+  .mobile-close { width: 40px; min-height: 40px; padding: 0; flex-shrink: 0; }
+  .nav-item { height: 44px; font-size: 15px; }
+  .nav-group-title { font-size: 12px; }
+  .nav-badge { font-size: 12px; min-width: 22px; height: 20px; }
+  .profile-trigger { min-height: 48px; }
+  .popover-item { min-height: 44px; font-size: 14px; }
+  .popover-header { font-size: 13px; }
+  .popover-act-btn { height: 40px; font-size: 14px; }
+  .admin-main { padding: 16px 12px calc(32px + env(safe-area-inset-bottom)); }
 }
 </style>

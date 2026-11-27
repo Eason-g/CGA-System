@@ -1,29 +1,109 @@
 import { TODAY_STR } from '@/mock/seedData'
 
+// “今天”：mock 模式固定为种子数据锚定日期；http 模式由 store 在拉取快照后设为后端 meta.today（缺省为系统日期）
+let todayStr = TODAY_STR
+
+export function localDateStr(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+export function setTodayStr(dateStr) {
+  todayStr = dateStr || localDateStr()
+}
+
+export function getTodayStr() {
+  return todayStr
+}
+
 export const JOB_STATUS_MAP = {
-  DRAFT: { label: '草稿', tone: 'neutral' },
-  PENDING_DEPT_REVIEW: { label: '待院系初审', tone: 'caution' },
-  PENDING_INTL_REVIEW: { label: '待国际生办会签', tone: 'caution' },
-  PENDING_SCHOOL_REVIEW: { label: '待校级终审', tone: 'caution' },
-  PUBLISHED: { label: '已正式发布', tone: 'success' },
-  REJECTED: { label: '已驳回', tone: 'error' },
-  CLOSED: { label: '已招满关闭', tone: 'neutral' }
+  DRAFT: { label: '草稿', labelEn: 'Draft', tone: 'neutral' },
+  PENDING_DEPT_REVIEW: { label: '待院系初审', labelEn: 'Pending department review', tone: 'caution' },
+  PENDING_INTL_REVIEW: { label: '待国际生办会签', labelEn: 'Pending International Office co-signing', tone: 'caution' },
+  PENDING_SCHOOL_REVIEW: { label: '待校级终审', labelEn: 'Pending university final review', tone: 'caution' },
+  PUBLISHED: { label: '已正式发布', labelEn: 'Published', tone: 'success' },
+  REJECTED: { label: '已驳回', labelEn: 'Rejected', tone: 'error' },
+  CLOSED: { label: '已招满关闭', labelEn: 'Closed (positions filled)', tone: 'neutral' }
 }
 
 export const APP_STATUS_MAP = {
-  SUBMITTED: { label: '待导师筛选', tone: 'blue' },
-  PENDING_SPECIAL_APPROVAL: { label: '待国际生办特批', tone: 'caution' },
-  SPECIAL_APPROVED: { label: '特批通过·待筛选', tone: 'caution' },
-  SPECIAL_REJECTED: { label: '特批驳回', tone: 'error' },
-  INTERVIEW_SCHEDULED: { label: '已安排面试', tone: 'blue' },
-  HIRED: { label: '已录用', tone: 'success' },
-  REJECTED: { label: '未录用', tone: 'error' }
+  SUBMITTED: { label: '待导师筛选', labelEn: 'Awaiting mentor screening', tone: 'blue' },
+  PENDING_SPECIAL_APPROVAL: { label: '待国际生办特批', labelEn: 'Awaiting special approval', tone: 'caution' },
+  SPECIAL_APPROVED: { label: '特批通过·待筛选', labelEn: 'Special approval granted, awaiting screening', tone: 'caution' },
+  SPECIAL_REJECTED: { label: '特批驳回', labelEn: 'Special approval rejected', tone: 'error' },
+  INTERVIEW_SCHEDULED: { label: '已安排面试', labelEn: 'Interview scheduled', tone: 'blue' },
+  HIRED: { label: '已录用', labelEn: 'Hired', tone: 'success' },
+  REJECTED: { label: '未录用', labelEn: 'Not hired', tone: 'error' }
 }
 
 export const FINANCE_STATUS_MAP = {
-  PENDING_CALC: { label: '待核算', tone: 'neutral' },
-  PENDING_PAY: { label: '待财务打款', tone: 'caution' },
-  PAID: { label: '已发放', tone: 'success' }
+  PENDING_CALC: { label: '待核算', labelEn: 'Pending calculation', tone: 'neutral' },
+  PENDING_PAY: { label: '待财务打款', labelEn: 'Awaiting finance payment', tone: 'caution' },
+  SUBMITTED: { label: '已提交财务', labelEn: 'Submitted to finance', tone: 'blue' },
+  PAY_FAILED: { label: '发放失败', labelEn: 'Payment failed', tone: 'error' },
+  PAID: { label: '已发放', labelEn: 'Paid', tone: 'success' }
+}
+
+// ===== P1 第三批：合规强化（与后端 RuleEngine 同名函数、文案一致）=====
+
+// 签证到期预警天数（scanAnomalies 的“签证 30 天内到期”）
+export const VISA_EXPIRY_WARNING_DAYS = 30
+
+function parseDateStr(s) {
+  const [y, m, d] = String(s).split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+// 聘期开始日：今天之后的下一个周一
+export function contractStartFrom(fromStr = todayStr) {
+  const d = parseDateStr(fromStr)
+  const day = d.getDay() // 0=周日
+  d.setDate(d.getDate() + ((8 - day) % 7 || 7))
+  return localDateStr(d)
+}
+
+// 预计聘期结束日：开始日 + 岗位约定周数（至少 1 周）
+export function predictContractEnd(weeks, fromStr = todayStr) {
+  const d = parseDateStr(contractStartFrom(fromStr))
+  d.setDate(d.getDate() + 7 * Math.max(1, Number(weeks) || 0))
+  return localDateStr(d)
+}
+
+// 岗位默认申请截止日：今天 + 30 天（同后端 JobService.DEFAULT_DEADLINE_DAYS）
+export const DEFAULT_DEADLINE_DAYS = 30
+export function defaultJobDeadline(fromStr = todayStr) {
+  const d = parseDateStr(fromStr)
+  d.setDate(d.getDate() + DEFAULT_DEADLINE_DAYS)
+  return localDateStr(d)
+}
+
+// 签证有效期是否覆盖到 endDate：覆盖返回 null，否则返回拦截文案（不可特批）
+export function checkVisaCoverage(student, endDate) {
+  if (!student.visaExpiry) {
+    return `该国际生未登记签证有效期，无法确认覆盖聘期结束日 ${endDate}，不能录用（不可特批）`
+  }
+  if (student.visaExpiry < endDate) {
+    return `该国际生签证有效期至 ${student.visaExpiry}，早于聘期结束日 ${endDate}，签证须覆盖整个聘期，不能录用（不可特批）`
+  }
+  return null
+}
+
+// checkVisaCoverage 的英文（与后端 RuleEngine.visaCoverageText 逐字一致）
+export function checkVisaCoverageEn(student, endDate) {
+  if (!student.visaExpiry) {
+    return `This international student has no registered visa expiry date, so coverage through the employment end date ${endDate} cannot be confirmed; cannot hire (special approval not allowed)`
+  }
+  if (student.visaExpiry < endDate) {
+    return `This international student's visa is valid until ${student.visaExpiry}, before the employment end date ${endDate}; the visa must cover the entire employment period; cannot hire (special approval not allowed)`
+  }
+  return null
+}
+
+// 语言证明核验状态文案
+export const LANG_CERT_STATUS_MAP = {
+  PENDING: { label: '待核验', labelEn: 'Pending verification', tone: 'caution' },
+  VERIFIED: { label: '已核验', labelEn: 'Verified', tone: 'success' },
+  REJECTED: { label: '核验未通过', labelEn: 'Verification failed', tone: 'error' }
 }
 
 export const STEP_TO_JOB_STATUS = {
@@ -74,12 +154,19 @@ export function validateJobPublish(db, form) {
   const quotaDeficit = Math.max(0, requestedQuota - quotaInfo.remaining)
 
   const errors = []
-  if (!budget) errors.push('请选择有效的经费来源账号')
+  // 英文文案与后端 RuleEngine.validateJobPublish 的 errorsEn 逐字一致
+  const errorsEn = []
+  if (!budget) {
+    errors.push('请选择有效的经费来源账号')
+    errorsEn.push('Please select a valid funding account')
+  }
   if (budget && budgetExceeded) {
     errors.push(`预计总支出 ¥${estimatedCost.toLocaleString()} 超出可用预算 ¥${deficit.toLocaleString()}，系统已拦截发布`)
+    errorsEn.push(`Estimated total cost ¥${estimatedCost.toLocaleString()} exceeds the available budget by ¥${deficit.toLocaleString()}; publishing has been blocked`)
   }
   if (quotaExceeded) {
     errors.push(`招聘人数 ${requestedQuota} 人超出院系剩余名额 ${quotaInfo.remaining} 人，系统已拦截发布`)
+    errorsEn.push(`Headcount of ${requestedQuota} exceeds the department's remaining quota of ${quotaInfo.remaining}; publishing has been blocked`)
   }
 
   return {
@@ -93,7 +180,8 @@ export function validateJobPublish(db, form) {
     quotaInfo,
     quotaExceeded,
     quotaDeficit,
-    errors
+    errors,
+    errorsEn
   }
 }
 
@@ -107,62 +195,225 @@ export function buildWorkflowStepsForJob(db, jobType, allowInternational) {
       return true
     })
     .map((node) => node.key)
-  if (!steps.includes('PUBLISHED')) {
-    steps.push('PUBLISHED')
+    .filter((key) => key !== 'PUBLISHED')
+  if (steps[0] !== 'MENTOR_SUBMIT') steps.unshift('MENTOR_SUBMIT')
+  if (allowInternational && !steps.includes('INTL_REVIEW')) {
+    const schoolReview = steps.indexOf('SCHOOL_REVIEW')
+    steps.splice(schoolReview < 0 ? steps.length : schoolReview, 0, 'INTL_REVIEW')
   }
+  steps.push('PUBLISHED')
   return steps
 }
 
-export function getStudentAllocatedWeeklyHours(db, studentId) {
-  return db.contracts
-    .filter((c) => c.studentId === studentId && (c.status === 'ACTIVE' || c.status === 'PENDING_SIGN'))
-    .reduce((sum, c) => sum + Number(c.weeklyHours || 0), 0)
+// 周工时上限：按国际生/国内生读取配置中心 globalRules，个人上限（学籍/签证给出）只能更严，不能放宽
+export function getMaxWeeklyHours(db, student) {
+  const rules = db?.configs?.globalRules || {}
+  const fallback = Number(rules.maxWeeklyHoursDefault) || 20
+  const ruleCap = student?.isInternational ? Number(rules.maxWeeklyHoursIntl) || fallback : fallback
+  const personalCap = Number(student?.maxWeeklyHours)
+  return personalCap > 0 ? Math.min(personalCap, ruleCap) : ruleCap
+}
+
+// 已占周工时 = 生效/待签合同在同一时间叠加的峰值（与后端 RuleEngine 一致）。
+// 续聘的新合同从原合同结束次日开始，两者不重叠，不能简单相加；没有起止日期的合同视为一直有效。
+export function getStudentAllocatedWeeklyHours(db, studentId, start, end) {
+  const mine = db.contracts.filter(
+    (c) => c.studentId === studentId && (c.status === 'ACTIVE' || c.status === 'PENDING_SIGN')
+  )
+  let peak = 0
+  for (const c of mine) {
+    const day = start && (!c.startDate || c.startDate < start) ? start : c.startDate || ''
+    if (end && day > end) continue
+    const load = mine
+      .filter((d) => (!d.startDate || d.startDate <= day) && (!d.endDate || d.endDate >= day))
+      .reduce((sum, d) => sum + Number(d.weeklyHours || 0), 0)
+    peak = Math.max(peak, load)
+  }
+  return peak
+}
+
+// 学生跨岗周工时负荷（展示用）：快照里学生 user 带 hoursSummary（后端按全部合同累计）时优先使用，
+// 导师/院系看不到外院合同明细时也能显示真实总负荷；没有时退回按当前可见合同计算
+export function getStudentHoursSummary(db, student) {
+  const summary = student?.hoursSummary
+  if (summary && summary.allocated != null && summary.max != null) {
+    return { allocated: Number(summary.allocated) || 0, max: Number(summary.max) || getMaxWeeklyHours(db, student) }
+  }
+  return {
+    allocated: student ? getStudentAllocatedWeeklyHours(db, student.id, todayStr) : 0,
+    max: getMaxWeeklyHours(db, student)
+  }
 }
 
 export function getStudentActiveContracts(db, studentId) {
   return db.contracts.filter((c) => c.studentId === studentId && (c.status === 'ACTIVE' || c.status === 'PENDING_SIGN'))
 }
 
+export function getTeachingWeekStart(db, weekNo) {
+  if (!db.meta?.semesterStart || !Number.isInteger(weekNo) || weekNo < 1) return null
+  const day = parseDateStr(db.meta.semesterStart)
+  day.setDate(day.getDate() + (weekNo - 1) * 7)
+  return localDateStr(day)
+}
+
 export function getStudentWeekLoggedHours(db, studentId, weekNo) {
-  return db.timesheets
-    .filter((t) => t.studentId === studentId && Number(t.weekNo) === Number(weekNo) && t.status !== 'REJECTED')
+  const month = getTeachingWeekStart(db, Number(weekNo))?.slice(0, 7)
+  const hours = db.timesheets
+    .filter((t) => t.studentId === studentId && Number(t.weekNo) === Number(weekNo) && t.status !== 'REJECTED'
+      && (!month || (t.month >= month && t.month <= (db.meta.today || todayStr).slice(0, 7))))
     .reduce((sum, t) => sum + Number(t.hours || 0), 0)
+  return Number(hours.toFixed(1))
+}
+
+// 学籍状态（P2 B.2）：必须为“在读”，硬性条件不可特批；未登记按在读处理（与后端 RuleEngine 一致）
+export const ENROLLMENT_ACTIVE = '在读'
+export const ENROLLMENT_STATUSES = ['在读', '休学', '毕业']
+
+export function enrollmentStatusOf(student) {
+  const s = student?.enrollmentStatus
+  return s && String(s).trim() ? String(s).trim() : ENROLLMENT_ACTIVE
+}
+
+// 在读返回 null，否则返回拦截文案
+export function checkEnrollment(student) {
+  const s = enrollmentStatusOf(student)
+  if (s === ENROLLMENT_ACTIVE) return null
+  return `当前学籍状态为「${s}」，仅在读学生可申请三助岗位（硬性条件，不可特批）`
+}
+
+// 学籍状态英文（与后端 RuleEngine.ENROLLMENT_STATUS_EN 一致）；未知状态原样返回
+export const ENROLLMENT_STATUS_EN = { 在读: 'Enrolled', 休学: 'On leave', 毕业: 'Graduated' }
+
+export function enrollmentStatusEn(status) {
+  return ENROLLMENT_STATUS_EN[status] || status
+}
+
+// checkEnrollment 的英文（与后端 RuleEngine.enrollmentText 逐字一致）
+export function checkEnrollmentEn(student) {
+  const s = enrollmentStatusOf(student)
+  if (s === ENROLLMENT_ACTIVE) return null
+  return `Current enrollment status is "${enrollmentStatusEn(s)}"; only enrolled students can apply for assistantship positions (mandatory requirement, special approval not allowed)`
+}
+
+export function allowsInternationalEmployment(job) {
+  const review = job.workflowSteps?.indexOf('INTL_REVIEW') ?? -1
+  return Boolean(job.allowInternational) && review >= 0 && review < job.currentStepIndex
+}
+
+export function checkWorkingEligibility(student, through) {
+  if (checkEnrollment(student)) {
+    return `当前学籍状态为「${enrollmentStatusOf(student)}」，仅在读学生可办理聘用或工时`
+  }
+  if (student.isInternational) {
+    if (!student.visaValid || !student.visaType?.trim()) return '该国际生无有效学习类居留许可'
+    if (!through || !student.visaExpiry || student.visaExpiry < through) return '签证（居留许可）未覆盖办理日期或聘期'
+  }
+  return null
+}
+
+// checkWorkingEligibility 的英文（与后端 RuleEngine.workingEligibilityText 逐字一致）
+export function checkWorkingEligibilityEn(student, through) {
+  if (checkEnrollment(student)) {
+    return `Current enrollment status is "${enrollmentStatusEn(enrollmentStatusOf(student))}"; only enrolled students can be employed or log working hours`
+  }
+  if (student.isInternational) {
+    if (!student.visaValid || !student.visaType?.trim()) return 'This international student has no valid study residence permit'
+    if (!through || !student.visaExpiry || student.visaExpiry < through) return 'The visa (residence permit) does not cover the processing date or the employment period'
+  }
+  return null
 }
 
 export function validateStudentApplication(db, student, job) {
   const checks = []
+  // 提示性检查项（不影响 passed、不参与特批判断）
+  const hints = []
   const existingApp = db.applications.find(
     (a) => a.studentId === student.id && a.jobId === job.id && a.status !== 'REJECTED' && a.status !== 'SPECIAL_REJECTED'
   )
   const quotaFull = Number(job.hiredCount || 0) >= Number(job.quota || 0)
 
-  const currentHours = getStudentAllocatedWeeklyHours(db, student.id)
+  const from = db.meta?.today || todayStr
+  const start = contractStartFrom(from)
+  const end = predictContractEnd(job.weeks, from)
+  const currentHours = getStudentAllocatedWeeklyHours(db, student.id, start, end)
   const jobHours = Number(job.weeklyHours || 0)
   const projectedHours = currentHours + jobHours
-  const maxHours = Number(student.maxWeeklyHours || db.configs.globalRules.maxWeeklyHoursDefault || 20)
+  const maxHours = getMaxWeeklyHours(db, student)
 
+  if (job.deadline && job.deadline < from) {
+    checks.push({ key: 'deadline', label: '申请截止日期', passed: false, overridable: false,
+      detail: `已过申请截止日期（${job.deadline}）`,
+      labelEn: 'Application deadline', detailEn: `The application deadline has passed (${job.deadline})` })
+  }
+
+  // 0. 学籍状态：在读时不额外列出，保持原有校验项顺序
+  const enrollmentError = checkEnrollment(student)
+  if (enrollmentError) {
+    checks.push({
+      key: 'enrollment',
+      label: '学籍状态校验（在读）',
+      passed: false,
+      overridable: false,
+      detail: enrollmentError,
+      labelEn: 'Enrollment status check (enrolled)',
+      detailEn: checkEnrollmentEn(student)
+    })
+  }
+
+  // overridable: false 表示硬性条件，不允许通过特批绕过
   if (student.isInternational) {
     // 1. Visa Check
-    const visaOk = Boolean(student.visaValid && student.visaType)
+    const visaOk = Boolean(student.visaValid && student.visaType?.trim()
+      && (!student.visaExpiry || student.visaExpiry >= from))
     checks.push({
       key: 'visa',
       label: '签证类型校验（有效学习居留许可）',
       passed: visaOk,
+      overridable: false,
       detail: visaOk
-        ? `${student.visaType}有效（有效期至 ${student.visaExpiry || '2027-07-31'}）`
-        : '未检测到有效学习类居留许可，禁止从事校内助教/助研活动'
+        ? `${student.visaType}有效（有效期至 ${student.visaExpiry || '未登记'}）`
+        : '未检测到有效学习类居留许可，禁止从事校内助教/助研活动',
+      labelEn: 'Visa type check (valid study residence permit)',
+      detailEn: visaOk
+        ? `${student.visaType} valid (expiry date: ${student.visaExpiry || 'not registered'})`
+        : 'No valid study residence permit found; on-campus teaching/research assistant work is not permitted'
     })
 
     // 2. Job allows international check
-    const allowIntlOk = Boolean(job.allowInternational)
+    const allowIntlOk = allowsInternationalEmployment(job)
     checks.push({
       key: 'allowIntl',
       label: '岗位国际生开放资格校验',
       passed: allowIntlOk,
+      overridable: false,
       detail: allowIntlOk
         ? '该岗位已通过国际生办会签，面向国际学生开放'
-        : '该岗位未面向国际学生开放（仅限中国籍学生申请）'
+        : '该岗位未面向国际学生开放（仅限中国籍学生申请）',
+      labelEn: 'Position open to international students',
+      detailEn: allowIntlOk
+        ? 'This position has been co-signed by the International Office and is open to international students'
+        : 'This position is not open to international students (Chinese students only)'
     })
+
+    // 3. 签证有效期覆盖预计聘期（提示性，不拦截；录用时 validateHire 硬拦截）
+    if (visaOk) {
+      const covered = !checkVisaCoverage(student, end)
+      const expiry = student.visaExpiry || '未登记'
+      const expiryEn = student.visaExpiry || 'not registered'
+      hints.push({
+        key: 'visaPeriod',
+        label: '签证有效期覆盖聘期（提示）',
+        passed: covered,
+        overridable: false,
+        detail: covered
+          ? `签证有效期至 ${expiry}，覆盖预计聘期（至 ${end}）`
+          : `签证有效期至 ${expiry}，早于预计聘期结束日 ${end}，录用时将被系统拦截，请尽快办理续签并上传新的签证材料`,
+        labelEn: 'Visa validity covers employment period (notice)',
+        detailEn: covered
+          ? `Visa valid until ${expiryEn}, covering the expected employment period (until ${end})`
+          : `Visa valid until ${expiryEn}, before the expected employment end date ${end}; hiring will be blocked by the system. Please renew your visa and upload the new visa documents as soon as possible`
+      })
+    }
   }
 
   // Language requirement check (if job specifies language score)
@@ -170,13 +421,24 @@ export function validateStudentApplication(db, student, job) {
     const reqScore = Number(job.extraFields.minLangScore)
     const stuScore = Number(student.languageLevel || 0)
     const langOk = Boolean(student.languageValid) && stuScore >= reqScore
+    // 新上传的语言证明在国际生办核验前视为未通过（可特批）
+    const pending = student.languageCertStatus === 'PENDING'
     checks.push({
       key: 'lang',
       label: '语言能力证明校验',
       passed: langOk,
+      overridable: true,
       detail: langOk
         ? `已认证 ${student.languageCert}，满足岗位要求（${job.extraFields.languageRequirement}）`
-        : `当前认证 ${student.languageCert || '未提交'}（等效 ${stuScore}），低于岗位最低要求 ${job.extraFields.languageRequirement}`
+        : pending
+        ? `语言证明已提交，待国际生办核验（核验前视为未通过），岗位要求 ${job.extraFields.languageRequirement}`
+        : `当前认证 ${student.languageCert || '未提交'}（等效 ${stuScore}），低于岗位最低要求 ${job.extraFields.languageRequirement}`,
+      labelEn: 'Language certificate check',
+      detailEn: langOk
+        ? `Verified ${student.languageCert}, meets the position requirement (${job.extraFields.languageRequirement})`
+        : pending
+        ? `Language certificate submitted, awaiting International Office verification (treated as not passed until verified); position requires ${job.extraFields.languageRequirement}`
+        : `Current certificate ${student.languageCert || 'not submitted'} (equivalent ${stuScore}), below the position minimum ${job.extraFields.languageRequirement}`
     })
   }
 
@@ -186,15 +448,34 @@ export function validateStudentApplication(db, student, job) {
     key: 'hours',
     label: '跨岗累计周工时校验',
     passed: hoursOk,
+    overridable: true,
     detail: hoursOk
       ? `当前已占 ${currentHours}h + 本岗 ${jobHours}h = ${projectedHours}h ≤ 上限 ${maxHours}h/周`
-      : `当前已占 ${currentHours}h + 本岗 ${jobHours}h = ${projectedHours}h > 上限 ${maxHours}h/周（超出 ${projectedHours - maxHours}h）`
+      : `当前已占 ${currentHours}h + 本岗 ${jobHours}h = ${projectedHours}h > 上限 ${maxHours}h/周（超出 ${projectedHours - maxHours}h）`,
+    labelEn: 'Cross-job weekly hours check',
+    detailEn: hoursOk
+      ? `Currently allocated ${currentHours}h + this position ${jobHours}h = ${projectedHours}h ≤ limit ${maxHours}h/week`
+      : `Currently allocated ${currentHours}h + this position ${jobHours}h = ${projectedHours}h > limit ${maxHours}h/week (over by ${projectedHours - maxHours}h)`
   })
 
   const allPassed = checks.every((c) => c.passed) && !existingApp && !quotaFull
-  const hasFailedCompliance = checks.some((c) => !c.passed)
-  // Special approval can be initiated when blocked by compliance (hours or language), provided not duplicate or full
-  const canSpecialApprove = !existingApp && !quotaFull && hasFailedCompliance && (!student.isInternational || student.visaValid)
+  const failedChecks = checks.filter((c) => !c.passed)
+  const hardFailures = failedChecks.filter((c) => !c.overridable)
+  // 只有可特批项（工时、语言）未通过时才能发起特批；签证、岗位开放资格属于硬性条件
+  const canSpecialApprove = !existingApp && !quotaFull && failedChecks.length > 0 && hardFailures.length === 0
+  let specialBlockedReason = ''
+  let specialBlockedReasonEn = ''
+  if (!canSpecialApprove) {
+    if (existingApp) specialBlockedReason = '已申请过该岗位'
+    else if (quotaFull) specialBlockedReason = '该岗位名额已招满'
+    else if (failedChecks.length === 0) specialBlockedReason = '合规校验已通过，无需特批'
+    else specialBlockedReason = `${hardFailures.map((c) => c.label).join('、')}未通过，属于硬性条件，不可特批`
+    // 英文与后端 RuleEngine 的 specialBlockedReasonEn 逐字一致
+    if (existingApp) specialBlockedReasonEn = 'You have already applied for this position'
+    else if (quotaFull) specialBlockedReasonEn = "This position's quota is full"
+    else if (failedChecks.length === 0) specialBlockedReasonEn = 'All compliance checks passed; no special approval is needed'
+    else specialBlockedReasonEn = `Not passed: ${hardFailures.map((c) => c.labelEn).join(', ')} (mandatory requirement, special approval not allowed)`
+  }
 
   return {
     passed: allPassed,
@@ -206,12 +487,80 @@ export function validateStudentApplication(db, student, job) {
     jobHours,
     projectedHours,
     maxHours,
-    canSpecialApprove
+    canSpecialApprove,
+    specialBlockedReason,
+    hints,
+    specialBlockedReasonEn
   }
 }
 
+export const HIREABLE_APP_STATUSES = ['SUBMITTED', 'SPECIAL_APPROVED', 'INTERVIEW_SCHEDULED']
+
+// 录用时复核：申请后学生可能又被其他岗位录用，必须按录用时刻的累计工时重新判断
+export function validateHire(db, app, job, student) {
+  const from = db.meta?.today || todayStr
+  const start = contractStartFrom(from)
+  const end = predictContractEnd(job.weeks, from)
+  const errors = []
+  // errorsEn 与 errors 一一对应，英文与后端 RuleEngine.validateHire 逐字一致
+  const errorsEn = []
+  if (!HIREABLE_APP_STATUSES.includes(app.status)) {
+    errors.push(`申请当前状态为「${APP_STATUS_MAP[app.status]?.label || app.status}」，不能录用`)
+    errorsEn.push(`The application status is "${APP_STATUS_MAP[app.status]?.labelEn || app.status}"; cannot hire`)
+  }
+  if (Number(job.hiredCount || 0) >= Number(job.quota || 0)) {
+    errors.push('该岗位招聘名额已满，无法继续录用')
+    errorsEn.push("This position's hiring quota is full; no further hires are allowed")
+  }
+  // 学籍状态必须为在读（硬性条件，特批也不能放行）
+  if (checkEnrollment(student)) {
+    errors.push(`该学生当前学籍状态为「${enrollmentStatusOf(student)}」，仅在读学生可录用（不可特批）`)
+    errorsEn.push(`This student's current enrollment status is "${enrollmentStatusEn(enrollmentStatusOf(student))}"; only enrolled students can be hired (special approval not allowed)`)
+  }
+  if (student.isInternational) {
+    if (!(student.visaValid && student.visaType?.trim())) {
+      errors.push('该国际生无有效学习类居留许可，不能录用')
+      errorsEn.push('This international student has no valid study residence permit; cannot hire')
+    }
+    if (!allowsInternationalEmployment(job)) {
+      errors.push('该岗位未面向国际学生开放，不能录用国际生')
+      errorsEn.push('This position is not open to international students; international students cannot be hired')
+    }
+    // 签证有效期必须覆盖整个聘期（硬性条件，特批也不能放行）
+    if (student.visaValid) {
+      const coverageError = checkVisaCoverage(student, end)
+      if (coverageError) {
+        errors.push(coverageError)
+        errorsEn.push(checkVisaCoverageEn(student, end))
+      }
+    }
+  }
+
+  const currentHours = getStudentAllocatedWeeklyHours(db, student.id, start, end)
+  const jobHours = Number(job.weeklyHours || 0)
+  const projectedHours = currentHours + jobHours
+  const maxHours = getMaxWeeklyHours(db, student)
+  let hoursOverridden = false
+  if (projectedHours > maxHours) {
+    // 特批只覆盖审批时看到的超限幅度；之后又多出来的工时需要重新审批
+    const approvedCeiling = Number(app.complianceCheckResult?.projectedHours)
+    if (app.specialStatus === 'APPROVED' && Number.isFinite(approvedCeiling) && projectedHours <= approvedCeiling) {
+      hoursOverridden = true
+    } else {
+      errors.push(
+        `录用后跨岗累计周工时将达 ${projectedHours}h（已占 ${currentHours}h + 本岗 ${jobHours}h），超出上限 ${maxHours}h/周，系统已拦截录用`
+      )
+      errorsEn.push(
+        `After hiring, cross-job weekly hours would reach ${projectedHours}h (allocated ${currentHours}h + this position ${jobHours}h), exceeding the limit of ${maxHours}h/week; hiring has been blocked`
+      )
+    }
+  }
+
+  return { ok: errors.length === 0, errors, currentHours, jobHours, projectedHours, maxHours, hoursOverridden, errorsEn }
+}
+
 export function validateTimesheetSubmission(db, student, weekNo, newHours) {
-  const maxHours = Number(student.maxWeeklyHours || 20)
+  const maxHours = getMaxWeeklyHours(db, student)
   const existingHours = getStudentWeekLoggedHours(db, student.id, weekNo)
   const hoursNum = Number(newHours || 0)
   const projectedHours = existingHours + hoursNum
@@ -222,7 +571,8 @@ export function validateTimesheetSubmission(db, student, weekNo, newHours) {
       existingHours,
       projectedHours,
       maxHours,
-      message: '填报工时必须大于 0 小时'
+      message: '填报工时必须大于 0 小时',
+      messageEn: 'Reported hours must be greater than 0'
     }
   }
   if (projectedHours > maxHours) {
@@ -231,7 +581,8 @@ export function validateTimesheetSubmission(db, student, weekNo, newHours) {
       existingHours,
       projectedHours,
       maxHours,
-      message: `第 ${weekNo} 周跨岗累计工时将达 ${projectedHours}h（已报 ${existingHours}h + 本次 ${hoursNum}h），超出学校红线 ${maxHours}h/周，系统已拦截提交！`
+      message: `第 ${weekNo} 周跨岗累计工时将达 ${projectedHours}h（已报 ${existingHours}h + 本次 ${hoursNum}h），超出学校红线 ${maxHours}h/周，系统已拦截提交！`,
+      messageEn: `Cross-job hours for week ${weekNo} would reach ${projectedHours}h (already reported ${existingHours}h + this entry ${hoursNum}h), exceeding the university limit of ${maxHours}h/week; submission has been blocked!`
     }
   }
   return {
@@ -239,11 +590,12 @@ export function validateTimesheetSubmission(db, student, weekNo, newHours) {
     existingHours,
     projectedHours,
     maxHours,
-    message: `校验通过：第 ${weekNo} 周跨岗累计 ${projectedHours}h / ${maxHours}h`
+    message: `校验通过：第 ${weekNo} 周跨岗累计 ${projectedHours}h / ${maxHours}h`,
+    messageEn: `Check passed: week ${weekNo} cross-job total ${projectedHours}h / ${maxHours}h`
   }
 }
 
-export function daysUntil(dateStr, fromStr = TODAY_STR) {
+export function daysUntil(dateStr, fromStr = todayStr) {
   if (!dateStr) return 999
   const d1 = new Date(fromStr + 'T00:00:00')
   const d2 = new Date(dateStr + 'T00:00:00')
@@ -313,7 +665,7 @@ export function scanAnomalies(db, user) {
   studentSet.forEach((studentId) => {
     const stu = db.users.find((u) => u.id === studentId)
     if (!stu) return
-    const maxH = Number(stu.maxWeeklyHours || 20)
+    const maxH = getMaxWeeklyHours(db, stu)
     const weekLogged = getStudentWeekLoggedHours(db, studentId, currentWeek)
     const allocated = getStudentAllocatedWeeklyHours(db, studentId)
     const peak = Math.max(weekLogged, allocated)
@@ -326,6 +678,8 @@ export function scanAnomalies(db, user) {
         severity: 'error',
         title: `${stu.name} 周工时已超限`,
         detail: `第 ${currentWeek} 周实报 ${weekLogged}h / 排班 ${allocated}h，超出红线 ${maxH}h/周`,
+        titleEn: `${stu.name}: weekly hours over the limit`,
+        detailEn: `Week ${currentWeek}: ${weekLogged}h logged / ${allocated}h contracted, above the ${maxH}h/week limit`,
         studentId,
         isInternational: stu.isInternational,
         deptId: stu.deptId
@@ -337,6 +691,8 @@ export function scanAnomalies(db, user) {
         severity: 'caution',
         title: `${stu.name} 周工时临近上限（${Math.round(ratio * 100)}%）`,
         detail: `第 ${currentWeek} 周已报 ${weekLogged}h / 合同周工时 ${allocated}h（上限 ${maxH}h/周）`,
+        titleEn: `${stu.name}: weekly hours near the limit (${Math.round(ratio * 100)}%)`,
+        detailEn: `Week ${currentWeek}: ${weekLogged}h logged / ${allocated}h contracted (limit ${maxH}h/week)`,
         studentId,
         isInternational: stu.isInternational,
         deptId: stu.deptId
@@ -360,6 +716,8 @@ export function scanAnomalies(db, user) {
         severity: 'caution',
         title: `${stu.name} 第 ${currentWeek} 周尚未填报工时`,
         detail: `在岗岗位：${job.title}（约定 ${con.weeklyHours}h/周）`,
+        titleEn: `${stu.name}: no timesheet for week ${currentWeek}`,
+        detailEn: `Position: ${job.title} (${con.weeklyHours}h/week agreed)`,
         studentId: stu.id,
         contractId: con.id,
         isInternational: stu.isInternational,
@@ -375,12 +733,43 @@ export function scanAnomalies(db, user) {
         severity: leftDays <= 7 ? 'error' : 'caution',
         title: `${stu.name} 聘期距到期仅剩 ${Math.max(0, leftDays)} 天`,
         detail: `岗位「${job.title}」将于 ${con.endDate} 到期，请及时发起考核或续聘`,
+        titleEn: `${stu.name}: contract ends in ${Math.max(0, leftDays)} day(s)`,
+        detailEn: `"${job.title}" ends on ${con.endDate}; start an evaluation or renewal in time`,
         studentId: stu.id,
         contractId: con.id,
         isInternational: stu.isInternational,
         deptId: con.deptId
       })
     }
+  })
+
+  // 签证 30 天内到期（P1 第三批，与后端 RuleEngine.isVisaExpiringSoon 一致）：
+  // 在岗/待签国际生；国际生办与校级管理员另看全部可见国际生
+  const visaStudentIds = new Set(
+    filterByRoleDept(db, db.contracts, user, 'CONTRACT')
+      .filter((c) => c.status === 'ACTIVE' || c.status === 'PENDING_SIGN')
+      .map((c) => c.studentId)
+  )
+  if (user?.role === 'INTL_OFFICER' || user?.role === 'SCHOOL_ADMIN') {
+    db.users.filter((u) => u.role === 'STUDENT' && u.isInternational).forEach((u) => visaStudentIds.add(u.id))
+  }
+  visaStudentIds.forEach((studentId) => {
+    const stu = db.users.find((u) => u.id === studentId)
+    if (!stu?.isInternational || !stu.visaExpiry) return
+    const leftDays = daysUntil(stu.visaExpiry)
+    if (leftDays > VISA_EXPIRY_WARNING_DAYS) return
+    warnings.push({
+      id: `WARN_VISA_${studentId}`,
+      category: 'VISA_EXPIRING',
+      severity: leftDays <= 7 ? 'error' : 'caution',
+      title: leftDays < 0 ? `${stu.name} 签证已过期` : `${stu.name} 签证 ${leftDays} 天内到期`,
+      detail: `签证有效期至 ${stu.visaExpiry}，到期后不得继续从事三助工作，请提醒学生办理续签并上传新的签证材料`,
+      titleEn: leftDays < 0 ? `${stu.name}: visa expired` : `${stu.name}: visa expires within ${leftDays} day(s)`,
+      detailEn: `Visa valid until ${stu.visaExpiry}. The student may not continue assistantship work after it expires; remind them to renew and upload the new visa document`,
+      studentId,
+      isInternational: true,
+      deptId: stu.deptId
+    })
   })
 
   return warnings

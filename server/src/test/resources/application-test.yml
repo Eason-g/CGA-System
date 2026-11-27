@@ -1,0 +1,27 @@
+# 集成测试配置：连接 cga_test 库，账号沿用 application-local.yml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/${CGA_TEST_DB:cga_test}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+
+app:
+  today: 2026-11-20
+  db:
+    # 测试基类在每个测试类开始前主动重建数据，这里启动时不做处理
+    init: never
+  demo:
+    reset-enabled: true
+  # P1 第三批：上传写到系统临时目录（测试结束清理）；关闭模拟财务的自动回调，测试里直接调用回调接口
+  upload-dir: ${java.io.tmpdir}/cga-test-uploads-${CGA_TEST_DB:cga_test}
+  finance:
+    callback-secret: test-finance-callback-secret
+    mock:
+      auto-callback: false
+  # P2 B.3：在演示项目之外再加载测试专用项目（覆盖已有测试里 RA 建岗用到的编号 TEST-01、TEST-RA-01）
+  integration:
+    research-data:
+      - classpath:integration/research-projects.json
+      - classpath:integration/research-projects-test.json
+  security:
+    login:
+      # 全部测试类共用一个上下文且都从 127.0.0.1 登录，放宽 IP 限流；限流本身在 LoginProtectionIntegrationTest 里临时调低后测试
+      ip-max-per-minute: 100000

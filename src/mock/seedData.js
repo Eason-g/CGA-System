@@ -4,21 +4,24 @@
 export const CURRENT_WEEK_NO = 12
 export const CURRENT_MONTH = '2026-11'
 export const TODAY_STR = '2026-11-20'
+export const SEMESTER_START = '2026-08-31'
 
 export function createSeedData() {
   return {
     meta: {
       version: '1.1.0',
       currentWeekNo: CURRENT_WEEK_NO,
+      today: TODAY_STR,
+      semesterStart: SEMESTER_START,
       currentMonth: CURRENT_MONTH,
       seededAt: '2026-11-20 08:30:00'
     },
 
     departments: [
-      { id: 'DEPT_CS', name: '计算机科学与技术学院', shortName: '计算机学院', quotaLimit: 22 },
-      { id: 'DEPT_MATH', name: '数学科学学院', shortName: '数学学院', quotaLimit: 14 },
-      { id: 'DEPT_ECON', name: '经济管理学院', shortName: '经管学院', quotaLimit: 12 },
-      { id: 'DEPT_OFFICE', name: '校级行政与教学保障部', shortName: '校级机关', quotaLimit: 12 }
+      { id: 'DEPT_CS', name: '计算机科学与技术学院', shortName: '计算机学院', nameEn: 'School of Computer Science and Technology', shortNameEn: 'Computer Science', quotaLimit: 22 },
+      { id: 'DEPT_MATH', name: '数学科学学院', shortName: '数学学院', nameEn: 'School of Mathematical Sciences', shortNameEn: 'Mathematics', quotaLimit: 14 },
+      { id: 'DEPT_ECON', name: '经济管理学院', shortName: '经管学院', nameEn: 'School of Economics and Management', shortNameEn: 'Economics & Management', quotaLimit: 12 },
+      { id: 'DEPT_OFFICE', name: '校级行政与教学保障部', shortName: '校级机关', nameEn: 'University Administration and Teaching Support', shortNameEn: 'University Office', quotaLimit: 12 }
     ],
 
     // 6 Preset Demo Accounts + Supporting Accounts for Multi-Dept & Isolation Demos
@@ -42,6 +45,7 @@ export function createSeedData() {
         languageValid: true,
         maxWeeklyHours: 20,
         studentNo: '2025210891',
+        enrollmentStatus: '在读',
         degree: '硕士研究生',
         major: '人工智能',
         gpa: '3.82 / 4.0',
@@ -68,6 +72,7 @@ export function createSeedData() {
         languageValid: true,
         maxWeeklyHours: 20,
         studentNo: '2023011420',
+        enrollmentStatus: '在读',
         degree: '本科生（大四）',
         major: '计算机科学与技术',
         gpa: '3.91 / 4.0',
@@ -149,6 +154,7 @@ export function createSeedData() {
         languageValid: true,
         maxWeeklyHours: 20,
         studentNo: '2024110305',
+        enrollmentStatus: '在读',
         degree: '博士研究生',
         major: '计算机系统结构',
         gpa: '3.88 / 4.0',
@@ -174,6 +180,7 @@ export function createSeedData() {
         languageValid: true,
         maxWeeklyHours: 20,
         studentNo: '2025220418',
+        enrollmentStatus: '在读',
         degree: '硕士研究生',
         major: '应用数学',
         gpa: '3.76 / 4.0',
@@ -317,7 +324,87 @@ export function createSeedData() {
         maxWeeklyHoursDefault: 20,
         maxWeeklyHoursIntl: 20,
         expiryWarningDays: 15,
-        cautionHoursRatio: 0.8
+        cautionHoursRatio: 0.8,
+        // P2 C.2 智能推荐权重：技能匹配 / 剩余周工时 / 语言要求 / 同院系 / 截止临近（按比例归一到 0–100 分）
+        recommendWeights: { skill: 40, hours: 25, language: 15, dept: 10, deadline: 10 }
+      },
+      // P1：岗位类型差异化字段。发布页按它渲染表单，后端建岗按它校验（必填、下拉选项、经费来源）
+      // 字段 type：text / textarea / number / select / lines（多行，存为字符串数组）/ date
+      // 派生字段由后端生成：TA 的 languageRequirement（由 minLangScore 得出），RA 的 milestones（由 milestonesText 每行一条）
+      jobTypeSchemas: {
+        TA: {
+          label: '助教（TA）',
+          desc: '绑定课程号、语言要求与教学周排班',
+          allowedFundSources: ['TA_FUND'],
+          defaults: { hourlyRate: 45, weeklyHours: 8, weeks: 16, allowInternational: true },
+          intlToggle: {
+            label: '面向国际生开放（勾选后自动触发国际生办专项会签）',
+            hint: '国际生申请人将自动校验 X1 有效学习居留许可、语言证明与 20h 周工时上限'
+          },
+          fields: [
+            { key: 'courseCode', label: '绑定课程编号', type: 'text', required: true, placeholder: '如 CS3090', defaultValue: 'CS3066' },
+            { key: 'semester', label: '授课学期', type: 'text', required: true, placeholder: '如 2026-2027 春季学期', defaultValue: '2026-2027 春季学期' },
+            { key: 'courseName', label: '课程名称', type: 'text', required: true, placeholder: '如 操作系统原理（双语）', defaultValue: '计算机体系结构（双语）' },
+            {
+              key: 'minLangScore',
+              label: '语言能力最低要求',
+              type: 'select',
+              required: false,
+              defaultValue: 6.5,
+              options: [
+                { value: 0, label: '无特殊语言限制' },
+                { value: 6.0, label: 'IELTS 6.0 / HSK 5' },
+                { value: 6.5, label: 'IELTS 6.5 / CET-6 550+' },
+                { value: 7.0, label: 'IELTS 7.0 / TOEFL 95+' },
+                { value: 7.5, label: 'IELTS 7.5 / TOEFL 105+' }
+              ]
+            },
+            {
+              key: 'scheduleText',
+              label: '教学周排班安排',
+              type: 'text',
+              required: false,
+              placeholder: '如 周二 14:00-16:00 上机实验；周四 10:00-12:00 答疑',
+              defaultValue: '周二 14:00-16:00 实验辅导；周四 10:00-12:00 答疑'
+            }
+          ]
+        },
+        RA: {
+          label: '助研（RA）',
+          desc: '绑定科研项目、课题经费与里程碑',
+          allowedFundSources: ['RA_PROJECT'],
+          defaults: { hourlyRate: 48, weeklyHours: 10, weeks: 16, allowInternational: false },
+          intlToggle: {
+            label: '允许国际研究生申请该科研助研岗位',
+            hint: '仍将强制执行国际生签证与 20h 累计工时校验'
+          },
+          fields: [
+            { key: 'projectCode', label: '绑定科研项目编号', type: 'text', required: true, placeholder: '如 NSFC-62601234', defaultValue: 'NSFC-62572018' },
+            { key: 'researchDirection', label: '研究方向', type: 'text', required: true, placeholder: '如 多模态推理与系统优化', defaultValue: 'AI 系统与高性能计算' },
+            { key: 'projectName', label: '课题名称', type: 'text', required: true, placeholder: '', defaultValue: '面向异构集群的大模型低延迟推理优化' },
+            {
+              key: 'milestonesText',
+              label: '阶段性里程碑（Milestone，每行一条）',
+              type: 'textarea',
+              required: false,
+              placeholder: '每行一条，截止日期按聘期自动均分',
+              defaultValue: 'M1：完成异构算子基准测试报告\nM2：实现多卡通信重叠优化原型\nM3：完成实验验证与论文图表整理'
+            }
+          ]
+        },
+        GA: {
+          label: '助管（GA）',
+          desc: '绑定行政科室、值班时段与专项经费',
+          allowedFundSources: ['GA_FUND'],
+          defaults: { hourlyRate: 35, weeklyHours: 6, weeks: 16, allowInternational: false },
+          intlToggle: null,
+          fields: [
+            { key: 'officeDept', label: '绑定行政科室', type: 'text', required: true, placeholder: '如 研究生院培养办', defaultValue: '研究生院综合服务大厅' },
+            { key: 'location', label: '办公地点', type: 'text', required: true, placeholder: '如 行政楼 B306', defaultValue: '行政楼 A204' },
+            { key: 'dutyShift', label: '值班时段', type: 'text', required: true, placeholder: '如 周二/周四 14:00-17:00', defaultValue: '周二、周四 14:00-17:00' },
+            { key: 'fundNote', label: '专项经费说明', type: 'text', required: false, placeholder: '', defaultValue: '校级勤工助学专项经费保障' }
+          ]
+        }
       }
     },
 
@@ -628,8 +715,8 @@ export function createSeedData() {
         allowInternational: true,
         status: 'PUBLISHED',
         workflowInstanceId: 'WF_JOB_10',
-        workflowSteps: ['MENTOR_SUBMIT', 'DEPT_REVIEW', 'PUBLISHED'],
-        currentStepIndex: 2,
+        workflowSteps: ['MENTOR_SUBMIT', 'DEPT_REVIEW', 'INTL_REVIEW', 'PUBLISHED'],
+        currentStepIndex: 3,
         deadline: '2026-12-01',
         createdAt: '2026-08-25 09:00:00',
         skills: ['Python', 'PyTorch', '人工智能'],
@@ -802,7 +889,7 @@ export function createSeedData() {
           ]
         },
         isSpecialApproval: true,
-        specialReason: '本人本科阶段在意大利米兰理工大学接受全英文数学授课（附英文成绩单），实际英文数学表达流利，申请国际生办豁免 IELTS 0.5 分差额特批。',
+        specialReason: '本人本科阶段在欧洲某理工大学接受全英文数学授课（附英文成绩单），实际英文数学表达流利，申请国际生办豁免 IELTS 0.5 分差额特批。',
         specialStatus: 'PENDING',
         interviewInfo: null,
         score: null,
@@ -1334,6 +1421,83 @@ export function createSeedData() {
         beforeValue: '待考核',
         afterValue: '优秀（1.1x）',
         timestamp: '2026-11-15 17:00:00'
+      }
+    ],
+
+    // P1：岗位模板（deptId 为空 = 全校通用）；payload 为除岗位名称外的发布表单字段
+    jobTemplates: [
+      {
+        id: 'JT_TA_01',
+        name: '双语课程助教（通用）',
+        type: 'TA',
+        deptId: null,
+        payload: {
+          type: 'TA',
+          quota: 2,
+          hourlyRate: 45,
+          weeklyHours: 8,
+          weeks: 16,
+          allowInternational: true,
+          skills: ['英语授课', '作业批改'],
+          description: '协助主讲教师组织双语实验课与习题课、批改作业并每周提供课后答疑。',
+          extraFields: {
+            courseCode: '',
+            courseName: '',
+            semester: '2026-2027 春季学期',
+            minLangScore: 6.5,
+            scheduleText: '每周两次课后答疑，具体时段与主讲教师商定'
+          }
+        },
+        createdBy: 'U_SCHOOL_ADMIN',
+        createdAt: '2026-09-01 09:00:00'
+      },
+      {
+        id: 'JT_RA_01',
+        name: '科研项目助研（通用）',
+        type: 'RA',
+        deptId: null,
+        payload: {
+          type: 'RA',
+          quota: 1,
+          hourlyRate: 48,
+          weeklyHours: 10,
+          weeks: 16,
+          allowInternational: false,
+          skills: ['文献调研', '数据分析'],
+          description: '参与课题组科研任务，负责文献调研、实验数据整理与阶段报告撰写。',
+          extraFields: {
+            projectCode: '',
+            projectName: '',
+            researchDirection: '',
+            milestonesText: 'M1：完成文献综述与实验方案\nM2：完成核心实验与数据分析\nM3：完成阶段总结报告'
+          }
+        },
+        createdBy: 'U_SCHOOL_ADMIN',
+        createdAt: '2026-09-01 09:05:00'
+      },
+      {
+        id: 'JT_GA_01',
+        name: '行政窗口助管（通用）',
+        type: 'GA',
+        deptId: null,
+        payload: {
+          type: 'GA',
+          quota: 2,
+          hourlyRate: 35,
+          weeklyHours: 6,
+          weeks: 16,
+          allowInternational: false,
+          skills: ['办公自动化', '沟通协调'],
+          description: '协助行政窗口接待来访师生、办理证明材料并做好业务咨询登记。',
+          extraFields: {
+            officeDept: '',
+            location: '',
+            dutyShift: '周一至周五任选两个半天',
+            fundNote: '校级勤工助学专项经费保障'
+          }
+        },
+        createdBy: 'U_SCHOOL_ADMIN',
+        createdAt: '2026-09-01 09:10:00'
       }
     ]
   }

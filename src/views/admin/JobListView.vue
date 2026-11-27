@@ -1,14 +1,14 @@
 <template>
   <div class="flex-col gap-20">
     <header class="page-header">
-      <h1 class="text-title">岗位管理与审批</h1>
+      <h1 class="text-title">{{ $t('admin.jobs.title') }}</h1>
       <router-link
         v-if="['MENTOR', 'DEPT_ADMIN', 'SCHOOL_ADMIN'].includes(user?.role)"
         to="/admin/jobs/publish"
         class="f-btn f-btn-primary"
       >
         <FluentIcon name="plus" :size="15" />
-        <span>发布岗位</span>
+        <span>{{ $t('admin.jobs.publish') }}</span>
       </router-link>
     </header>
 
@@ -20,11 +20,11 @@
           v-model="keyword"
           type="text"
           class="f-input search-input"
-          placeholder="搜索岗位名称或编号..."
+          :placeholder="$t('admin.jobs.searchPh')"
         />
       </div>
 
-      <div class="f-segmented" role="group" aria-label="按类型筛选">
+      <div class="f-segmented" role="group" :aria-label="$t('admin.jobs.filterByType')">
         <button
           v-for="t in typeOptions"
           :key="t.value"
@@ -37,28 +37,24 @@
       </div>
 
       <select v-model="statusFilter" class="f-select status-select">
-        <option value="ALL">全部状态</option>
-        <option value="PENDING_DEPT_REVIEW">待院系初审</option>
-        <option value="PENDING_INTL_REVIEW">待国际生办会签</option>
-        <option value="PENDING_SCHOOL_REVIEW">待校级终审</option>
-        <option value="PUBLISHED">已正式发布</option>
-        <option value="REJECTED">已驳回</option>
+        <option value="ALL">{{ $t('admin.jobs.allStatus') }}</option>
+        <option v-for="code in STATUS_FILTERS" :key="code" :value="code">{{ statusLabel(JOB_STATUS_MAP, code) }}</option>
       </select>
     </section>
 
     <!-- Clean Single-Line Density Table -->
     <section class="acrylic-card table-card">
       <div v-if="filteredJobs.length" class="f-table-wrap">
-        <table class="f-table">
+        <table class="f-table f-table-sticky-action">
           <thead>
             <tr>
-              <th>岗位名称</th>
-              <th>类型</th>
-              <th>院系</th>
-              <th>名额</th>
-              <th style="min-width: 170px;">预计经费与池进度</th>
-              <th>状态</th>
-              <th>操作</th>
+              <th>{{ $t('admin.jobs.colTitle') }}</th>
+              <th>{{ $t('admin.common.type') }}</th>
+              <th>{{ $t('admin.common.dept') }}</th>
+              <th>{{ $t('admin.jobs.colQuota') }}</th>
+              <th style="min-width: 170px;">{{ $t('admin.jobs.colBudget') }}</th>
+              <th>{{ $t('admin.common.status') }}</th>
+              <th>{{ $t('admin.common.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -66,11 +62,11 @@
               <td>
                 <div class="flex items-center gap-8">
                   <span class="fw-600">{{ job.title }}</span>
-                  <span v-if="job.allowInternational" class="f-pill f-pill-blue">国际生</span>
+                  <span v-if="job.allowInternational" class="f-pill f-pill-blue">{{ $t('admin.common.intl') }}</span>
                 </div>
               </td>
               <td><span class="f-type-tag" :class="job.type.toLowerCase()">{{ job.type }}</span></td>
-              <td class="text-muted">{{ store.getDeptShortName(job.deptId) }}</td>
+              <td class="text-muted">{{ deptShortName(store.db, job.deptId) }}</td>
               <td class="tabular-nums">{{ job.hiredCount }}/{{ job.quota }}</td>
               <td>
                 <div class="flex items-center justify-between text-xs tabular-nums">
@@ -87,7 +83,7 @@
               </td>
               <td>
                 <span class="f-pill" :class="`f-pill-${JOB_STATUS_MAP[job.status]?.tone || 'neutral'}`">
-                  {{ JOB_STATUS_MAP[job.status]?.label || job.status }}
+                  {{ statusLabel(JOB_STATUS_MAP, job.status) }}
                 </span>
               </td>
               <td>
@@ -97,7 +93,7 @@
                   :class="canReviewJob(job) ? 'f-btn-primary' : ''"
                   @click="openJobDrawer(job)"
                 >
-                  {{ canReviewJob(job) ? '审批' : '详情' }}
+                  {{ canReviewJob(job) ? $t('admin.jobs.review') : $t('admin.common.details') }}
                 </button>
               </td>
             </tr>
@@ -107,8 +103,8 @@
       <EmptyState
         v-else
         icon="briefcase"
-        description="暂无匹配的岗位"
-        action-text="重置筛选"
+        :description="$t('admin.jobs.empty')"
+        :action-text="$t('admin.jobs.resetFilters')"
         @action="resetFilters"
       />
     </section>
@@ -122,7 +118,7 @@
       @close="selectedJobId = null"
     >
       <div class="drawer-card">
-        <div class="text-xs text-muted fw-600 mb-8">审批流程</div>
+        <div class="text-xs text-muted fw-600 mb-8">{{ $t('admin.jobs.workflow') }}</div>
         <div class="wf-steps">
           <div
             v-for="(stepKey, idx) in selectedJob.workflowSteps"
@@ -142,25 +138,25 @@
 
       <div class="drawer-card">
         <div class="kv-grid">
-          <div><span class="text-muted">院系：</span><strong>{{ store.getDeptName(selectedJob.deptId) }}</strong></div>
-          <div><span class="text-muted">导师：</span><strong>{{ store.getUser(selectedJob.mentorId)?.name }}</strong></div>
-          <div><span class="text-muted">名额：</span><strong class="tabular-nums">{{ selectedJob.hiredCount }}/{{ selectedJob.quota }} 人</strong></div>
-          <div><span class="text-muted">时薪：</span><strong class="tabular-nums">¥{{ selectedJob.hourlyRate }}/h · {{ selectedJob.weeklyHours }}h/周</strong></div>
-          <div><span class="text-muted">总支出：</span><strong class="text-blue tabular-nums">¥{{ calcJobBudgetCost(selectedJob).toLocaleString() }}</strong></div>
-          <div><span class="text-muted">国际生：</span><strong>{{ selectedJob.allowInternational ? '面向开放' : '否' }}</strong></div>
+          <div><span class="text-muted">{{ $t('admin.jobs.kvDept') }}</span><strong>{{ deptName(store.db, selectedJob.deptId) }}</strong></div>
+          <div><span class="text-muted">{{ $t('admin.jobs.kvMentor') }}</span><strong>{{ store.getUser(selectedJob.mentorId)?.name }}</strong></div>
+          <div><span class="text-muted">{{ $t('admin.jobs.kvQuota') }}</span><strong class="tabular-nums">{{ $t('admin.jobs.quotaVal', { hired: selectedJob.hiredCount, quota: selectedJob.quota }) }}</strong></div>
+          <div><span class="text-muted">{{ $t('admin.jobs.kvRate') }}</span><strong class="tabular-nums">{{ $t('admin.jobs.rateVal', { rate: selectedJob.hourlyRate, hours: selectedJob.weeklyHours }) }}</strong></div>
+          <div><span class="text-muted">{{ $t('admin.jobs.kvTotal') }}</span><strong class="text-blue tabular-nums">¥{{ calcJobBudgetCost(selectedJob).toLocaleString() }}</strong></div>
+          <div><span class="text-muted">{{ $t('admin.jobs.kvIntl') }}</span><strong>{{ selectedJob.allowInternational ? $t('admin.jobs.intlOpen') : $t('admin.jobs.no') }}</strong></div>
         </div>
 
         <div class="mt-12 pt-12 border-t text-xs">
-          <div class="text-muted mb-4">经费账号：{{ store.getBudget(selectedJob.budgetId)?.name }}</div>
+          <div class="text-muted mb-4">{{ $t('admin.jobs.budgetAccount', { name: store.getBudget(selectedJob.budgetId)?.name }) }}</div>
           <template v-if="selectedJob.type === 'TA'">
-            <div>课程：{{ selectedJob.extraFields?.courseCode }} {{ selectedJob.extraFields?.courseName }}</div>
-            <div class="mt-4">语言：{{ selectedJob.extraFields?.languageRequirement || '无限制' }} · {{ selectedJob.extraFields?.scheduleText }}</div>
+            <div>{{ $t('admin.jobs.course') }}{{ selectedJob.extraFields?.courseCode }} {{ selectedJob.extraFields?.courseName }}</div>
+            <div class="mt-4">{{ $t('admin.jobs.language') }}{{ selectedJob.extraFields?.languageRequirement || $t('admin.jobs.noLimit') }} · {{ selectedJob.extraFields?.scheduleText }}</div>
           </template>
           <template v-else-if="selectedJob.type === 'RA'">
-            <div>课题：{{ selectedJob.extraFields?.projectCode }} · {{ selectedJob.extraFields?.researchDirection }}</div>
+            <div>{{ $t('admin.jobs.project') }}{{ selectedJob.extraFields?.projectCode }} · {{ selectedJob.extraFields?.researchDirection }}</div>
           </template>
           <template v-else>
-            <div>科室：{{ selectedJob.extraFields?.officeDept }}（{{ selectedJob.extraFields?.location }}）</div>
+            <div>{{ $t('admin.jobs.office') }}{{ selectedJob.extraFields?.officeDept }} ({{ selectedJob.extraFields?.location }})</div>
           </template>
         </div>
       </div>
@@ -170,14 +166,14 @@
           v-model="reviewOpinion"
           type="text"
           class="f-input"
-          placeholder="填写审批意见（选填，将写入审计日志）..."
+          :placeholder="$t('admin.jobs.opinionPh')"
         />
         <div class="flex gap-8 justify-end">
           <button type="button" class="f-btn f-btn-danger-outline" :disabled="reviewing" @click="submitReview('REJECT')">
-            驳回
+            {{ $t('admin.common.reject') }}
           </button>
           <button type="button" class="f-btn f-btn-primary" :disabled="reviewing" @click="submitReview('APPROVE')">
-            {{ user?.role === 'INTL_OFFICER' ? '会签通过' : '审批通过' }}
+            {{ user?.role === 'INTL_OFFICER' ? $t('admin.jobs.cosign') : $t('admin.jobs.approve') }}
           </button>
         </div>
       </template>
@@ -198,6 +194,10 @@ import { api } from '@/services/api'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import AuditDrawer from '@/components/AuditDrawer.vue'
+import { t } from '@/i18n'
+import { deptShortName, deptName, statusLabel, stepLabel } from './adminI18n'
+
+const STATUS_FILTERS = ['PENDING_DEPT_REVIEW', 'PENDING_INTL_REVIEW', 'PENDING_SCHOOL_REVIEW', 'PUBLISHED', 'REJECTED']
 
 const store = useAppStore()
 const user = computed(() => store.currentUser)
@@ -209,12 +209,12 @@ const selectedJobId = ref(null)
 const reviewOpinion = ref('')
 const reviewing = ref(false)
 
-const typeOptions = [
-  { value: 'ALL', label: '全部' },
+const typeOptions = computed(() => [
+  { value: 'ALL', label: t('admin.common.all') },
   { value: 'TA', label: 'TA' },
   { value: 'RA', label: 'RA' },
   { value: 'GA', label: 'GA' }
-]
+])
 
 const visibleJobs = computed(() => filterJobsByRole(store.db, user.value))
 
@@ -250,10 +250,6 @@ function canReviewJob(job) {
   if (user.value.role === 'INTL_OFFICER' && job.status === 'PENDING_INTL_REVIEW') return true
   if (user.value.role === 'SCHOOL_ADMIN' && ['PENDING_SCHOOL_REVIEW', 'PENDING_DEPT_REVIEW', 'PENDING_INTL_REVIEW'].includes(job.status)) return true
   return false
-}
-
-function stepLabel(key) {
-  return { MENTOR_SUBMIT: '导师提交', DEPT_REVIEW: '院系审核', INTL_REVIEW: '国际生办会签', SCHOOL_REVIEW: '校级终审', PUBLISHED: '正式发布' }[key] || key
 }
 
 function openJobDrawer(job) {

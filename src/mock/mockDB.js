@@ -1,38 +1,7 @@
-import { createSeedData } from './seedData'
+import { createSeedData, TODAY_STR, SEMESTER_START } from './seedData'
 
 const STORAGE_KEY = 'CAMPUS_TARGA_DB_V1_1'
 const AUTH_KEY = 'CAMPUS_TARGA_AUTH_V1_1'
-const UNIV_KEY = 'CAMPUS_TARGA_UNIV_V1_1'
-
-export const UNIVERSITY_LIST = [
-  { id: 'UNIV_TSINGHUA', name: '清华大学', enName: 'Tsinghua University', code: '10003' },
-  { id: 'UNIV_PKU', name: '北京大学', enName: 'Peking University', code: '10001' },
-  { id: 'UNIV_ZJU', name: '浙江大学', enName: 'Zhejiang University', code: '10335' },
-  { id: 'UNIV_FUDAN', name: '复旦大学', enName: 'Fudan University', code: '10246' },
-  { id: 'UNIV_SJTU', name: '上海交通大学', enName: 'Shanghai Jiao Tong University', code: '10248' },
-  { id: 'UNIV_NJU', name: '南京大学', enName: 'Nanjing University', code: '10284' },
-  { id: 'UNIV_WHU', name: '武汉大学', enName: 'Wuhan University', code: '10486' },
-  { id: 'UNIV_HUST', name: '华中科技大学', enName: 'Huazhong University of Science and Technology', code: '10487' },
-  { id: 'UNIV_SYSU', name: '中山大学', enName: 'Sun Yat-sen University', code: '10558' },
-  { id: 'UNIV_DEMO', name: '示范高校联盟（通用院校）', enName: 'Alliance University (Demo)', code: '10000' }
-]
-
-export function getSavedUniversityId() {
-  try {
-    return localStorage.getItem(UNIV_KEY) || 'UNIV_DEMO'
-  } catch {
-    return 'UNIV_DEMO'
-  }
-}
-
-export function saveUniversityId(univId) {
-  try {
-    localStorage.setItem(UNIV_KEY, univId || 'UNIV_DEMO')
-  } catch {
-    // ignore
-  }
-}
-
 let dbCache = null
 
 export function initDB() {
@@ -41,6 +10,8 @@ export function initDB() {
     if (raw) {
       const parsed = JSON.parse(raw)
       if (parsed && parsed.meta && parsed.meta.version === '1.1.0' && Array.isArray(parsed.jobs)) {
+        parsed.meta.today ||= TODAY_STR
+        parsed.meta.semesterStart ||= SEMESTER_START
         dbCache = parsed
         return dbCache
       }
