@@ -90,7 +90,7 @@ public class ApplicationService {
         List<JobApplication> myApps = applicationMapper.selectByStudent(student.getId());
         List<Contract> myContracts = contractMapper.selectAllocatingByStudent(student.getId());
         RuleEngine.ApplicationCheck check = RuleEngine.validateStudentApplication(student, job, myApps, myContracts,
-                configService.globalRules(), time.today());
+                configService.globalRulesForWrite(), time.today());
         if (check.alreadyApplied()) {
             throw new BizException(400, "您已申请过该岗位，请勿重复投递", check);
         }
@@ -154,18 +154,31 @@ public class ApplicationService {
     /** 国际生办、校级管理员审核特批单；申请须为 PENDING_SPECIAL_APPROVAL */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public JobApplication reviewSpecial(String applicationId, String decision, String opinion, CurrentUser operator) {
-        scope.requireVisible(applicationMapper, scope.applications(operator), applicationId, "申请单不存在");
+        JobApplication visible = scope.requireVisible(applicationMapper, scope.applications(operator), applicationId, "申请单不存在");
+        User student = userMapper.lockById(visible.getStudentId());
+        Job job = jobMapper.lockById(visible.getJobId());
         JobApplication app = applicationMapper.lockById(applicationId);
         if (!"PENDING_SPECIAL_APPROVAL".equals(app.getStatus())) {
             throw BizException.badRequest("该申请不处于待特批状态");
         }
         boolean approve = "APPROVE".equals(decision);
+        if (approve && RuleEngine.checkEnrollment(student) != null) {
+            throw BizException.forbidden(RuleEngine.checkEnrollment(student));
+        }
+        if (approve && Boolean.TRUE.equals(student.getIsInternational())) {
+            if (!RuleEngine.allowsInternationalEmployment(job)) {
+                throw BizException.forbidden("该岗位未完成国际生会签，不可特批");
+            }
+            String eligibility = RuleEngine.checkWorkingEligibility(student, time.today());
+            if (eligibility != null) {
+                throw BizException.forbidden(eligibility);
+            }
+        }
         String beforeStatus = app.getStatus();
         app.setStatus(approve ? "SPECIAL_APPROVED" : "SPECIAL_REJECTED");
         app.setSpecialStatus(approve ? "APPROVED" : "REJECTED");
         applicationMapper.updateById(app);
 
-        Job job = jobMapper.selectById(app.getJobId());
         String jobTitle = job != null ? job.getTitle() : "";
         audit.notify(app.getStudentId(), AuditService.CHANNEL_MAIL,
                 "特批申请" + (approve ? "已批准" : "未通过") + "：" + jobTitle,
@@ -240,7 +253,7 @@ public class ApplicationService {
         LocalDate endDate = RuleEngine.predictContractEnd(time.today(), Num.orZero(job.getWeeks()));
         if (hire) {
             List<Contract> contracts = contractMapper.selectAllocatingByStudent(student.getId());
-            hireCheck = RuleEngine.validateHire(app, job, student, contracts, configService.globalRules(), endDate);
+            hireCheck = RuleEngine.validateHire(app, job, student, contracts, configService.globalRulesForWrite(), endDate);
             if (!hireCheck.ok()) {
                 throw new BizException(403, String.join("；", hireCheck.errors()), hireCheck);
             }

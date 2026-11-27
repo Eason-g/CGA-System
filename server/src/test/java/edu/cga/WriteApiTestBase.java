@@ -92,8 +92,10 @@ public abstract class WriteApiTestBase extends IntegrationTestBase {
         j.setAllowInternational(allowIntl);
         j.setStatus("PUBLISHED");
         j.setWorkflowInstanceId("WF_" + id);
-        j.setWorkflowSteps(List.of("MENTOR_SUBMIT", "DEPT_REVIEW", "PUBLISHED"));
-        j.setCurrentStepIndex(2);
+        j.setWorkflowSteps(allowIntl
+                ? List.of("MENTOR_SUBMIT", "DEPT_REVIEW", "INTL_REVIEW", "PUBLISHED")
+                : List.of("MENTOR_SUBMIT", "DEPT_REVIEW", "PUBLISHED"));
+        j.setCurrentStepIndex(j.getWorkflowSteps().size() - 1);
         j.setDeadline(LocalDate.of(2026, 12, 31));
         j.setCreatedAt(LocalDateTime.of(2026, 11, 1, 9, 0));
         j.setSkills(new ArrayList<>());

@@ -7,6 +7,7 @@ import java.util.Optional;
 import edu.cga.common.BizException;
 import edu.cga.config.IntegrationProperties;
 import edu.cga.security.login.LoginGuard;
+import edu.cga.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
@@ -39,7 +40,10 @@ public class MockCasController {
     private final IntegrationProperties props;
     private final LoginGuard loginGuard;
 
-    public MockCasController(MockCasProvider cas, IntegrationProperties props, LoginGuard loginGuard) {
+    private final AuthService authService;
+
+    public MockCasController(MockCasProvider cas, IntegrationProperties props, LoginGuard loginGuard, AuthService authService) {
+        this.authService = authService;
         this.cas = cas;
         this.props = props;
         this.loginGuard = loginGuard;
@@ -64,9 +68,9 @@ public class MockCasController {
             return rejected;
         }
         // 认证中心的密码表单与本系统密码登录同样防暴力破解：按 IP 限流 + 按学工号连续失败锁定
-        String lockKey = "cas:" + (uid == null ? "" : uid.trim().toLowerCase());
         try {
             loginGuard.checkIp(request.getRemoteAddr());
+            String lockKey = authService.ssoLockKey(uid);
             loginGuard.ensureNotLocked(lockKey);
             Optional<SsoIdentity> identity = cas.authenticate(uid, password);
             if (identity.isEmpty()) {

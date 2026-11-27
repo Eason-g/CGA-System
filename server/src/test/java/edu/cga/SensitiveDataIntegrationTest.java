@@ -124,6 +124,14 @@ class SensitiveDataIntegrationTest extends WriteApiTestBase {
     }
 
     @Test
+    void profileRejectsAnotherAccountsNormalizedEmail() throws Exception {
+        Object before = jdbc().queryForObject("SELECT email FROM users WHERE id = 'U_STU_ELENA'", String.class);
+        apiPut("/api/users/me", "elena.rossi", Map.of("email", "LIN.ZHIYUAN@univ.edu.cn"), 409);
+        assertThat(jdbc().queryForObject("SELECT email FROM users WHERE id = 'U_STU_ELENA'", String.class))
+                .isEqualTo(before);
+    }
+
+    @Test
     void migrationIsIdempotentAndUpgradesOldSchema() throws Exception {
         assertThat(migrator.migrate()).isZero();
 

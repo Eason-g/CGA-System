@@ -4,12 +4,15 @@
 export const CURRENT_WEEK_NO = 12
 export const CURRENT_MONTH = '2026-11'
 export const TODAY_STR = '2026-11-20'
+export const SEMESTER_START = '2026-08-31'
 
 export function createSeedData() {
   return {
     meta: {
       version: '1.1.0',
       currentWeekNo: CURRENT_WEEK_NO,
+      today: TODAY_STR,
+      semesterStart: SEMESTER_START,
       currentMonth: CURRENT_MONTH,
       seededAt: '2026-11-20 08:30:00'
     },
@@ -712,8 +715,8 @@ export function createSeedData() {
         allowInternational: true,
         status: 'PUBLISHED',
         workflowInstanceId: 'WF_JOB_10',
-        workflowSteps: ['MENTOR_SUBMIT', 'DEPT_REVIEW', 'PUBLISHED'],
-        currentStepIndex: 2,
+        workflowSteps: ['MENTOR_SUBMIT', 'DEPT_REVIEW', 'INTL_REVIEW', 'PUBLISHED'],
+        currentStepIndex: 3,
         deadline: '2026-12-01',
         createdAt: '2026-08-25 09:00:00',
         skills: ['Python', 'PyTorch', '人工智能'],

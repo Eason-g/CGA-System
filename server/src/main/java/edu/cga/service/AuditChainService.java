@@ -30,7 +30,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 审计日志哈希链（P1 第二批 2.2）。
  * <p>
  * 每条日志带 seq（从 1 连续递增）、prev_hash（上一条的 hash，首条为 64 个 0）和
- * hash = SHA-256(prev_hash|seq|targetType|targetId|operatorId|action|opinion|beforeValue|afterValue|timestamp)。
+ * 第 2 版摘要覆盖记录 ID、前驱哈希、序号及全部业务字段，并保留字段边界和空值。
  * <p>
  * <b>追加</b>：先 {@code SELECT ... FROM audit_chain_head WHERE id = 1 FOR UPDATE} 锁住单行链头，
  * 再按链头分配序号、计算哈希、插入日志、推进链头。并发写入时链头锁让追加串行化，链不会分叉；
@@ -77,6 +77,7 @@ public class AuditChainService {
         this.newTx.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
         this.readTx = new TransactionTemplate(txManager);
         this.readTx.setReadOnly(true);
+        this.readTx.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
     }
 
     // ------------------------------------------------------------------ 追加
@@ -120,13 +121,15 @@ public class AuditChainService {
 
     /** 锁链头 → 逐条分配序号与哈希并插入 → 推进链头。必须在事务内调用。 */
     private void appendNow(List<AuditLog> entries) {
-        Map<String, Object> head = jdbc.queryForMap(
-                "SELECT last_seq, last_hash FROM audit_chain_head WHERE id = 1 FOR UPDATE");
+        Map<String, Object> head = lockHead();
+        if (head == null || version(head) != 2) {
+            throw new IllegalStateException("审计链头缺失或尚未完成完整性升级");
+        }
         long seq = ((Number) head.get("last_seq")).longValue();
         String prev = (String) head.get("last_hash");
         for (AuditLog e : entries) {
             seq++;
-            String hash = hash(prev, seq, e.getTargetType(), e.getTargetId(), e.getOperatorId(), e.getOperatorName(), e.getOperatorRole(), e.getAction(),
+            String hash = hash(2, prev, seq, e.getId(), e.getTargetType(), e.getTargetId(), e.getOperatorId(), e.getOperatorName(), e.getOperatorRole(), e.getAction(),
                     e.getOpinion(), e.getBeforeValue(), e.getAfterValue(), e.getTimestamp());
             jdbc.update(INSERT_SQL, e.getId(), e.getTargetType(), e.getTargetId(), e.getOperatorId(),
                     e.getOperatorName(), e.getOperatorRole(), e.getAction(), e.getOpinion(), e.getBeforeValue(),
@@ -138,113 +141,139 @@ public class AuditChainService {
 
     // ------------------------------------------------------------------ 初始化（建列、补算种子日志）
 
-    /**
-     * 启动/重建后调用：老库缺列时补列和链头表；再把 seq 为空的日志（种子数据）按时间顺序接到链尾补算哈希。幂等。
-     */
+    /** 启动时只迁移确认为旧结构的库，有链字段却缺少链头时留给校验报告。 */
     public void initialize() {
-        ensureSchema();
-        int n = newTx.execute(s -> backfill());
-        if (n > 0) {
-            log.info("已为 {} 条审计日志补算哈希链", n);
-        }
+        initialize(false);
     }
 
-    /** 兼容 P0 时建的库：audit_log 没有链字段、没有链头表时补上 */
-    private void ensureSchema() {
-        Integer cols = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns "
-                + "WHERE table_schema = DATABASE() AND table_name = 'audit_log' AND column_name = 'seq'", Integer.class);
-        if (cols == null || cols == 0) {
-            log.info("audit_log 缺少哈希链字段，执行补列");
+    /** 只在本次建表并导入已知种子后，允许为种子创建摘要。 */
+    public void initializeSeed() {
+        initialize(true);
+    }
+
+    private void initialize(boolean seed) {
+        boolean preChain = ensureSchema();
+        newTx.executeWithoutResult(status -> {
+            if (preChain) {
+                jdbc.update("INSERT INTO audit_chain_head (id, last_seq, last_hash, hash_version) VALUES (1, 0, ?, 2)",
+                        GENESIS_HASH);
+            }
+            Map<String, Object> head = lockHead();
+            if (head == null) {
+                return;
+            }
+            if (preChain || seed) {
+                List<Row> rows = jdbc.query("SELECT " + COLUMNS + " FROM audit_log "
+                        + "ORDER BY log_time IS NULL, log_time, id", (rs, i) -> Row.of(rs));
+                rewriteChain(rows);
+            } else if (version(head) == 1) {
+                List<Row> rows = chainRows();
+                if (verifyRows(rows, head).ok()) {
+                    rewriteChain(rows);
+                } else {
+                    log.error("旧审计链校验失败，保留原摘要和链头");
+                }
+            }
+        });
+    }
+
+    private boolean ensureSchema() {
+        boolean preChain = !columnExists("audit_log", "seq");
+        if (preChain) {
             jdbc.execute("ALTER TABLE audit_log ADD COLUMN seq BIGINT NULL, ADD COLUMN prev_hash CHAR(64) NULL, "
                     + "ADD COLUMN hash CHAR(64) NULL, ADD UNIQUE KEY uk_audit_seq (seq)");
         }
         jdbc.execute("CREATE TABLE IF NOT EXISTS audit_chain_head (id TINYINT NOT NULL, "
-                + "last_seq BIGINT NOT NULL DEFAULT 0, last_hash CHAR(64) NOT NULL, PRIMARY KEY (id)) "
-                + "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审计哈希链链头'");
-        Integer heads = jdbc.queryForObject("SELECT COUNT(*) FROM audit_chain_head WHERE id = 1", Integer.class);
-        if (heads == null || heads == 0) {
-            // 链头丢失时从已有链尾恢复，避免新日志与已有序号冲突
-            List<Map<String, Object>> tail = jdbc.queryForList(
-                    "SELECT seq, hash FROM audit_log WHERE seq IS NOT NULL ORDER BY seq DESC LIMIT 1");
-            long lastSeq = tail.isEmpty() ? 0 : ((Number) tail.get(0).get("seq")).longValue();
-            String lastHash = tail.isEmpty() ? GENESIS_HASH : (String) tail.get(0).get("hash");
-            jdbc.update("INSERT IGNORE INTO audit_chain_head (id, last_seq, last_hash) VALUES (1, ?, ?)",
-                    lastSeq, lastHash);
+                + "last_seq BIGINT NOT NULL DEFAULT 0, last_hash CHAR(64) NOT NULL, hash_version TINYINT NOT NULL DEFAULT 2, "
+                + "PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审计哈希链链头'");
+        if (!columnExists("audit_chain_head", "hash_version")) {
+            jdbc.execute("ALTER TABLE audit_chain_head ADD COLUMN hash_version TINYINT NOT NULL DEFAULT 1");
         }
+        return preChain;
     }
 
-    private int backfill() {
-        Map<String, Object> head = jdbc.queryForMap(
-                "SELECT last_seq, last_hash FROM audit_chain_head WHERE id = 1 FOR UPDATE");
-        List<Row> rows = jdbc.query("SELECT " + COLUMNS + " FROM audit_log WHERE seq IS NULL "
-                + "ORDER BY log_time IS NULL, log_time, id", (rs, i) -> Row.of(rs));
-        if (rows.isEmpty()) {
-            return 0;
-        }
-        long seq = ((Number) head.get("last_seq")).longValue();
-        String prev = (String) head.get("last_hash");
+    private boolean columnExists(String table, String column) {
+        Integer cols = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns "
+                + "WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?", Integer.class, table, column);
+        return cols != null && cols > 0;
+    }
+
+    private Map<String, Object> lockHead() {
+        return head(" FOR UPDATE");
+    }
+
+    private Map<String, Object> head(String lock) {
+        return jdbc.queryForList("SELECT last_seq, last_hash, hash_version FROM audit_chain_head WHERE id = 1" + lock)
+                .stream().findFirst().orElse(null);
+    }
+
+    private static int version(Map<String, Object> head) {
+        return ((Number) head.get("hash_version")).intValue();
+    }
+
+    private List<Row> chainRows() {
+        return jdbc.query("SELECT " + COLUMNS + " FROM audit_log ORDER BY seq IS NULL, seq, id", (rs, i) -> Row.of(rs));
+    }
+
+    /** 只对可信种子或通过旧算法校验的完整链重新编码，迁移与链头更新同事务。 */
+    private void rewriteChain(List<Row> rows) {
+        long seq = 0;
+        String prev = GENESIS_HASH;
         for (Row r : rows) {
             seq++;
-            String hash = hash(prev, seq, r.targetType, r.targetId, r.operatorId, r.operatorName, r.operatorRole, r.action, r.opinion,
-                    r.beforeValue, r.afterValue, r.logTime);
-            jdbc.update("UPDATE audit_log SET seq = ?, prev_hash = ?, hash = ? WHERE id = ?", seq, prev, hash, r.id);
-            prev = hash;
+            String digest = r.digest(2, prev, seq);
+            jdbc.update("UPDATE audit_log SET seq = ?, prev_hash = ?, hash = ? WHERE id = ?", seq, prev, digest, r.id);
+            prev = digest;
         }
-        jdbc.update("UPDATE audit_chain_head SET last_seq = ?, last_hash = ? WHERE id = 1", seq, prev);
-        return rows.size();
+        jdbc.update("UPDATE audit_chain_head SET last_seq = ?, last_hash = ?, hash_version = 2 WHERE id = 1", seq, prev);
     }
 
-    // ------------------------------------------------------------------ 校验
-
-    /** 校验结果：ok、已检查条数、第一处不符（{ id, seq, reason, detail }，通过时为 null） */
+    /** 校验结果：ok、已检查条数、第一处不符。 */
     public record VerifyResult(boolean ok, int checked, Map<String, Object> brokenAt) {
     }
 
-    /**
-     * 从第一条起按 seq 重算整条链。每条依次检查：序号连续 → prev_hash 等于上一条 hash → 重算 hash 一致；
-     * 最后核对链头，发现链尾被删。只报告第一处不符。
-     */
     public VerifyResult verify() {
-        return readTx.execute(s -> {
-            List<Row> rows = jdbc.query("SELECT " + COLUMNS + " FROM audit_log ORDER BY seq IS NULL, seq, id",
-                    (rs, i) -> Row.of(rs));
-            long expectedSeq = 1;
-            String prev = GENESIS_HASH;
-            int checked = 0;
-            for (Row r : rows) {
-                if (r.seq == null || r.hash == null) {
-                    return broken(checked, r.id, r.seq, REASON_LINK, "该日志未接入哈希链（缺少序号或哈希），可能是绕过系统直接插入的");
-                }
-                if (r.seq != expectedSeq) {
-                    return broken(checked, r.id, r.seq, REASON_GAP,
-                            "期望序号 " + expectedSeq + "，实际为 " + r.seq + "，中间的日志可能已被删除");
-                }
-                if (!prev.equals(r.prevHash)) {
-                    return broken(checked, r.id, r.seq, REASON_LINK, "prev_hash 与上一条日志的哈希不一致");
-                }
-                String actual = hash(r.prevHash, r.seq, r.targetType, r.targetId, r.operatorId, r.operatorName, r.operatorRole, r.action, r.opinion,
-                        r.beforeValue, r.afterValue, r.logTime);
-                if (!actual.equals(r.hash)) {
-                    return broken(checked, r.id, r.seq, REASON_CONTENT, "按当前内容重算的哈希与存档哈希不一致");
-                }
-                checked++;
-                expectedSeq++;
-                prev = r.hash;
+        return readTx.execute(status -> verifyRows(chainRows(), head("")));
+    }
+
+    private VerifyResult verifyRows(List<Row> rows, Map<String, Object> head) {
+        if (head == null) {
+            return broken(0, null, null, REASON_LINK, "缺少审计链头");
+        }
+        int version = version(head);
+        if (version != 1 && version != 2) {
+            return broken(0, null, null, REASON_LINK, "无法识别审计哈希版本");
+        }
+        long expectedSeq = 1;
+        String prev = GENESIS_HASH;
+        int checked = 0;
+        for (Row r : rows) {
+            if (r.seq == null || r.hash == null) {
+                return broken(checked, r.id, r.seq, REASON_LINK, "该日志未接入哈希链（缺少序号或哈希）");
             }
-            List<Map<String, Object>> head = jdbc.queryForList(
-                    "SELECT last_seq, last_hash FROM audit_chain_head WHERE id = 1");
-            if (!head.isEmpty()) {
-                long lastSeq = ((Number) head.get(0).get("last_seq")).longValue();
-                if (lastSeq != expectedSeq - 1) {
-                    return broken(checked, null, expectedSeq, REASON_GAP,
-                            "链头记录共 " + lastSeq + " 条，实际只有 " + (expectedSeq - 1) + " 条，末尾的日志可能已被删除");
-                }
-                if (!prev.equals(head.get(0).get("last_hash"))) {
-                    return broken(checked, null, lastSeq, REASON_LINK, "链头哈希与最后一条日志不一致");
-                }
+            if (r.seq != expectedSeq) {
+                return broken(checked, r.id, r.seq, REASON_GAP,
+                        "期望序号 " + expectedSeq + "，实际为 " + r.seq + "，中间的日志可能已被删除");
             }
-            return new VerifyResult(true, checked, null);
-        });
+            if (!prev.equals(r.prevHash)) {
+                return broken(checked, r.id, r.seq, REASON_LINK, "prev_hash 与上一条日志的哈希不一致");
+            }
+            if (!r.digest(version, prev, expectedSeq).equals(r.hash)) {
+                return broken(checked, r.id, r.seq, REASON_CONTENT, "按当前内容重算的哈希与存档哈希不一致");
+            }
+            checked++;
+            expectedSeq++;
+            prev = r.hash;
+        }
+        long lastSeq = ((Number) head.get("last_seq")).longValue();
+        if (lastSeq != expectedSeq - 1) {
+            return broken(checked, null, expectedSeq, REASON_GAP,
+                    "链头记录共 " + lastSeq + " 条，实际只有 " + (expectedSeq - 1) + " 条，末尾的日志可能已被删除");
+        }
+        if (!prev.equals(head.get("last_hash"))) {
+            return broken(checked, null, lastSeq, REASON_LINK, "链头哈希与最后一条日志不一致");
+        }
+        return new VerifyResult(true, checked, null);
     }
 
     private static VerifyResult broken(int checked, String id, Long seq, String reason, String detail) {
@@ -258,33 +287,56 @@ public class AuditChainService {
 
     // ------------------------------------------------------------------ 哈希
 
-    /**
-     * hash = SHA-256(prev_hash|seq|targetType|targetId|operatorId|operatorName|operatorRole|action|opinion|
-     * beforeValue|afterValue|timestamp)，空值按空串。页面上显示的每一列都在哈希范围内，改任何一列都能被发现。
-     */
-    public static String hash(String prevHash, long seq, String targetType, String targetId, String operatorId,
-                              String operatorName, String operatorRole, String action, String opinion,
-                              String beforeValue, String afterValue, LocalDateTime timestamp) {
-        String ts = timestamp == null ? "" : timestamp.format(TimeService.TIMESTAMP_FORMAT);
-        String text = String.join("|", nz(prevHash), String.valueOf(seq), nz(targetType), nz(targetId),
-                nz(operatorId), nz(operatorName), nz(operatorRole), nz(action), nz(opinion), nz(beforeValue),
-                nz(afterValue), ts);
+    private static String hash(int version, String prevHash, long seq, String id, String targetType,
+                               String targetId, String operatorId, String operatorName, String operatorRole,
+                               String action, String opinion, String beforeValue, String afterValue,
+                               LocalDateTime timestamp) {
+        String ts = timestamp == null ? null : timestamp.format(TimeService.TIMESTAMP_FORMAT);
+        String[] fields = { prevHash, String.valueOf(seq), targetType, targetId, operatorId, operatorName,
+                operatorRole, action, opinion, beforeValue, afterValue, ts };
+        StringBuilder payload = new StringBuilder();
+        if (version == 2) {
+            payload.append("2:");
+            appendField(payload, id);
+            for (String field : fields) {
+                appendField(payload, field);
+            }
+        } else {
+            // 旧格式仅用来在迁移前核对已有链头。
+            for (int i = 0; i < fields.length; i++) {
+                if (i > 0) {
+                    payload.append('|');
+                }
+                if (fields[i] != null) {
+                    payload.append(fields[i]);
+                }
+            }
+        }
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(md.digest(text.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of().formatHex(md.digest(payload.toString().getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("JDK 不支持 SHA-256", e);
         }
     }
 
-    private static String nz(String s) {
-        return s == null ? "" : s;
+    private static void appendField(StringBuilder payload, String field) {
+        if (field == null) {
+            payload.append("-1:");
+        } else {
+            payload.append(field.length()).append(':').append(field);
+        }
     }
 
     /** 校验/补算时读出的一行 */
     private record Row(String id, String targetType, String targetId, String operatorId, String operatorName,
                        String operatorRole, String action, String opinion, String beforeValue, String afterValue,
                        LocalDateTime logTime, Long seq, String prevHash, String hash) {
+        String digest(int version, String prev, long seq) {
+            return AuditChainService.hash(version, prev, seq, id, targetType, targetId, operatorId, operatorName,
+                    operatorRole, action, opinion, beforeValue, afterValue, logTime);
+        }
+
         static Row of(ResultSet rs) throws SQLException {
             long rawSeq = rs.getLong("seq");
             Long seq = rs.wasNull() ? null : rawSeq;

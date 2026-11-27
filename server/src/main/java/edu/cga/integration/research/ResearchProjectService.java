@@ -92,6 +92,9 @@ public class ResearchProjectService {
     /** 建岗时的硬校验：不通过抛 400，data 为校验结果 */
     public void requireValidForJob(String code, String deptId, CurrentUser operator, LocalDate deadline, int weeks) {
         ProjectCheck check = check(code, deptId, operator, deadline, weeks);
+        if (!canSeeProject(check, operator)) {
+            throw BizException.badRequest("科研系统中不存在该项目或项目不在可用范围");
+        }
         if (!check.ok()) {
             throw new BizException(400, check.firstError(), check);
         }
@@ -99,10 +102,17 @@ public class ResearchProjectService {
 
     /** 发布页“校验项目”：项目不存在 404 */
     public ProjectCheck lookup(String code, String deptId, CurrentUser operator, LocalDate deadline, Integer weeks) {
-        ProjectCheck check = check(code, deptId != null ? deptId : operator.deptId(), operator, deadline, weeks);
-        if (check.project() == null) {
-            throw new BizException(404, check.firstError(), check);
+        String actualDept = operator.is(CurrentUser.SCHOOL_ADMIN) && deptId != null ? deptId : operator.deptId();
+        ProjectCheck check = check(code, actualDept, operator, deadline, weeks);
+        if (!canSeeProject(check, operator)) {
+            throw BizException.notFound("科研项目不存在");
         }
         return check;
+    }
+
+    private boolean canSeeProject(ProjectCheck check, CurrentUser operator) {
+        return check.project() != null && (operator.is(CurrentUser.SCHOOL_ADMIN)
+                || (operator.is(CurrentUser.MENTOR) && operator.id().equals(check.project().leaderId()))
+                || (operator.is(CurrentUser.DEPT_ADMIN) && Objects.equals(operator.deptId(), check.leaderDeptId())));
     }
 }

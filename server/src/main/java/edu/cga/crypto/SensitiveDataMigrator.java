@@ -1,5 +1,6 @@
 package edu.cga.crypto;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -42,32 +43,46 @@ public class SensitiveDataMigrator {
     public int migrate() {
         ensureSchema();
         List<Map<String, Object>> rows = jdbc.queryForList("SELECT id, email, phone, email_hash FROM users");
+        Map<String, String> hashesByUser = new HashMap<>();
+        Map<String, Integer> counts = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            String id = (String) row.get("id");
+            String hash = crypto.emailHash(decryptContact(id, (String) row.get("email")));
+            hashesByUser.put(id, hash);
+            if (hash != null) {
+                counts.merge(hash, 1, Integer::sum);
+            }
+        }
         int changed = 0;
         for (Map<String, Object> r : rows) {
             String id = (String) r.get("id");
             String email = (String) r.get("email");
             String phone = (String) r.get("phone");
             String oldHash = (String) r.get("email_hash");
-            String plainEmail;
-            try {
-                plainEmail = crypto.decrypt(email);
-                crypto.decrypt(phone);
-            } catch (IllegalStateException e) {
-                throw new IllegalStateException("用户 " + id + " 的联系方式无法解密：app.crypto.key 与加密这批数据时使用的密钥不一致", e);
-            }
+            decryptContact(id, phone);
             String newEmail = needsEncrypt(email) ? crypto.encrypt(email) : email;
             String newPhone = needsEncrypt(phone) ? crypto.encrypt(phone) : phone;
-            String newHash = crypto.emailHash(plainEmail);
+            String hash = hashesByUser.get(id);
+            String newHash = hash != null && counts.get(hash) == 1 ? hash : null;
             if (!Objects.equals(newEmail, email) || !Objects.equals(newPhone, phone) || !Objects.equals(newHash, oldHash)) {
                 jdbc.update("UPDATE users SET email = ?, phone = ?, email_hash = ? WHERE id = ?",
                         newEmail, newPhone, newHash, id);
                 changed++;
             }
         }
+        ensureUniqueEmailIndex();
         if (changed > 0) {
             log.info("已加密 {} 个用户的手机号/邮箱并更新邮箱检索哈希", changed);
         }
         return changed;
+    }
+
+    private String decryptContact(String id, String encrypted) {
+        try {
+            return crypto.decrypt(encrypted);
+        } catch (IllegalStateException e) {
+            throw new IllegalStateException("用户 " + id + " 的联系方式无法解密：请检查 app.crypto.key", e);
+        }
     }
 
     private static boolean needsEncrypt(String v) {
@@ -80,9 +95,6 @@ public class SensitiveDataMigrator {
             log.info("users 表缺少 email_hash 列（旧版本建库），自动补列");
             jdbc.execute("ALTER TABLE users ADD COLUMN email_hash CHAR(64) NULL COMMENT '小写邮箱的 HMAC-SHA256，用于邮箱登录' AFTER email");
         }
-        if (!indexExists("idx_users_email_hash")) {
-            jdbc.execute("ALTER TABLE users ADD KEY idx_users_email_hash (email_hash)");
-        }
         if (indexExists("idx_users_email")) {
             // 随机 IV 的密文上建索引没有意义
             jdbc.execute("ALTER TABLE users DROP INDEX idx_users_email");
@@ -92,6 +104,17 @@ public class SensitiveDataMigrator {
         }
         if (columnLength("phone") < PHONE_COLUMN_LENGTH) {
             jdbc.execute("ALTER TABLE users MODIFY phone VARCHAR(" + PHONE_COLUMN_LENGTH + ") NULL COMMENT 'AES-256-GCM 密文（enc:v1:）'");
+        }
+    }
+
+    private void ensureUniqueEmailIndex() {
+        Integer nonUnique = jdbc.query("SELECT NON_UNIQUE FROM information_schema.statistics "
+                        + "WHERE table_schema = DATABASE() AND table_name = 'users' AND index_name = 'idx_users_email_hash'",
+                rs -> rs.next() ? rs.getInt(1) : null);
+        if (nonUnique == null) {
+            jdbc.execute("ALTER TABLE users ADD UNIQUE KEY idx_users_email_hash (email_hash)");
+        } else if (nonUnique != 0) {
+            jdbc.execute("ALTER TABLE users DROP INDEX idx_users_email_hash, ADD UNIQUE KEY idx_users_email_hash (email_hash)");
         }
     }
 

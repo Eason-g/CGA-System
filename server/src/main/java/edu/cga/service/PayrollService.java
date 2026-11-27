@@ -117,21 +117,24 @@ public class PayrollService {
             if (approved.isEmpty() || job == null) {
                 continue;
             }
+            List<Payroll> batches = payrollMapper.selectBatches(con.getId(), targetMonth);
+            if (batches.stream().anyMatch(p -> "SUBMITTED".equals(p.getFinanceStatus()))) {
+                continue; // 在途批次的结果尚未确定，回写后再核算剩余小时。
+            }
+            BigDecimal paidHours = batches.stream().filter(p -> "PAID".equals(p.getFinanceStatus()))
+                    .map(p -> Num.orZero(p.getTotalHours())).reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal totalHours = approved.stream().map(t -> Num.orZero(t.getHours()))
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    .reduce(BigDecimal.ZERO, BigDecimal::add).subtract(paidHours);
+            if (totalHours.signum() <= 0) {
+                continue;
+            }
+            Payroll existing = batches.stream().filter(p -> !"PAID".equals(p.getFinanceStatus())).findFirst().orElse(null);
             Budget budget = budgets.get(job.getBudgetId());
 
             // 最近一次考核的系数，没有考核按 1.0
             BigDecimal latestCoeff = evaluationMapper.selectLatestCoefficient(con.getId());
             BigDecimal coeff = latestCoeff != null ? latestCoeff : BigDecimal.ONE;
             BigDecimal amount = RuleEngine.calcPayrollAmount(totalHours, con.getHourlyRate(), coeff);
-
-            Payroll existing = payrollMapper.selectByContractAndMonth(con.getId(), targetMonth);
-            // 已发放、已提交财务（等待回写）的不重新核算；发放失败的可重新核算后再提交
-            if (existing != null && ("PAID".equals(existing.getFinanceStatus())
-                    || "SUBMITTED".equals(existing.getFinanceStatus()))) {
-                continue;
-            }
 
             BigDecimal committedOthers = payrollMapper.sumCommittedByJob(job.getId(),
                     existing != null ? existing.getId() : null);
@@ -267,6 +270,7 @@ public class PayrollService {
         budgetMapper.updateById(budget);
 
         pay.setFinanceStatus("PAID");
+        pay.setFailReason("");
         pay.setPaidAt(time.now());
         pay.setVoucherNo(voucherNo);
         payrollMapper.updateById(pay);

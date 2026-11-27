@@ -102,11 +102,11 @@
         <div class="grid-2">
           <div class="f-field">
             <label class="f-label">周次</label>
-            <input v-model.number="tsForm.weekNo" type="number" min="1" max="24" class="f-input tabular-nums" required />
+            <input v-model.number="tsForm.weekNo" type="number" min="1" :max="currentWeek" class="f-input tabular-nums" required />
           </div>
           <div class="f-field">
             <label class="f-label">实际工时（h）</label>
-            <input v-model.number="tsForm.hours" type="number" min="1" max="20" step="0.5" class="f-input tabular-nums" required />
+            <input v-model.number="tsForm.hours" type="number" min="0.1" :max="remainingWeekHours" step="0.1" class="f-input tabular-nums" required />
           </div>
         </div>
 
@@ -187,7 +187,7 @@ import ContractSignModal from '@/components/ContractSignModal.vue'
 
 const store = useAppStore()
 const student = computed(() => store.currentUser)
-const currentWeek = computed(() => store.db.meta.currentWeekNo || 12)
+const currentWeek = computed(() => store.db.meta.currentWeekNo || 1)
 const maxHours = computed(() => getMaxWeeklyHours(store.db, student.value))
 
 const myContracts = computed(() => store.db.contracts.filter((c) => c.studentId === student.value?.id))
@@ -216,7 +216,13 @@ const submitting = ref(false)
 const expandedContracts = ref(new Set())
 const expandedTs = ref(new Set())
 
-const tsForm = reactive({ contractId: '', weekNo: 12, hours: 8, milestoneRef: '', workLog: '' })
+const tsForm = reactive({ contractId: '', weekNo: currentWeek.value, hours: null, milestoneRef: '', workLog: '' })
+
+watch(currentWeek, (week, previous) => {
+  if (tsForm.weekNo === previous || tsForm.weekNo > week) tsForm.weekNo = week
+})
+const remainingWeekHours = computed(() => Math.max(0, Number((maxHours.value -
+  getStudentWeekLoggedHours(store.db, student.value?.id, tsForm.weekNo)).toFixed(1))))
 
 watchEffect(() => {
   if (!tsForm.contractId && activeSignedContracts.value.length) tsForm.contractId = activeSignedContracts.value[0].id

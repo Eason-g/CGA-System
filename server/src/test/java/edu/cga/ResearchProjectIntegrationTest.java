@@ -51,17 +51,25 @@ class ResearchProjectIntegrationTest extends WriteApiTestBase {
     }
 
     @Test
+    void projectLookupDoesNotExposeOtherDepartments() throws Exception {
+        send(org.springframework.http.HttpMethod.GET,
+                "/api/integration/research/projects/KY-2026-MA01", MENTOR, null, 404);
+        send(org.springframework.http.HttpMethod.GET,
+                "/api/integration/research/projects/KY-2026-MA01?deptId=DEPT_MATH", DEPT_ADMIN, null, 404);
+    }
+
+    @Test
     void unknownProjectIs400() throws Exception {
-        assertRejected(MENTOR, "NSFC-00000000", "科研系统中不存在项目编号「NSFC-00000000」，请核对后再发布");
+        assertRejected(MENTOR, "NSFC-00000000", "科研系统中不存在该项目或项目不在可用范围");
     }
 
     @Test
     void leaderMismatchIs400() throws Exception {
         assertRejected(MENTOR, "KY-2026-EC02",
-                "项目「KY-2026-EC02」负责人为 赵明华，与发岗导师不一致，只能绑定本人负责的科研项目");
+                "科研系统中不存在该项目或项目不在可用范围");
         // 院系管理员代建：负责人须属于岗位所在院系
         assertRejected(DEPT_ADMIN, "KY-2026-EC02",
-                "项目「KY-2026-EC02」负责人 赵明华 不属于本岗位所在院系，代建岗位只能绑定本院系导师负责的项目");
+                "科研系统中不存在该项目或项目不在可用范围");
     }
 
     @Test

@@ -1,4 +1,4 @@
-import { createSeedData } from './seedData'
+import { createSeedData, TODAY_STR, SEMESTER_START } from './seedData'
 
 const STORAGE_KEY = 'CAMPUS_TARGA_DB_V1_1'
 const AUTH_KEY = 'CAMPUS_TARGA_AUTH_V1_1'
@@ -10,6 +10,8 @@ export function initDB() {
     if (raw) {
       const parsed = JSON.parse(raw)
       if (parsed && parsed.meta && parsed.meta.version === '1.1.0' && Array.isArray(parsed.jobs)) {
+        parsed.meta.today ||= TODAY_STR
+        parsed.meta.semesterStart ||= SEMESTER_START
         dbCache = parsed
         return dbCache
       }

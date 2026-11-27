@@ -73,7 +73,7 @@
                 <div v-if="p.financeStatus === 'SUBMITTED' && p.financeSerialNo" class="text-xs text-muted mt-4 tabular-nums">
                   流水 {{ p.financeSerialNo }}
                 </div>
-                <div v-if="p.financeStatus === 'PAY_FAILED' && p.failReason" class="text-xs text-error mt-4 fail-reason">
+                <div v-if="['PAY_FAILED', 'SUBMITTED'].includes(p.financeStatus) && p.failReason" class="text-xs text-error mt-4 fail-reason">
                   {{ p.failReason }}
                 </div>
               </td>

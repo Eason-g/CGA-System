@@ -5,7 +5,7 @@
       <div>
         <h1 class="dash-greeting">你好，{{ user?.name }}</h1>
         <p class="text-xs text-muted mt-4">
-          {{ user?.roleLabel }} · 2026-2027 秋季学期第 {{ store.db.meta.currentWeekNo }} 周
+          {{ user?.roleLabel }} · {{ store.db.meta.currentMonth }} · 第 {{ store.db.meta.currentWeekNo }} 周
         </p>
       </div>
       <div class="flex items-center gap-8">

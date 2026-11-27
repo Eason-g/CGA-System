@@ -249,10 +249,10 @@ node scripts/gen-seed-sql.mjs
 | `POST /api/auth/sso/exchange` `{ticket, service}` | 公开 | 换取 JWT，返回体同密码登录；票据无效/过期/重复使用/service 不一致 401，学工号在本系统无账号 403“统一认证账号未在本系统开通”，SSO 关闭 404；写 `统一身份认证登录` 审计 |
 | `GET/POST /mock-cas/login` | 公开 | 模拟统一身份认证中心页面（后端输出 HTML）。账号目录 `integration/cas-accounts.json`（学生用学号、教职工用工号），密码为演示密码；票据 `ST-…` 一次性、60 秒、绑定 service；service 只允许 `app.sso.allowed-service-origins`（为空时取 CORS 白名单）内的地址，防开放跳转 |
 | `POST /api/integration/sis/sync` | SCHOOL_ADMIN、INTL_OFFICER（只同步国际生） | 从学籍系统更新学籍状态（在读/休学/毕业）与签证类型、有效期，返回差异清单 `diffs[{userId, studentNo, name, field, fieldLabel, before, after}]`、`unmatched`；每个变更学生一条 `USER` 审计 + 一条 `INTEGRATION/SIS` 汇总审计；幂等 |
-| `GET /api/integration/research/projects/{code}?deptId=&deadline=&weeks=` | MENTOR、DEPT_ADMIN、SCHOOL_ADMIN | 查询科研项目并按建岗规则预校验（发布页“校验项目”）；不存在 404 |
+| `GET /api/integration/research/projects/{code}?deptId=&deadline=&weeks=` | MENTOR、DEPT_ADMIN、SCHOOL_ADMIN | 查询科研项目并按建岗规则预校验（发布页“校验项目”）；项目不存在或不属于当前账户的项目范围时返回 404 |
 
-- **学籍规则**：`users.enrollment_status`；申请与录用要求“在读”，硬性条件不可特批（`RuleEngine.checkEnrollment`，与 `ruleEngine.js` 文案一致）。为不改变已有校验项顺序，学籍项只在**非在读**时出现在 `checks` 首位；空值按在读处理。老库启动时自动补列并把学生标为在读。
-- **科研项目**：RA 建岗在差异化字段校验之后检查 —— 项目存在；负责人是发岗导师（院系管理员、校级管理员代建只要求负责人同院系）；项目结束日不早于预计聘期结束日（申请截止日后第一个周一 + 周数，与里程碑排期一致）。不通过 400，`data` 为校验结果。测试额外加载 `src/test/resources/integration/research-projects-test.json`（`TEST-01`、`TEST-RA-01`）。
+- **学籍规则**：`users.enrollment_status`；申请、录用、续聘、签约及填报均复核“在读”，硬性条件不可特批（`RuleEngine.checkEnrollment`，与 `ruleEngine.js` 文案一致）。为不改变已有校验项顺序，学籍项只在**非在读**时出现在 `checks` 首位；空值按在读处理。老库启动时自动补列并把学生标为在读。
+- **科研项目**：RA 建岗在差异化字段校验之后检查 —— 项目存在；负责人是发岗导师（院系管理员、校级管理员代建只要求负责人同院系）；项目结束日不早于预计聘期结束日（申请截止日后第一个周一 + 周数，与里程碑排期一致）。建岗不通过时返回 400。属于本人范围的项目会带回校验结果。测试额外加载 `src/test/resources/integration/research-projects-test.json`（`TEST-01`、`TEST-RA-01`）。
 - **前端**：登录页“统一身份认证”页签 → 跳认证中心 → 回跳 `/?ticket=…#/login`，`main.js` 在路由启动前取出 ticket 并用 `history.replaceState` 清掉地址栏，登录页换票；开发时 Vite 把 `/mock-cas` 转发到后端。校名统一读 `/api/public/site`，已删除前端高校名单与切换下拉、扫码登录和“CAS 3.0 / OAuth 2.0 / CARSI”等未实现说法。
 - 配置：`app.school-name`、`app.sso.enabled / provider / ticket-ttl / allowed-service-origins / mock-server-url / mock-accounts`、`app.integration.sis-data / research-data`（可多个文件）。
 - 测试：`SsoIntegrationTest`、`SisSyncIntegrationTest`、`ResearchProjectIntegrationTest`、`RuleEngineEnrollmentTest`。

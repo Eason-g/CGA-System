@@ -47,7 +47,9 @@ public class FinanceController {
             @RequestBody(required = false) String rawBody,
             @RequestHeader(value = FinanceSignature.HEADER, required = false) String signature) {
         FinanceService.CallbackResult r = financeService.handleCallback(rawBody == null ? "" : rawBody, signature);
-        return ApiResponse.ok(r, r.duplicate() ? "该流水号已处理，忽略重复回调" : "回调已处理");
+        String message = "RECONCILE".equals(r.transactionStatus()) ? "已收到成功回执，内部记账待核对"
+                : r.duplicate() ? "该流水号已处理，忽略重复回调" : "回调已处理";
+        return ApiResponse.ok(r, message);
     }
 
     /** POST /api/payrolls/{id}/simulate-finance-callback { success, reason }：校级管理员，演示失败重试用 */
@@ -57,6 +59,8 @@ public class FinanceController {
                                         @AuthenticationPrincipal CurrentUser user) {
         boolean success = req == null || !Boolean.FALSE.equals(req.success());
         Object r = financeService.simulate(id, success, req == null ? null : req.reason(), user);
-        return ApiResponse.ok(r, success ? "已模拟财务回写：发放成功" : "已模拟财务回写：发放失败");
+        String message = r instanceof FinanceService.CallbackResult result && "RECONCILE".equals(result.transactionStatus())
+                ? "已模拟成功回执，内部记账待核对" : success ? "已模拟财务回写：发放成功" : "已模拟财务回写：发放失败";
+        return ApiResponse.ok(r, message);
     }
 }

@@ -99,8 +99,8 @@ public class DatabaseInitializer implements SmartInitializingSingleton {
         initDemoPasswords();
         // 种子数据的手机号、邮箱是明文，导入后立即加密并补邮箱检索哈希（P2 D.1）
         sensitiveData.migrate();
-        // 种子审计日志按时间顺序补算哈希链（P1 第二批 2.2）
-        auditChain.initialize();
+        // 刚导入的种子日志按时间顺序补算。
+        auditChain.initializeSeed();
     }
 
     /** 把 password_hash 为空的用户设为 app.demo-password 的 BCrypt 哈希（每个用户单独加盐） */

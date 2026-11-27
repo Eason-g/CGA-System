@@ -120,7 +120,7 @@ public class RecommendationService {
         List<Contract> myContracts = contractMapper.selectAllocatingByStudent(student.getId());
 
         List<Item> items = new ArrayList<>();
-        int currentHours = RuleEngine.getStudentAllocatedWeeklyHours(myContracts, student.getId());
+        int currentHours = RuleEngine.getStudentAllocatedWeeklyHours(myContracts, student.getId(), today, null);
         int maxHours = RuleEngine.getMaxWeeklyHours(globalRules, student);
         for (Job job : published) {
             RuleEngine.ApplicationCheck check = RuleEngine.validateStudentApplication(student, job, myApps,
@@ -159,9 +159,6 @@ public class RecommendationService {
             blockers.add("该岗位名额已招满");
         }
         Long daysLeft = job.getDeadline() == null ? null : ChronoUnit.DAYS.between(today, job.getDeadline());
-        if (daysLeft != null && daysLeft < 0) {
-            blockers.add("已过申请截止日期（" + job.getDeadline() + "）");
-        }
         boolean applicable = blockers.isEmpty();
 
         // 2. 技能匹配
@@ -182,7 +179,9 @@ public class RecommendationService {
         if (hoursCheck != null && !hoursCheck.passed()) {
             hoursValue = 0;
             hoursDetail = "录用后周工时 " + check.projectedHours() + "h，超出上限 " + check.maxHours() + "h";
-            blockers.add("跨岗周工时将超上限（" + check.projectedHours() + "h > " + check.maxHours() + "h），需国际生办特批");
+            if (hoursCheck.overridable()) {
+                blockers.add("跨岗周工时将超上限（" + check.projectedHours() + "h > " + check.maxHours() + "h），需国际生办特批");
+            }
         } else if (check.maxHours() > 0 && check.projectedHours() > check.maxHours() * HOURS_CAUTION_RATIO) {
             hoursValue = 0.6;
             hoursDetail = "录用后周工时 " + check.projectedHours() + "/" + check.maxHours() + "h，接近上限";

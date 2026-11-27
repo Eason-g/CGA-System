@@ -72,13 +72,19 @@ class P0FixesIntegrationTest extends WriteApiTestBase {
         assertThat(applicationMapper.selectCount(new QueryWrapper<JobApplication>().eq("student_id", "T_NOVISA")))
                 .isZero();
 
-        // 签证有效、仅工时超限时仍可发起特批（原有功能不受影响）
-        createStudent("T_SOFT", "DEPT_CS", true, true);
+        // 仅工时超限时可发起特批（国内生、国际生相同）
+        createStudent("T_SOFT", "DEPT_CS", false, true);
         createPublishedJob("T_J5", "U_MENTOR", "DEPT_CS", "B_CS_RA", 24, true);
         JsonNode ok = apiPost("/api/applications", "t_soft", Map.of("jobId", "T_J5", "statement", "测试",
                 "isSpecialApproval", true, "specialReason", "寒假集中排班，学期内平均不超标"), 200);
         assertThat(ok.path("data").path("status").asString()).isEqualTo("PENDING_SPECIAL_APPROVAL");
         assertThat(ok.path("message").asString()).isEqualTo("已提交特批申请，等待国际生办审核留痕");
+
+        // 需求原文"超限需特批留痕"：签证有效的国际生仅工时超限时，同样可以发起特批
+        createStudent("T_INTL_OVER", "DEPT_CS", true, true);
+        JsonNode international = apiPost("/api/applications", "t_intl_over",
+                Map.of("jobId", "T_J5", "isSpecialApproval", true, "specialReason", "寒假集中排班，学期内平均不超标"), 200);
+        assertThat(international.path("data").path("status").asString()).isEqualTo("PENDING_SPECIAL_APPROVAL");
 
         // 特批理由不足 6 字
         createPublishedJob("T_J5B", "U_MENTOR", "DEPT_CS", "B_CS_RA", 24, true);
@@ -95,6 +101,10 @@ class P0FixesIntegrationTest extends WriteApiTestBase {
         // 合并保存：其他规则保持原值
         assertThat(cfg.path("data").path("globalRules").path("maxWeeklyHoursDefault").asInt()).isEqualTo(20);
         try {
+            // 调低到 11h：已有国际生合同（种子数据 Alex 12h）超过新上限，照常保存，但提示受影响的学生
+            JsonNode lowered = apiPut("/api/configs", SCHOOL, Map.of("globalRules", Map.of("maxWeeklyHoursIntl", 11)), 200);
+            assertThat(lowered.path("message").asString()).contains("超过新的周工时上限").contains("12h > 11h");
+            apiPut("/api/configs", SCHOOL, Map.of("globalRules", Map.of("maxWeeklyHoursIntl", 12)), 200);
             createStudent("T_INTL", "DEPT_CS", true, true);
             createStudent("T_DOM", "DEPT_CS", false, true);
             createPublishedJob("T_J6", "U_MENTOR", "DEPT_CS", "B_CS_RA", 14, true);
@@ -122,7 +132,7 @@ class P0FixesIntegrationTest extends WriteApiTestBase {
     /** 特批通过后，录用复核以特批时记录的 projectedHours 为上限 */
     @Test
     void specialApprovalThenHireWithinApprovedCeiling() throws Exception {
-        createStudent("T_SPEC", "DEPT_CS", true, true);
+        createStudent("T_SPEC", "DEPT_CS", false, true);
         createPublishedJob("T_J7", "U_MENTOR", "DEPT_CS", "B_CS_RA", 22, true);
         JsonNode app = apiPost("/api/applications", "t_spec", Map.of("jobId", "T_J7",
                 "isSpecialApproval", true, "specialReason", "寒假集中排班，学期内平均不超标"), 200);
@@ -139,5 +149,23 @@ class P0FixesIntegrationTest extends WriteApiTestBase {
         JsonNode hired = apiPost("/api/applications/" + appId + "/decision", MENTOR,
                 Map.of("score", 88, "decision", "HIRE"), 200);
         assertThat(hired.path("data").path("status").asString()).isEqualTo("HIRED");
+    }
+
+    /** 国际生工时超限按需求"需特批留痕"：特批 → 录用 → 签约全程可走通，签约复核认可特批幅度 */
+    @Test
+    void internationalOverCapSpecialApprovalThroughSigning() throws Exception {
+        createStudent("T_SPEC_INTL", "DEPT_CS", true, true);
+        createPublishedJob("T_J8", "U_MENTOR", "DEPT_CS", "B_CS_RA", 22, true);
+        JsonNode app = apiPost("/api/applications", "t_spec_intl", Map.of("jobId", "T_J8",
+                "isSpecialApproval", true, "specialReason", "寒假集中排班，学期内平均不超标"), 200);
+        String appId = app.path("data").path("id").asString();
+        apiPost("/api/applications/" + appId + "/special-review", "wang.haitao", Map.of("decision", "APPROVE"), 200);
+        apiPost("/api/applications/" + appId + "/decision", MENTOR, Map.of("score", 88, "decision", "HIRE"), 200);
+
+        Contract con = contractMapper.selectOne(new QueryWrapper<Contract>().eq("application_id", appId));
+        assertThat(con).isNotNull();
+        JsonNode signed = apiPost("/api/contracts/" + con.getId() + "/sign", "t_spec_intl",
+                Map.of("signatureDataUrl", "data:image/png;base64,iVBORw0KGgo=", "complianceAgreed", true), 200);
+        assertThat(signed.path("data").path("status").asString()).isEqualTo("ACTIVE");
     }
 }

@@ -329,6 +329,8 @@ public class FeedbackService {
         f.setClientHash(hash);
         f.setCreatedAt(time.now());
         feedbackMapper.insert(f);
+        audit.log("FEEDBACK", f.getId(), null, "收到匿名服务评价",
+                "评价轮 " + r.getId(), "", rating + " 星");
 
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("rating", rating);

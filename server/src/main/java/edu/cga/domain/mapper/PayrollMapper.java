@@ -1,6 +1,7 @@
 package edu.cga.domain.mapper;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import edu.cga.domain.entity.Payroll;
@@ -13,9 +14,13 @@ public interface PayrollMapper extends BaseMapper<Payroll> {
     @Select("SELECT * FROM payrolls WHERE id = #{id} FOR UPDATE")
     Payroll lockById(@Param("id") String id);
 
-    /** 某合同某月的薪酬单（同一合同每月最多一张） */
+    /** 某合同某月的首张薪酬单。 */
     @Select("SELECT * FROM payrolls WHERE contract_id = #{contractId} AND month = #{month} ORDER BY id LIMIT 1")
     Payroll selectByContractAndMonth(@Param("contractId") String contractId, @Param("month") String month);
+
+    /** 某合同某月所有批次。调用方在计算或改动批次前须锁住经费行。 */
+    @Select("SELECT * FROM payrolls WHERE contract_id = #{contractId} AND month = #{month} ORDER BY id")
+    List<Payroll> selectBatches(@Param("contractId") String contractId, @Param("month") String month);
 
     /** 某合同最近一张未发放的薪酬单，加锁（考核修改系数时使用） */
     // 已提交财务（SUBMITTED）的金额已发给财务系统，不能再改系数

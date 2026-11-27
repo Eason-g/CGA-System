@@ -128,6 +128,7 @@ public class SnapshotService {
         meta.put("currentWeekNo", time.currentWeekNo());
         meta.put("currentMonth", time.currentMonth());
         meta.put("today", time.today().toString());
+        meta.put("semesterStart", time.semesterStart().toString());
         return meta;
     }
 
@@ -186,7 +187,7 @@ public class SnapshotService {
                     .in("status", RuleEngine.ALLOCATING_CONTRACT_STATUSES)
                     .in("student_id", studentIds));
             for (String id : studentIds) {
-                allocated.put(id, RuleEngine.getStudentAllocatedWeeklyHours(contracts, id));
+                allocated.put(id, RuleEngine.getStudentAllocatedWeeklyHours(contracts, id, time.today(), null));
             }
         }
         SysConfig rulesRow = sysConfigMapper.selectById(SysConfig.GLOBAL_RULES);

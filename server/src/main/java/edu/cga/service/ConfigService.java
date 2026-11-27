@@ -1,15 +1,22 @@
 package edu.cga.service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import edu.cga.common.BizException;
 import edu.cga.common.Num;
+import edu.cga.common.TimeService;
 import edu.cga.domain.entity.SysConfig;
+import edu.cga.domain.entity.User;
+import edu.cga.domain.mapper.ContractMapper;
 import edu.cga.domain.mapper.SysConfigMapper;
+import edu.cga.domain.mapper.UserMapper;
+import edu.cga.rule.RuleEngine;
 import edu.cga.security.CurrentUser;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -33,13 +40,26 @@ public class ConfigService {
     private final SysConfigMapper sysConfigMapper;
     private final AuditService audit;
 
-    public ConfigService(SysConfigMapper sysConfigMapper, AuditService audit) {
+    private final ContractMapper contracts;
+    private final UserMapper users;
+    private final TimeService time;
+
+    public ConfigService(SysConfigMapper sysConfigMapper, AuditService audit,
+                         ContractMapper contracts, UserMapper users, TimeService time) {
+        this.contracts = contracts;
+        this.users = users;
+        this.time = time;
         this.sysConfigMapper = sysConfigMapper;
         this.audit = audit;
     }
 
     public Map<String, Object> globalRules() {
         return read(SysConfig.GLOBAL_RULES);
+    }
+
+    /** 与配置写操作串行化，同时允许业务事务并行读取同一规则版本。 */
+    public Map<String, Object> globalRulesForWrite() {
+        return valueOf(sysConfigMapper.readForWrite(SysConfig.GLOBAL_RULES));
     }
 
     public Map<String, Object> workflows() {
@@ -64,9 +84,12 @@ public class ConfigService {
         return configs;
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> read(String key) {
-        SysConfig row = sysConfigMapper.selectById(key);
+        return valueOf(sysConfigMapper.selectById(key));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> valueOf(SysConfig row) {
         if (row != null && row.getConfigValue() instanceof Map<?, ?> m) {
             return (Map<String, Object>) m;
         }
@@ -97,6 +120,8 @@ public class ConfigService {
         if (jobTypeSchemas != null) {
             JobTypeSchemaService.validateSchemas(jobTypeSchemas);
         }
+        Map<String, Object> oldRules = null;
+        Map<String, Object> newRules = null;
         // 先全部校验，再写入
         if (evaluationTemplates != null) {
             for (Map.Entry<String, List<Map<String, Object>>> e : evaluationTemplates.entrySet()) {
@@ -121,11 +146,20 @@ public class ConfigService {
         if (workflows != null) {
             for (Map.Entry<String, List<Map<String, Object>>> e : workflows.entrySet()) {
                 requireJobType(e.getKey());
-                for (Map<String, Object> node : e.getValue() == null ? List.<Map<String, Object>>of() : e.getValue()) {
+                List<Map<String, Object>> nodes = e.getValue() == null ? List.of() : e.getValue();
+                for (Map<String, Object> node : nodes) {
                     Object key = node == null ? null : node.get("key");
                     if (key == null || !WORKFLOW_NODES.contains(key.toString())) {
                         throw BizException.badRequest("审批流节点「" + key + "」不受支持");
                     }
+                }
+                List<String> keys = nodes.stream().map(n -> n.get("key").toString()).toList();
+                if (keys.size() < 2 || !"MENTOR_SUBMIT".equals(keys.get(0))
+                        || !"PUBLISHED".equals(keys.get(keys.size() - 1))
+                        || keys.size() != Set.copyOf(keys).size()
+                        || nodes.get(0).get("conditional") != null
+                        || nodes.get(nodes.size() - 1).get("conditional") != null) {
+                    throw BizException.badRequest("审批流须从导师提交开始、以发布结束，节点不能重复");
                 }
             }
         }
@@ -164,17 +198,46 @@ public class ConfigService {
         }
         if (globalRules != null) {
             SysConfig row = sysConfigMapper.lockByKey(SysConfig.GLOBAL_RULES);
-            Map<String, Object> merged = new LinkedHashMap<>();
-            if (row != null && row.getConfigValue() instanceof Map<?, ?> old) {
-                old.forEach((k, v) -> merged.put(k.toString(), v));
-            }
-            merged.putAll(globalRules);
-            write(SysConfig.GLOBAL_RULES, merged);
+            oldRules = valueOf(row);
+            newRules = new LinkedHashMap<>(oldRules);
+            newRules.putAll(globalRules);
+            write(SysConfig.GLOBAL_RULES, newRules);
         }
 
-        audit.log("CONFIG", "SYSTEM_CONFIG", operator, "更新校级审批流与考核模板配置",
-                "新配置已即时生效，将应用于所有新建岗位审批与周期考核单据。", "原校级规则配置", "新校级规则配置（已生效）");
+        // 调低上限不拦截保存（法规调整必须能落地；已获特批的合同本就可能超过上限），只把受影响的学生记入审计
+        List<String> overCap = newRules == null ? List.of() : studentsOverInternationalCap(newRules);
+        String opinion = overCap.isEmpty() ? "新配置已即时生效"
+                : "新配置已即时生效；现有合同超过新国际生上限的学生：" + String.join("、", overCap);
+        audit.log("CONFIG", "SYSTEM_CONFIG", operator, "更新校级规则配置",
+                opinion, describeHours(oldRules), describeHours(newRules));
         return all();
+    }
+
+    /** 按当前规则，现有生效/待签合同从今天起的同时占用峰值超过上限的国际生（姓名+峰值），供保存后提示 */
+    public List<String> studentsOverInternationalCap() {
+        return studentsOverInternationalCap(globalRules());
+    }
+
+    private List<String> studentsOverInternationalCap(Map<String, Object> rules) {
+        LocalDate today = time.today();
+        List<String> result = new java.util.ArrayList<>();
+        for (User student : users.selectList(new QueryWrapper<User>().eq("role", "STUDENT").eq("is_international", true))) {
+            int limit = RuleEngine.getMaxWeeklyHours(rules, student);
+            int peak = RuleEngine.getStudentAllocatedWeeklyHours(
+                    contracts.selectAllocatingByStudent(student.getId()), student.getId(), today, null);
+            if (peak > limit) {
+                result.add(student.getName() + "（" + peak + "h > " + limit + "h）");
+            }
+        }
+        return result;
+    }
+
+    private String describeHours(Map<String, Object> rules) {
+        if (rules == null) {
+            return "周工时规则未修改";
+        }
+        return "国内生周上限：" + rules.get("maxWeeklyHoursDefault")
+                + "h，国际生周上限：" + rules.get("maxWeeklyHoursIntl") + "h";
     }
 
     private void write(String key, Object value) {

@@ -49,8 +49,16 @@ public class TimeService {
         return weekNoOf(today());
     }
 
+    public LocalDate semesterStart() {
+        return props.getSemesterStart();
+    }
+
+    public LocalDate weekStart(int weekNo) {
+        return semesterStart().plusWeeks(weekNo - 1L);
+    }
+
     public int weekNoOf(LocalDate date) {
-        LocalDate start = props.getSemesterStart();
+        LocalDate start = semesterStart();
         if (start == null) {
             throw new IllegalStateException("未配置 app.semester-start");
         }

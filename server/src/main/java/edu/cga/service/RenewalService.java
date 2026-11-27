@@ -112,28 +112,25 @@ public class RenewalService {
             errors.add("最近一次考核（" + latest.getPeriod() + "）为「" + latest.getGrade() + "」（"
                     + Num.plain(latest.getTotalScore()) + " 分），不具备续聘资格");
         }
+        if (RuleEngine.checkEnrollment(student) != null) {
+            errors.add("仅在读学生可续聘，当前学籍状态为「" + RuleEngine.enrollmentStatusOf(student) + "」");
+        }
         if (Boolean.TRUE.equals(student.getIsInternational())) {
-            if (!(Boolean.TRUE.equals(student.getVisaValid()) && student.getVisaType() != null
-                    && !student.getVisaType().isBlank())) {
+            if (!RuleEngine.hasValidVisa(student, null)) {
                 errors.add("该国际生无有效学习类居留许可，不能续聘");
             } else if (student.getVisaExpiry() == null || student.getVisaExpiry().isBefore(newEnd)) {
                 String expiry = student.getVisaExpiry() == null ? "未登记" : student.getVisaExpiry().toString();
                 errors.add("该国际生签证（居留许可）有效期至 " + expiry + "，未覆盖新聘期（" + newStart + " 至 " + newEnd
                         + "），不能续聘");
             }
-            if (!Boolean.TRUE.equals(job.getAllowInternational())) {
+            if (!RuleEngine.allowsInternationalEmployment(job)) {
                 errors.add("该岗位未面向国际学生开放，不能续聘国际生");
             }
         }
-        int currentHours = 0;
-        for (Contract c : allocating) {
-            if (!c.getId().equals(con.getId()) && overlaps(c, newStart, newEnd)) {
-                currentHours += Num.orZero(c.getWeeklyHours());
-            }
-        }
+        int currentHours = RuleEngine.getStudentAllocatedWeeklyHours(allocating, student.getId(), newStart, newEnd);
         int jobHours = Num.orZero(job.getWeeklyHours());
         int projectedHours = currentHours + jobHours;
-        int maxHours = RuleEngine.getMaxWeeklyHours(configService.globalRules(), student);
+        int maxHours = RuleEngine.getMaxWeeklyHours(configService.globalRulesForWrite(), student);
         if (projectedHours > maxHours) {
             errors.add("续聘后新聘期内跨岗累计周工时将达 " + projectedHours + "h（同期已占 " + currentHours + "h + 本岗 "
                     + jobHours + "h），超出上限 " + maxHours + "h/周，系统已拦截续聘");
@@ -170,11 +167,4 @@ public class RenewalService {
         return renewed;
     }
 
-    /** 合同聘期与 [start, end] 是否有重叠；日期为空视为重叠 */
-    private static boolean overlaps(Contract c, LocalDate start, LocalDate end) {
-        if (c.getStartDate() == null || c.getEndDate() == null) {
-            return true;
-        }
-        return !c.getEndDate().isBefore(start) && !c.getStartDate().isAfter(end);
-    }
 }

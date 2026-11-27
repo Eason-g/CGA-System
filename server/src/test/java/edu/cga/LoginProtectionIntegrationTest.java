@@ -69,6 +69,19 @@ class LoginProtectionIntegrationTest extends WriteApiTestBase {
     }
 
     @Test
+    void mockCasAndPasswordShareTheSameLocalAccountLock() throws Exception {
+        String user = "alex.chen";
+        for (int attempt = 0; attempt < 5; attempt++) {
+            assertThat(login(user, "incorrect").getStatus()).isEqualTo(attempt == 4 ? 429 : 401);
+        }
+        MockHttpServletResponse casResponse = mvc.perform(post("/mock-cas/login")
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .param("uid", "2025210891").param("password", DEMO_PASSWORD)
+                .param("service", "http://localhost:5173/")).andReturn().getResponse();
+        assertThat(casResponse.getStatus()).isEqualTo(429);
+    }
+
+    @Test
     void fiveFailuresLockAccountAndCorrectPasswordGets429() throws Exception {
         String user = newStudent();
         for (int i = 1; i <= 4; i++) {

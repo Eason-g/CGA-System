@@ -1,8 +1,10 @@
 package edu.cga.service;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Pattern;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import edu.cga.common.BizException;
 import edu.cga.crypto.FieldCrypto;
@@ -10,6 +12,7 @@ import edu.cga.domain.entity.User;
 import edu.cga.domain.mapper.NotificationMapper;
 import edu.cga.domain.mapper.UserMapper;
 import edu.cga.security.CurrentUser;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,9 +49,12 @@ public class ProfileService {
             if (!e.isEmpty() && (e.length() > 128 || !EMAIL.matcher(e).matches())) {
                 throw BizException.badRequest("邮箱格式不正确");
             }
+            String emailHash = FieldCrypto.get().emailHash(e);
+            if (emailHash != null && emailUnavailable(e, emailHash, target.getId())) {
+                throw new BizException(409, "邮箱已被占用");
+            }
             target.setEmail(e);
-            // 邮箱登录按 email_hash 检索（P2 D.1），改邮箱必须同步更新，否则新邮箱登录不了、旧邮箱还能登录
-            target.setEmailHash(FieldCrypto.get().emailHash(e));
+            target.setEmailHash(emailHash);
         }
         if (phone != null) {
             String p = phone.trim();
@@ -71,7 +77,11 @@ public class ProfileService {
             }
             target.setBio(b);
         }
-        userMapper.updateById(target);
+        try {
+            userMapper.updateById(target);
+        } catch (DuplicateKeyException e) {
+            throw new BizException(409, "邮箱已被占用");
+        }
         if (email != null && target.getEmailHash() == null) {
             // 邮箱清空：updateById 默认跳过 null 字段，检索哈希要单独置空
             userMapper.update(null, new UpdateWrapper<User>().set("email_hash", null).eq("id", target.getId()));
@@ -80,10 +90,25 @@ public class ProfileService {
         return target;
     }
 
-    /** 同 mock：只改已读标记，不写审计日志 */
+    private boolean emailUnavailable(String email, String hash, String userId) {
+        String normalized = email.toLowerCase(Locale.ROOT);
+        if (userMapper.exists(new QueryWrapper<User>().ne("id", userId)
+                .apply("(LOWER(username) = {0} OR LOWER(student_no) = {0} OR email_hash = {1})", normalized, hash))) {
+            return true;
+        }
+        // 历史重复地址保留为联系方式，但在冲突消解前不作为登录凭据。
+        return userMapper.selectList(new QueryWrapper<User>().ne("id", userId).isNull("email_hash").isNotNull("email"))
+                .stream().anyMatch(u -> hash.equals(FieldCrypto.get().emailHash(u.getEmail())));
+    }
+
+    /** 仅修改本人站内信的已读标记。 */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public boolean markAllRead(CurrentUser operator) {
-        notificationMapper.markAllRead(operator.id());
+        int changed = notificationMapper.markAllRead(operator.id());
+        if (changed > 0) {
+            audit.log("USER", operator.id(), operator, "将个人站内信标记为已读",
+                    "更新通知数：" + changed, "未读", "已读");
+        }
         return true;
     }
 }

@@ -2,7 +2,10 @@ package edu.cga;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -193,6 +196,49 @@ class AuditChainIntegrationTest extends IntegrationTestBase {
     }
 
     /** P0 时建的老库（没有链字段和链头表）：启动初始化时补列并补算整条链 */
+    @Test
+    void missingHeadIsNotRecreatedOnStartup() throws Exception {
+        jdbc.update("DELETE FROM audit_chain_head WHERE id = 1");
+
+        auditChain.initialize();
+
+        JsonNode result = verify();
+        assertThat(result.path("ok").asBoolean()).isFalse();
+        assertThat(result.path("brokenAt").path("detail").asString()).contains("缺少审计链头");
+    }
+
+    @Test
+    void recordIdIsCoveredByTheDigest() throws Exception {
+        jdbc.update("UPDATE audit_log SET id = 'T_CHANGED_ID' WHERE seq = 3");
+
+        JsonNode result = verify();
+        assertThat(result.path("ok").asBoolean()).isFalse();
+        assertThat(result.path("brokenAt").path("reason").asString()).isEqualTo(AuditChainService.REASON_CONTENT);
+    }
+
+    @Test
+    void validVersionOneChainIsVerifiedBeforeUpgrade() throws Exception {
+        String id = idAtSeq(1);
+        jdbc.update("DELETE FROM audit_log WHERE seq <> 1");
+        jdbc.update("UPDATE audit_log SET target_type = 'JOB', target_id = 'T_JOB', operator_id = NULL, "
+                + "operator_name = NULL, operator_role = NULL, action = '测试', opinion = NULL, "
+                + "before_value = NULL, after_value = NULL, log_time = NULL WHERE seq = 1");
+        String legacyPreimage = String.join("|", AuditChainService.GENESIS_HASH, "1", "JOB", "T_JOB",
+                "", "", "", "测试", "", "", "", "");
+        String oldHash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(legacyPreimage.getBytes(StandardCharsets.UTF_8)));
+        jdbc.update("UPDATE audit_log SET hash = ? WHERE seq = 1", oldHash);
+        jdbc.update("ALTER TABLE audit_chain_head DROP COLUMN hash_version");
+        jdbc.update("UPDATE audit_chain_head SET last_seq = 1, last_hash = ? WHERE id = 1", oldHash);
+
+        auditChain.initialize();
+
+        assertThat(verify().path("ok").asBoolean()).isTrue();
+        assertThat(jdbc.queryForObject("SELECT hash_version FROM audit_chain_head WHERE id = 1", Integer.class))
+                .isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT hash FROM audit_log WHERE id = ?", String.class, id)).isNotEqualTo(oldHash);
+    }
+
     @Test
     void legacyDatabaseIsMigrated() throws Exception {
         jdbc.execute("DROP TABLE audit_chain_head");

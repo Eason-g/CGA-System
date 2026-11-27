@@ -10,6 +10,7 @@ import edu.cga.domain.entity.FinanceTransaction;
 import edu.cga.domain.entity.Payroll;
 import edu.cga.domain.mapper.FinanceTransactionMapper;
 import edu.cga.rule.RuleEngine;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import tools.jackson.databind.JsonNode;
@@ -24,6 +25,11 @@ class FinanceIntegrationTest extends MaterialFinanceTestBase {
 
     @Autowired
     private FinanceTransactionMapper txnMapper;
+
+    @BeforeEach
+    void resetSeed() {
+        databaseInitializer.rebuild();
+    }
 
     private String submit(String payrollId) throws Exception {
         JsonNode r = apiPost("/api/payrolls/" + payrollId + "/submit-finance", SCHOOL, null, 200);
@@ -99,6 +105,33 @@ class FinanceIntegrationTest extends MaterialFinanceTestBase {
         Payroll paid = payrollMapper.selectById("PAY_05");
         assertThat(paid.getFinanceStatus()).isEqualTo("PAID");
         assertThat(paid.getVoucherNo()).isNotBlank();
+        assertThat(budget(pay.getBudgetId()).getUsedAmount())
+                .isEqualByComparingTo(before.getUsedAmount().add(pay.getAmount()));
+    }
+
+    @Test
+    void successfulReceiptWithAccountingConflictKeepsTheOriginalTransaction() throws Exception {
+        Payroll pay = payrollMapper.selectById("PAY_03");
+        Budget before = budget(pay.getBudgetId());
+        String serial = submit(pay.getId());
+
+        // 模拟历史资金台账已经不一致，外部成功回执必须保留在原流水。
+        Budget conflict = budget(pay.getBudgetId());
+        conflict.setTotalAmount(conflict.getUsedAmount());
+        budgetMapper.updateById(conflict);
+
+        String success = callbackBody(serial, true, "CW-RECONCILE", null);
+        financeCallback(success, null, 200);
+        assertThat(txnMapper.selectById(serial).getStatus()).isEqualTo(FinanceTransaction.RECONCILE);
+        assertThat(payrollMapper.selectById(pay.getId()).getFinanceStatus()).isEqualTo("SUBMITTED");
+        financeCallback(callbackBody(serial, false, null, "迟到结果"), null, 200);
+        assertThat(txnMapper.selectById(serial).getStatus()).isEqualTo(FinanceTransaction.RECONCILE);
+        apiPost("/api/payrolls/" + pay.getId() + "/submit-finance", SCHOOL, null, 400);
+
+        budgetMapper.updateById(before);
+        financeCallback(success, null, 200);
+        assertThat(txnMapper.selectById(serial).getStatus()).isEqualTo(FinanceTransaction.SUCCESS);
+        assertThat(payrollMapper.selectById(pay.getId()).getVoucherNo()).isEqualTo("CW-RECONCILE");
         assertThat(budget(pay.getBudgetId()).getUsedAmount())
                 .isEqualByComparingTo(before.getUsedAmount().add(pay.getAmount()));
     }

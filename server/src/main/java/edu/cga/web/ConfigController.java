@@ -40,6 +40,9 @@ public class ConfigController {
                                                  @AuthenticationPrincipal CurrentUser user) {
         Map<String, Object> configs = configService.save(req.workflows(), req.evaluationTemplates(),
                 req.globalRules(), req.jobTypeSchemas(), user);
-        return ApiResponse.ok(configs, "配置已保存并即时生效");
+        List<String> overCap = configService.studentsOverInternationalCap();
+        String message = overCap.isEmpty() ? "配置已保存并即时生效"
+                : "配置已保存并即时生效。注意：以下国际生现有合同超过新的周工时上限（可能已获特批），请核对：" + String.join("、", overCap);
+        return ApiResponse.ok(configs, message);
     }
 }

@@ -113,11 +113,14 @@ class FeedbackIntegrationTest extends WriteApiTestBase {
         publicSend(HttpMethod.GET, "/api/public/feedback/ABCDEFGH", null, 404);
         publicSend(HttpMethod.GET, "/api/public/feedback/not-a-code", null, 404);
 
+        long beforeVotes = auditCount();
         publicSend(HttpMethod.POST, "/api/public/feedback/" + code, feedback(5, "答疑很耐心", CLIENT_A), 200);
         // 同一浏览器重复提交 → 409
         JsonNode dup = publicSend(HttpMethod.POST, "/api/public/feedback/" + code, feedback(1, "再来一次", CLIENT_A), 409);
         assertThat(dup.path("message").asString()).isEqualTo("您已提交过本轮评价，感谢参与");
         publicSend(HttpMethod.POST, "/api/public/feedback/" + code, feedback(4, "", CLIENT_B), 200);
+        assertThat(auditCount()).isEqualTo(beforeVotes + 2);
+        assertThat(snapshotAs(ASSISTANT).path("auditLogs").toString()).doesNotContain("收到匿名服务评价");
 
         // 参数校验
         publicSend(HttpMethod.POST, "/api/public/feedback/" + code, feedback(0, "", "client-cccccccccccccccc"), 400);

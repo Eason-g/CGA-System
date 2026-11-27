@@ -166,8 +166,13 @@ public final class RuleEngine {
 
     /** 岗位发布硬校验：预算不足、名额不足都拦截 */
     public static JobPublishCheck validateJobPublish(JobForm form, Budget budget, Department dept, Collection<Job> jobs) {
+        return validateJobPublish(form, budget, dept, jobs, BigDecimal.ZERO);
+    }
+
+    public static JobPublishCheck validateJobPublish(JobForm form, Budget budget, Department dept,
+                                                    Collection<Job> jobs, BigDecimal unpaidExcess) {
         BigDecimal estimatedCost = calcJobBudgetCost(form.quota(), form.hourlyRate(), form.weeklyHours(), form.weeks());
-        BigDecimal availableBudget = getBudgetAvailable(budget);
+        BigDecimal availableBudget = getBudgetAvailable(budget).subtract(unpaidExcess);
         BigDecimal deficit = estimatedCost.subtract(availableBudget).max(BigDecimal.ZERO);
         boolean budgetExceeded = budget == null || estimatedCost.compareTo(availableBudget) > 0;
 
@@ -215,9 +220,15 @@ public final class RuleEngine {
                 }
             }
         }
-        if (!steps.contains("PUBLISHED")) {
-            steps.add("PUBLISHED");
+        steps.removeIf("PUBLISHED"::equals);
+        if (steps.isEmpty() || !"MENTOR_SUBMIT".equals(steps.get(0))) {
+            steps.add(0, "MENTOR_SUBMIT");
         }
+        if (allowInternational && !steps.contains("INTL_REVIEW")) {
+            int schoolReview = steps.indexOf("SCHOOL_REVIEW");
+            steps.add(schoolReview < 0 ? steps.size() : schoolReview, "INTL_REVIEW");
+        }
+        steps.add("PUBLISHED");
         return steps;
     }
 
@@ -244,6 +255,12 @@ public final class RuleEngine {
      * 没有起止日期的合同视为一直有效（保守处理）。
      */
     public static int getStudentAllocatedWeeklyHours(Collection<Contract> contracts, String studentId) {
+        return getStudentAllocatedWeeklyHours(contracts, studentId, null, null);
+    }
+
+    /** 在候选聘期内计算既有合同的同时占用峰值。边界按合同日期含当天。 */
+    public static int getStudentAllocatedWeeklyHours(Collection<Contract> contracts, String studentId,
+                                                      LocalDate start, LocalDate end) {
         List<Contract> mine = contracts.stream()
                 .filter(c -> Objects.equals(c.getStudentId(), studentId)
                         && ALLOCATING_CONTRACT_STATUSES.contains(c.getStatus()))
@@ -252,6 +269,12 @@ public final class RuleEngine {
         // 叠加量只会在某份合同开始的那一天上升，所以只需检查每份合同的开始日
         for (Contract c : mine) {
             LocalDate day = c.getStartDate() == null ? LocalDate.MIN : c.getStartDate();
+            if (start != null && day.isBefore(start)) {
+                day = start;
+            }
+            if (end != null && day.isAfter(end)) {
+                continue;
+            }
             int load = 0;
             for (Contract d : mine) {
                 boolean started = d.getStartDate() == null || !d.getStartDate().isAfter(day);
@@ -278,7 +301,7 @@ public final class RuleEngine {
     // ================================================================== 申请
 
     /**
-     * 学生申请前置合规校验。签证、岗位国际生开放资格是硬性条件；语言、跨岗工时可特批。
+     * 学生申请前置合规校验。签证、学籍、截止日、岗位国际生开放资格为硬性条件；语言、跨岗工时可特批（需求原文：超限需特批留痕）。
      *
      * @param applications 该生的申请（函数内按学生和岗位过滤）
      * @param contracts    该生的合同（函数内按学生和状态过滤）
@@ -308,10 +331,17 @@ public final class RuleEngine {
                 .findFirst().orElse(null);
         boolean quotaFull = Num.orZero(job.getHiredCount()) >= Num.orZero(job.getQuota());
 
-        int currentHours = getStudentAllocatedWeeklyHours(contracts, student.getId());
+        LocalDate start = today != null ? contractStartFrom(today) : null;
+        LocalDate end = today != null ? predictContractEnd(today, Num.orZero(job.getWeeks())) : null;
+        int currentHours = getStudentAllocatedWeeklyHours(contracts, student.getId(), start, end);
         int jobHours = Num.orZero(job.getWeeklyHours());
         int projectedHours = currentHours + jobHours;
         int maxHours = getMaxWeeklyHours(globalRules, student);
+
+        if (today != null && job.getDeadline() != null && job.getDeadline().isBefore(today)) {
+            checks.add(new Check("deadline", "申请截止日期", false, false,
+                    "已过申请截止日期（" + job.getDeadline() + "）"));
+        }
 
         // 0. 学籍状态（P2 B.2）：必须在读，硬性条件不可特批；在读时不额外列出，保持原有校验项顺序
         String enrollmentError = checkEnrollment(student);
@@ -321,22 +351,20 @@ public final class RuleEngine {
 
         if (Boolean.TRUE.equals(student.getIsInternational())) {
             // 1. 签证
-            boolean visaOk = Boolean.TRUE.equals(student.getVisaValid()) && notBlank(student.getVisaType());
-            // JS 版在缺少有效期时用固定日期兜底；后端不写死日期，改为“未登记”
+            boolean visaOk = hasValidVisa(student, today);
             String expiry = student.getVisaExpiry() != null ? student.getVisaExpiry().toString() : "未登记";
             checks.add(new Check("visa", "签证类型校验（有效学习居留许可）", visaOk, false,
                     visaOk ? student.getVisaType() + "有效（有效期至 " + expiry + "）"
                             : "未检测到有效学习类居留许可，禁止从事校内助教/助研活动"));
 
             // 2. 岗位是否面向国际生
-            boolean allowIntlOk = Boolean.TRUE.equals(job.getAllowInternational());
+            boolean allowIntlOk = allowsInternationalEmployment(job);
             checks.add(new Check("allowIntl", "岗位国际生开放资格校验", allowIntlOk, false,
                     allowIntlOk ? "该岗位已通过国际生办会签，面向国际学生开放"
                             : "该岗位未面向国际学生开放（仅限中国籍学生申请）"));
 
             // 3. 签证有效期覆盖预计聘期（提示性，不拦截；录用时由 validateHire 硬拦截）
             if (today != null && visaOk) {
-                LocalDate end = predictContractEnd(today, Num.orZero(job.getWeeks()));
                 boolean covered = checkVisaCoverage(student, end) == null;
                 hints.add(new Check("visaPeriod", "签证有效期覆盖聘期（提示）", covered, false,
                         covered ? "签证有效期至 " + expiry + "，覆盖预计聘期（至 " + end + "）"
@@ -395,7 +423,7 @@ public final class RuleEngine {
 
     /**
      * 录用时复核：申请后学生可能又被其他岗位录用，必须按录用时刻的累计工时重新判断。
-     * 超限一律拦截，除非申请已获特批且录用后工时不超过特批时记录的 projectedHours。
+     * 超限一律拦截，除非申请已获特批且录用后工时不超过特批时记录的 projectedHours（国际生、国内生相同）。
      *
      * @param contracts 该生当前的合同（Service 已锁住学生行后读取）
      */
@@ -409,6 +437,8 @@ public final class RuleEngine {
      */
     public static HireCheck validateHire(JobApplication app, Job job, User student, Collection<Contract> contracts,
                                          Map<String, Object> globalRules, LocalDate contractEndDate) {
+        LocalDate start = contractEndDate != null
+                ? contractEndDate.minusWeeks(Math.max(1, Num.orZero(job.getWeeks()))) : null;
         List<String> errors = new ArrayList<>();
         if (!HIREABLE_APP_STATUSES.contains(app.getStatus())) {
             String label = APP_STATUS_LABELS.getOrDefault(app.getStatus(), app.getStatus());
@@ -422,10 +452,10 @@ public final class RuleEngine {
             errors.add("该学生当前学籍状态为「" + enrollmentStatusOf(student) + "」，仅在读学生可录用（不可特批）");
         }
         if (Boolean.TRUE.equals(student.getIsInternational())) {
-            if (!(Boolean.TRUE.equals(student.getVisaValid()) && notBlank(student.getVisaType()))) {
+            if (!hasValidVisa(student, null)) {
                 errors.add("该国际生无有效学习类居留许可，不能录用");
             }
-            if (!Boolean.TRUE.equals(job.getAllowInternational())) {
+            if (!allowsInternationalEmployment(job)) {
                 errors.add("该岗位未面向国际学生开放，不能录用国际生");
             }
             // 签证有效期必须覆盖整个聘期（硬性条件，特批也不能放行）
@@ -437,7 +467,7 @@ public final class RuleEngine {
             }
         }
 
-        int currentHours = getStudentAllocatedWeeklyHours(contracts, student.getId());
+        int currentHours = getStudentAllocatedWeeklyHours(contracts, student.getId(), start, contractEndDate);
         int jobHours = Num.orZero(job.getWeeklyHours());
         int projectedHours = currentHours + jobHours;
         int maxHours = getMaxWeeklyHours(globalRules, student);
@@ -463,6 +493,36 @@ public final class RuleEngine {
     public static final String ENROLLMENT_ACTIVE = "在读";
     /** 学籍系统可能返回的全部状态 */
     public static final List<String> ENROLLMENT_STATUSES = List.of("在读", "休学", "毕业");
+
+    public static boolean allowsInternationalEmployment(Job job) {
+        if (!Boolean.TRUE.equals(job.getAllowInternational()) || job.getWorkflowSteps() == null
+                || job.getCurrentStepIndex() == null) {
+            return false;
+        }
+        int review = job.getWorkflowSteps().indexOf("INTL_REVIEW");
+        return review >= 0 && review < job.getCurrentStepIndex();
+    }
+
+    public static boolean hasValidVisa(User student, LocalDate onDate) {
+        return Boolean.TRUE.equals(student.getVisaValid()) && notBlank(student.getVisaType())
+                && (onDate == null || student.getVisaExpiry() == null || !student.getVisaExpiry().isBefore(onDate));
+    }
+
+    /** 合规复核用于合同生效及履约，使用当前学籍与指定期间的签证覆盖。 */
+    public static String checkWorkingEligibility(User student, LocalDate through) {
+        if (checkEnrollment(student) != null) {
+            return "当前学籍状态为「" + enrollmentStatusOf(student) + "」，仅在读学生可办理聘用或工时";
+        }
+        if (Boolean.TRUE.equals(student.getIsInternational())) {
+            if (!hasValidVisa(student, null)) {
+                return "该国际生无有效学习类居留许可";
+            }
+            if (through == null || student.getVisaExpiry() == null || student.getVisaExpiry().isBefore(through)) {
+                return "签证（居留许可）未覆盖办理日期或聘期";
+            }
+        }
+        return null;
+    }
 
     /** 学生的学籍状态；未登记（如历史数据）按在读处理（同 JS enrollmentStatusOf） */
     public static String enrollmentStatusOf(User student) {

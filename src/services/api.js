@@ -10,7 +10,14 @@ import {
   gradeFromScore,
   contractStartFrom,
   predictContractEnd,
-  defaultJobDeadline
+  defaultJobDeadline,
+  getTodayStr,
+  getTeachingWeekStart,
+  checkWorkingEligibility,
+  allowsInternationalEmployment,
+  getStudentAllocatedWeeklyHours,
+  getMaxWeeklyHours,
+  localDateStr
 } from './ruleEngine'
 import { http, isHttpMode, download } from './http'
 import { deriveExtraFieldsForMock } from './jobSchema'
@@ -59,7 +66,7 @@ const mockApi = {
   loginByCredentials(account) {
     return mockAsync((db) => {
       const q = (account || '').trim().toLowerCase()
-      const user = db.users.find(
+      const matches = db.users.filter(
         (u) =>
           (u.username && u.username.toLowerCase() === q) ||
           (u.studentNo && u.studentNo.toLowerCase() === q) ||
@@ -67,6 +74,7 @@ const mockApi = {
           (u.phone && u.phone.replace(/-/g, '') === q.replace(/-/g, '')) ||
           (u.name && u.name.toLowerCase() === q)
       )
+      const user = matches.length === 1 ? matches[0] : null
       if (!user) return { code: 401, data: null, message: '学工号或校园邮箱未匹配，请核对后重试（或点击右下角查看体验账号）' }
       return { code: 200, data: user, message: `欢迎回来，${user.name}` }
     })
@@ -264,8 +272,20 @@ const mockApi = {
       const app = db.applications.find((a) => a.id === applicationId)
       if (!app) return { code: 404, data: null, message: '申请单不存在' }
 
+      if (app.status !== 'PENDING_SPECIAL_APPROVAL') {
+        return { code: 400, data: null, message: '该申请不处于待特批状态' }
+      }
+      const job = db.jobs.find((j) => j.id === app.jobId)
+      const student = db.users.find((u) => u.id === app.studentId)
       const beforeStatus = app.status
       if (decision === 'APPROVE') {
+        if (!student || !job) return { code: 404, data: null, message: '学生或岗位不存在' }
+        const today = db.meta.today || getTodayStr()
+        const eligibility = checkWorkingEligibility(student, today)
+        if (eligibility) return { code: 403, data: null, message: eligibility }
+        if (student.isInternational && !allowsInternationalEmployment(job)) {
+          return { code: 403, data: null, message: '该岗位未完成国际生会签，不可特批' }
+        }
         app.status = 'SPECIAL_APPROVED'
         app.specialStatus = 'APPROVED'
       } else {
@@ -273,7 +293,6 @@ const mockApi = {
         app.specialStatus = 'REJECTED'
       }
 
-      const job = db.jobs.find((j) => j.id === app.jobId)
       db.notifications.unshift({
         id: generateId('NOTIF'),
         userId: app.studentId,
@@ -435,10 +454,26 @@ const mockApi = {
   },
 
   // P0-3: Sign electronic contract with Canvas signature + intl compliance declaration
-  signContract({ contractId, signatureDataUrl, complianceAgreed }, student) {
+  signContract({ contractId, signatureDataUrl, complianceAgreed }, studentRef) {
     return mockAsync((db) => {
-      const con = db.contracts.find((c) => c.id === contractId)
+      const student = db.users.find((u) => u.id === studentRef?.id)
+      const con = db.contracts.find((c) => c.id === contractId && c.studentId === student?.id)
       if (!con) return { code: 404, data: null, message: '电子协议不存在' }
+      if (con.status !== 'PENDING_SIGN' || (con.endDate && con.endDate < getTodayStr())) {
+        return { code: 400, data: null, message: '电子协议已过期或不处于待签署状态' }
+      }
+      const eligibility = checkWorkingEligibility(student, con.endDate)
+      if (eligibility) return { code: 403, data: null, message: eligibility }
+      // 签署前复核跨岗工时；超限时只认已通过的特批，且不超过特批时记录的工时（与后端一致）
+      const signPeak = getStudentAllocatedWeeklyHours(db, student.id, con.startDate, con.endDate)
+      const signLimit = getMaxWeeklyHours(db, student)
+      if (signPeak > signLimit) {
+        const signApp = db.applications.find((a) => a.id === con.applicationId)
+        const ceiling = Number(signApp?.complianceCheckResult?.projectedHours)
+        if (!(signApp?.specialStatus === 'APPROVED' && Number.isFinite(ceiling) && signPeak <= ceiling)) {
+          return { code: 403, data: null, message: `跨岗累计周工时 ${signPeak}h 超出上限 ${signLimit}h/周，且无对应特批，不能签署` }
+        }
+      }
       if (!signatureDataUrl) return { code: 400, data: null, message: '请先在签名板手写确认签名' }
       if (student.isInternational && !complianceAgreed) {
         return { code: 400, data: null, message: '国际生必须勾选《国际生合法工时合规声明》方可生效' }
@@ -476,6 +511,20 @@ const mockApi = {
       if (!con) return { code: 404, data: null, message: '有效聘用协议不存在' }
       if (con.status !== 'ACTIVE') return { code: 400, data: null, message: '请先签署电子聘用协议后再填报工时' }
 
+      const today = db.meta.today || getTodayStr()
+      const weekStart = getTeachingWeekStart(db, Number(weekNo))
+      if (!weekStart || weekStart > today || Number(weekNo) > db.meta.currentWeekNo) {
+        return { code: 400, data: null, message: '填报周次超出当前教学范围' }
+      }
+      const weekEnd = new Date(weekStart + 'T00:00:00')
+      weekEnd.setDate(weekEnd.getDate() + 6)
+      const workThrough = [localDateStr(weekEnd), today, con.endDate].filter(Boolean).sort()[0]
+      const workStart = con.startDate && con.startDate > weekStart ? con.startDate : weekStart
+      if (workStart > workThrough) {
+        return { code: 400, data: null, message: '填报周次不在合同已履行的聘期内' }
+      }
+      const eligibility = checkWorkingEligibility(student, workThrough)
+      if (eligibility) return { code: 403, data: null, message: eligibility }
       const check = validateTimesheetSubmission(db, student, weekNo, hours)
       if (!check.ok) {
         return { code: 403, data: check, message: check.message }
@@ -488,7 +537,7 @@ const mockApi = {
         jobId: con.jobId,
         deptId: con.deptId,
         weekNo: Number(weekNo),
-        month: db.meta.currentMonth || '2026-11',
+        month: weekStart.slice(0, 7),
         hours: Number(hours),
         workLog: workLog.trim(),
         milestoneRef: milestoneRef || '',
@@ -563,7 +612,7 @@ const mockApi = {
   // P0-4: Auto calculate payroll from approved timesheets & evaluation coefficient
   generateMonthlyPayrolls({ month }, operator) {
     return mockAsync((db) => {
-      const targetMonth = month || db.meta.currentMonth || '2026-11'
+      const targetMonth = month || db.meta.currentMonth || getTodayStr().slice(0, 7)
       const activeContracts = db.contracts.filter((c) => c.status === 'ACTIVE')
       let createdOrUpdated = 0
 
@@ -573,7 +622,12 @@ const mockApi = {
         )
         if (approvedTs.length === 0) return
 
-        const totalHours = approvedTs.reduce((sum, t) => sum + Number(t.hours || 0), 0)
+        const batches = db.payrolls.filter((p) => p.contractId === con.id && p.month === targetMonth)
+        if (batches.some((p) => p.financeStatus === 'SUBMITTED')) return
+        const paidHours = batches.filter((p) => p.financeStatus === 'PAID')
+          .reduce((sum, p) => sum + Number(p.totalHours || 0), 0)
+        const totalHours = Number((approvedTs.reduce((sum, t) => sum + Number(t.hours || 0), 0) - paidHours).toFixed(1))
+        if (totalHours <= 0) return
         const job = db.jobs.find((j) => j.id === con.jobId)
         if (!job) return
         const budget = db.budgets.find((b) => b.id === job.budgetId)
@@ -583,9 +637,8 @@ const mockApi = {
         const coeff = latestEval ? Number(latestEval.coefficient) : 1.0
         const amount = Math.round(totalHours * Number(con.hourlyRate) * coeff * 100) / 100
 
-        const existing = db.payrolls.find((p) => p.contractId === con.id && p.month === targetMonth)
+        const existing = batches.find((p) => p.financeStatus !== 'PAID')
         if (existing) {
-          if (existing.financeStatus === 'PAID') return
           existing.totalHours = totalHours
           existing.coefficient = coeff
           existing.amount = amount
@@ -706,7 +759,7 @@ const mockApi = {
         studentId: con.studentId,
         jobId: con.jobId,
         deptId: con.deptId,
-        period: period || '2026-11 周期考核',
+        period: period || (db.meta.currentMonth || getTodayStr().slice(0, 7)) + ' 周期考核',
         jobType: job.type,
         dimensions,
         totalScore,
@@ -758,6 +811,13 @@ const mockApi = {
   // P1-1: Save configurable approval workflows & evaluation weights (School Admin)
   saveConfigs({ workflows, evaluationTemplates, globalRules, jobTypeSchemas }, operator) {
     return mockAsync((db) => {
+      if (globalRules) {
+        const limits = ['maxWeeklyHoursDefault', 'maxWeeklyHoursIntl']
+        if (limits.some((key) => Object.hasOwn(globalRules, key)
+            && (!Number.isInteger(Number(globalRules[key])) || globalRules[key] < 1 || globalRules[key] > 40))) {
+          return { code: 400, data: null, message: '周工时上限必须为 1–40 的整数' }
+        }
+      }
       if (jobTypeSchemas) {
         db.configs.jobTypeSchemas = { ...(db.configs.jobTypeSchemas || {}), ...JSON.parse(JSON.stringify(jobTypeSchemas)) }
       }
@@ -788,7 +848,15 @@ const mockApi = {
       })
 
       persistDB()
-      return { code: 200, data: db.configs, message: '配置已保存并即时生效' }
+      // 与后端一致：调低国际生上限不拦截保存，只提示现有合同超过新上限的学生（可能已获特批）
+      const overCap = db.users
+        .filter((u) => u.role === 'STUDENT' && u.isInternational)
+        .map((u) => ({ u, peak: getStudentAllocatedWeeklyHours(db, u.id, db.meta.today || getTodayStr()), limit: getMaxWeeklyHours(db, u) }))
+        .filter(({ peak, limit }) => peak > limit)
+        .map(({ u, peak, limit }) => `${u.name}（${peak}h > ${limit}h）`)
+      const message = overCap.length === 0 ? '配置已保存并即时生效'
+        : `配置已保存并即时生效。注意：以下国际生现有合同超过新的周工时上限（可能已获特批），请核对：${overCap.join('、')}`
+      return { code: 200, data: db.configs, message }
     })
   },
 
@@ -806,7 +874,15 @@ const mockApi = {
     return mockAsync((db) => {
       const target = db.users.find((u) => u.id === userId)
       if (!target) return { code: 404, data: null, message: '用户不存在' }
-      if (email !== undefined) target.email = email.trim()
+      if (email !== undefined) {
+        const address = email.trim()
+        const normalized = address.toLowerCase()
+        if (normalized && db.users.some((u) => u.id !== userId
+          && [u.email, u.username, u.studentNo].some((value) => value?.toLowerCase() === normalized))) {
+          return { code: 409, data: null, message: '邮箱已被占用' }
+        }
+        target.email = address
+      }
       if (phone !== undefined) target.phone = phone.trim()
       if (Array.isArray(skills)) target.skills = skills
       if (bio !== undefined) target.bio = bio.trim()

@@ -176,9 +176,13 @@ export function buildWorkflowStepsForJob(db, jobType, allowInternational) {
       return true
     })
     .map((node) => node.key)
-  if (!steps.includes('PUBLISHED')) {
-    steps.push('PUBLISHED')
+    .filter((key) => key !== 'PUBLISHED')
+  if (steps[0] !== 'MENTOR_SUBMIT') steps.unshift('MENTOR_SUBMIT')
+  if (allowInternational && !steps.includes('INTL_REVIEW')) {
+    const schoolReview = steps.indexOf('SCHOOL_REVIEW')
+    steps.splice(schoolReview < 0 ? steps.length : schoolReview, 0, 'INTL_REVIEW')
   }
+  steps.push('PUBLISHED')
   return steps
 }
 
@@ -193,13 +197,14 @@ export function getMaxWeeklyHours(db, student) {
 
 // 已占周工时 = 生效/待签合同在同一时间叠加的峰值（与后端 RuleEngine 一致）。
 // 续聘的新合同从原合同结束次日开始，两者不重叠，不能简单相加；没有起止日期的合同视为一直有效。
-export function getStudentAllocatedWeeklyHours(db, studentId) {
+export function getStudentAllocatedWeeklyHours(db, studentId, start, end) {
   const mine = db.contracts.filter(
     (c) => c.studentId === studentId && (c.status === 'ACTIVE' || c.status === 'PENDING_SIGN')
   )
   let peak = 0
   for (const c of mine) {
-    const day = c.startDate || ''
+    const day = start && (!c.startDate || c.startDate < start) ? start : c.startDate || ''
+    if (end && day > end) continue
     const load = mine
       .filter((d) => (!d.startDate || d.startDate <= day) && (!d.endDate || d.endDate >= day))
       .reduce((sum, d) => sum + Number(d.weeklyHours || 0), 0)
@@ -216,7 +221,7 @@ export function getStudentHoursSummary(db, student) {
     return { allocated: Number(summary.allocated) || 0, max: Number(summary.max) || getMaxWeeklyHours(db, student) }
   }
   return {
-    allocated: student ? getStudentAllocatedWeeklyHours(db, student.id) : 0,
+    allocated: student ? getStudentAllocatedWeeklyHours(db, student.id, todayStr) : 0,
     max: getMaxWeeklyHours(db, student)
   }
 }
@@ -225,10 +230,20 @@ export function getStudentActiveContracts(db, studentId) {
   return db.contracts.filter((c) => c.studentId === studentId && (c.status === 'ACTIVE' || c.status === 'PENDING_SIGN'))
 }
 
+export function getTeachingWeekStart(db, weekNo) {
+  if (!db.meta?.semesterStart || !Number.isInteger(weekNo) || weekNo < 1) return null
+  const day = parseDateStr(db.meta.semesterStart)
+  day.setDate(day.getDate() + (weekNo - 1) * 7)
+  return localDateStr(day)
+}
+
 export function getStudentWeekLoggedHours(db, studentId, weekNo) {
-  return db.timesheets
-    .filter((t) => t.studentId === studentId && Number(t.weekNo) === Number(weekNo) && t.status !== 'REJECTED')
+  const month = getTeachingWeekStart(db, Number(weekNo))?.slice(0, 7)
+  const hours = db.timesheets
+    .filter((t) => t.studentId === studentId && Number(t.weekNo) === Number(weekNo) && t.status !== 'REJECTED'
+      && (!month || (t.month >= month && t.month <= (db.meta.today || todayStr).slice(0, 7))))
     .reduce((sum, t) => sum + Number(t.hours || 0), 0)
+  return Number(hours.toFixed(1))
 }
 
 // 学籍状态（P2 B.2）：必须为“在读”，硬性条件不可特批；未登记按在读处理（与后端 RuleEngine 一致）
@@ -247,6 +262,22 @@ export function checkEnrollment(student) {
   return `当前学籍状态为「${s}」，仅在读学生可申请三助岗位（硬性条件，不可特批）`
 }
 
+export function allowsInternationalEmployment(job) {
+  const review = job.workflowSteps?.indexOf('INTL_REVIEW') ?? -1
+  return Boolean(job.allowInternational) && review >= 0 && review < job.currentStepIndex
+}
+
+export function checkWorkingEligibility(student, through) {
+  if (checkEnrollment(student)) {
+    return `当前学籍状态为「${enrollmentStatusOf(student)}」，仅在读学生可办理聘用或工时`
+  }
+  if (student.isInternational) {
+    if (!student.visaValid || !student.visaType?.trim()) return '该国际生无有效学习类居留许可'
+    if (!through || !student.visaExpiry || student.visaExpiry < through) return '签证（居留许可）未覆盖办理日期或聘期'
+  }
+  return null
+}
+
 export function validateStudentApplication(db, student, job) {
   const checks = []
   // 提示性检查项（不影响 passed、不参与特批判断）
@@ -256,10 +287,18 @@ export function validateStudentApplication(db, student, job) {
   )
   const quotaFull = Number(job.hiredCount || 0) >= Number(job.quota || 0)
 
-  const currentHours = getStudentAllocatedWeeklyHours(db, student.id)
+  const from = db.meta?.today || todayStr
+  const start = contractStartFrom(from)
+  const end = predictContractEnd(job.weeks, from)
+  const currentHours = getStudentAllocatedWeeklyHours(db, student.id, start, end)
   const jobHours = Number(job.weeklyHours || 0)
   const projectedHours = currentHours + jobHours
   const maxHours = getMaxWeeklyHours(db, student)
+
+  if (job.deadline && job.deadline < from) {
+    checks.push({ key: 'deadline', label: '申请截止日期', passed: false, overridable: false,
+      detail: `已过申请截止日期（${job.deadline}）` })
+  }
 
   // 0. 学籍状态：在读时不额外列出，保持原有校验项顺序
   const enrollmentError = checkEnrollment(student)
@@ -276,7 +315,8 @@ export function validateStudentApplication(db, student, job) {
   // overridable: false 表示硬性条件，不允许通过特批绕过
   if (student.isInternational) {
     // 1. Visa Check
-    const visaOk = Boolean(student.visaValid && student.visaType)
+    const visaOk = Boolean(student.visaValid && student.visaType?.trim()
+      && (!student.visaExpiry || student.visaExpiry >= from))
     checks.push({
       key: 'visa',
       label: '签证类型校验（有效学习居留许可）',
@@ -288,7 +328,7 @@ export function validateStudentApplication(db, student, job) {
     })
 
     // 2. Job allows international check
-    const allowIntlOk = Boolean(job.allowInternational)
+    const allowIntlOk = allowsInternationalEmployment(job)
     checks.push({
       key: 'allowIntl',
       label: '岗位国际生开放资格校验',
@@ -301,7 +341,6 @@ export function validateStudentApplication(db, student, job) {
 
     // 3. 签证有效期覆盖预计聘期（提示性，不拦截；录用时 validateHire 硬拦截）
     if (visaOk) {
-      const end = predictContractEnd(job.weeks)
       const covered = !checkVisaCoverage(student, end)
       const expiry = student.visaExpiry || '未登记'
       hints.push({
@@ -381,6 +420,9 @@ export const HIREABLE_APP_STATUSES = ['SUBMITTED', 'SPECIAL_APPROVED', 'INTERVIE
 
 // 录用时复核：申请后学生可能又被其他岗位录用，必须按录用时刻的累计工时重新判断
 export function validateHire(db, app, job, student) {
+  const from = db.meta?.today || todayStr
+  const start = contractStartFrom(from)
+  const end = predictContractEnd(job.weeks, from)
   const errors = []
   if (!HIREABLE_APP_STATUSES.includes(app.status)) {
     errors.push(`申请当前状态为「${APP_STATUS_MAP[app.status]?.label || app.status}」，不能录用`)
@@ -393,16 +435,16 @@ export function validateHire(db, app, job, student) {
     errors.push(`该学生当前学籍状态为「${enrollmentStatusOf(student)}」，仅在读学生可录用（不可特批）`)
   }
   if (student.isInternational) {
-    if (!(student.visaValid && student.visaType)) errors.push('该国际生无有效学习类居留许可，不能录用')
-    if (!job.allowInternational) errors.push('该岗位未面向国际学生开放，不能录用国际生')
+    if (!(student.visaValid && student.visaType?.trim())) errors.push('该国际生无有效学习类居留许可，不能录用')
+    if (!allowsInternationalEmployment(job)) errors.push('该岗位未面向国际学生开放，不能录用国际生')
     // 签证有效期必须覆盖整个聘期（硬性条件，特批也不能放行）
     if (student.visaValid) {
-      const coverageError = checkVisaCoverage(student, predictContractEnd(job.weeks))
+      const coverageError = checkVisaCoverage(student, end)
       if (coverageError) errors.push(coverageError)
     }
   }
 
-  const currentHours = getStudentAllocatedWeeklyHours(db, student.id)
+  const currentHours = getStudentAllocatedWeeklyHours(db, student.id, start, end)
   const jobHours = Number(job.weeklyHours || 0)
   const projectedHours = currentHours + jobHours
   const maxHours = getMaxWeeklyHours(db, student)

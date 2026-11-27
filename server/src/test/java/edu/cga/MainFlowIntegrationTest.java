@@ -3,15 +3,18 @@ package edu.cga;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import edu.cga.config.AppProperties;
 import edu.cga.domain.entity.Budget;
 import edu.cga.domain.entity.Contract;
 import edu.cga.domain.entity.Payroll;
 import edu.cga.domain.mapper.NotificationMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import tools.jackson.databind.JsonNode;
@@ -31,6 +34,17 @@ class MainFlowIntegrationTest extends WriteApiTestBase {
 
     @Autowired
     private NotificationMapper notificationMapper;
+    @Autowired
+    private AppProperties properties;
+
+    private LocalDate originalToday;
+
+    @AfterEach
+    void restoreClock() {
+        if (originalToday != null) {
+            properties.setToday(originalToday);
+        }
+    }
 
     @Test
     void fullFlowFromJobCreationToPayout() throws Exception {
@@ -127,19 +141,22 @@ class MainFlowIntegrationTest extends WriteApiTestBase {
         apiPost("/api/contracts/" + con.getId() + "/sign", STUDENT,
                 Map.of("signatureDataUrl", "data:image/png;base64,iVBORw0KGgo="), 400);
 
-        // 8. 填报工时：第 12 周已报 11h（TS_03），本次 6h → 17h ≤ 20h
-        Map<String, Object> ts = Map.of("contractId", con.getId(), "weekNo", 12, "hours", 6,
+        // 8. 合同开始前不能填报。推进到第 13 周再填本周实际工时。
+        apiPost("/api/timesheets", STUDENT,
+                Map.of("contractId", con.getId(), "weekNo", 12, "hours", 6, "workLog", "聘期前"), 400);
+        originalToday = properties.getToday();
+        properties.setToday(LocalDate.of(2026, 11, 24));
+        Map<String, Object> ts = Map.of("contractId", con.getId(), "weekNo", 13, "hours", 6,
                 "workLog", "批改第 3 次实验作业");
         JsonNode submitted = apiPost("/api/timesheets", STUDENT, ts, 200);
         assertThat(submitted.path("message").asString()).isEqualTo("工时已提交，等待导师审核");
         String tsId = submitted.path("data").path("id").asString();
         assertThat(submitted.path("data").path("month").asString()).isEqualTo("2026-11");
-        // 再报 4h 就超过 20h，被拦截
+        // 再报 15h 就超过 20h，被拦截
         JsonNode over = apiPost("/api/timesheets", STUDENT,
-                Map.of("contractId", con.getId(), "weekNo", 12, "hours", 4, "workLog", "补报"), 403);
-        assertThat(over.path("message").asString()).contains("第 12 周跨岗累计工时将达 21h");
-        // 不能填报未来周次
-        apiPost("/api/timesheets", STUDENT, Map.of("contractId", con.getId(), "weekNo", 13, "hours", 1, "workLog", "x"), 400);
+                Map.of("contractId", con.getId(), "weekNo", 13, "hours", 15, "workLog", "补报"), 403);
+        assertThat(over.path("message").asString()).contains("第 13 周跨岗累计工时将达 21h");
+        apiPost("/api/timesheets", STUDENT, Map.of("contractId", con.getId(), "weekNo", 14, "hours", 1, "workLog", "x"), 400);
 
         // 9. 导师审核通过
         JsonNode reviewed = apiPost("/api/timesheets/" + tsId + "/review", MENTOR, Map.of("decision", "APPROVE"), 200);

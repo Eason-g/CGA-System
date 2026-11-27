@@ -59,6 +59,8 @@ class RuleEngineTest {
         j.setHourlyRate(new BigDecimal("45"));
         j.setWeeks(16);
         j.setAllowInternational(true);
+        j.setWorkflowSteps(List.of("MENTOR_SUBMIT", "INTL_REVIEW", "PUBLISHED"));
+        j.setCurrentStepIndex(2);
         j.setStatus("PUBLISHED");
         j.setExtraFields(new LinkedHashMap<>());
         return j;
@@ -202,7 +204,7 @@ class RuleEngineTest {
         // 模板里没有 PUBLISHED 时自动补上；没有模板时只有 PUBLISHED
         assertThat(RuleEngine.buildWorkflowStepsForJob(workflows, "RA", false))
                 .containsExactly("MENTOR_SUBMIT", "DEPT_REVIEW", "PUBLISHED");
-        assertThat(RuleEngine.buildWorkflowStepsForJob(workflows, "GA", false)).containsExactly("PUBLISHED");
+        assertThat(RuleEngine.buildWorkflowStepsForJob(workflows, "GA", false)).containsExactly("MENTOR_SUBMIT", "PUBLISHED");
     }
 
     // ---------------------------------------------------------------- 工时
@@ -319,15 +321,16 @@ class RuleEngineTest {
         }
 
         @Test
-        void hoursOverCapCanBeSpeciallyApproved() {
+        void internationalHoursOverCapNeedsSpecialApproval() {
+            // 需求原文"超限需特批留痕"：国际生工时超限不能直接提交，但可以发起特批
             var check = RuleEngine.validateStudentApplication(student("S1", true), job("J1", 14), List.of(),
                     List.of(), rules(20, 12));
             assertThat(check.passed()).isFalse();
             RuleEngine.Check hours = check.checks().get(check.checks().size() - 1);
             assertThat(hours.passed()).isFalse();
             assertThat(hours.detail()).isEqualTo("当前已占 0h + 本岗 14h = 14h > 上限 12h/周（超出 2h）");
+            assertThat(hours.overridable()).isTrue();
             assertThat(check.canSpecialApprove()).isTrue();
-            assertThat(check.specialBlockedReason()).isEmpty();
         }
 
         @Test
@@ -388,6 +391,29 @@ class RuleEngineTest {
     class Hire {
 
         @Test
+        void nonOverlappingContractsDoNotInflateTheCandidatePeriod() {
+            Contract finished = contract("S1", 18, "ACTIVE");
+            finished.setStartDate(LocalDate.of(2026, 9, 1));
+            finished.setEndDate(LocalDate.of(2026, 11, 22));
+            Job candidate = job("J1", 8);
+            LocalDate today = LocalDate.of(2026, 11, 20);
+            var application = RuleEngine.validateStudentApplication(student("S1", false), candidate, List.of(),
+                    List.of(finished), rules(20, 20), today);
+            var hire = RuleEngine.validateHire(app("SUBMITTED"), candidate, student("S1", false),
+                    List.of(finished), rules(20, 20), RuleEngine.predictContractEnd(today, candidate.getWeeks()));
+            assertThat(application.projectedHours()).isEqualTo(8);
+            assertThat(hire.projectedHours()).isEqualTo(8);
+            assertThat(hire.ok()).isTrue();
+
+            Contract later = contract("S1", 8, "PENDING_SIGN");
+            later.setStartDate(LocalDate.of(2026, 11, 23));
+            later.setEndDate(LocalDate.of(2026, 11, 30));
+            finished.setWeeklyHours(8);
+            assertThat(RuleEngine.getStudentAllocatedWeeklyHours(List.of(finished, later), "S1",
+                    LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30))).isEqualTo(8);
+        }
+
+        @Test
         void hirePassesWithinCap() {
             var check = RuleEngine.validateHire(app("INTERVIEW_SCHEDULED"), job("J1", 8), student("S1", false),
                     List.of(contract("S1", 8, "ACTIVE")), rules(20, 20));
@@ -413,13 +439,17 @@ class RuleEngineTest {
             ccr.put("projectedHours", 14);
             a.setComplianceCheckResult(ccr);
             // 特批时 14h，录用时仍是 14h：放行
-            var ok = RuleEngine.validateHire(a, job("J1", 14), student("S1", true), List.of(), rules(20, 12));
+            var ok = RuleEngine.validateHire(a, job("J1", 14), student("S1", false), List.of(), rules(12, 12));
             assertThat(ok.ok()).isTrue();
             assertThat(ok.hoursOverridden()).isTrue();
             // 特批后又多了 4h 合同：超出特批幅度，拦截
-            var blocked = RuleEngine.validateHire(a, job("J1", 14), student("S1", true),
-                    List.of(contract("S1", 4, "ACTIVE")), rules(20, 12));
+            var blocked = RuleEngine.validateHire(a, job("J1", 14), student("S1", false),
+                    List.of(contract("S1", 4, "ACTIVE")), rules(12, 12));
             assertThat(blocked.ok()).isFalse();
+            // 国际生同样按特批幅度放行（上限 12h，特批时 14h）
+            var international = RuleEngine.validateHire(a, job("J1", 14), student("S1", true), List.of(), rules(20, 12));
+            assertThat(international.ok()).isTrue();
+            assertThat(international.hoursOverridden()).isTrue();
         }
 
         @Test

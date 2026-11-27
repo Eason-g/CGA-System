@@ -16,6 +16,7 @@ import edu.cga.domain.entity.Job;
 import edu.cga.domain.mapper.BudgetMapper;
 import edu.cga.domain.mapper.DepartmentMapper;
 import edu.cga.domain.mapper.JobMapper;
+import edu.cga.domain.mapper.PayrollMapper;
 import edu.cga.integration.research.ResearchProjectService;
 import edu.cga.rule.RuleEngine;
 import edu.cga.scope.DataScope;
@@ -61,6 +62,7 @@ public class JobService {
 
     private final JobMapper jobMapper;
     private final BudgetMapper budgetMapper;
+    private final PayrollMapper payrollMapper;
     private final DepartmentMapper departmentMapper;
     private final DataScope scope;
     private final ConfigService configService;
@@ -74,11 +76,12 @@ public class JobService {
     public JobService(JobMapper jobMapper, BudgetMapper budgetMapper, DepartmentMapper departmentMapper,
                       DataScope scope, ConfigService configService, AuditService audit, IdGenerator ids,
                       TimeService time, JobTypeSchemaService jobTypeSchemas,
-                      ResearchProjectService researchProjects) {
+                      ResearchProjectService researchProjects, PayrollMapper payrollMapper) {
         this.jobTypeSchemas = jobTypeSchemas;
         this.researchProjects = researchProjects;
         this.jobMapper = jobMapper;
         this.budgetMapper = budgetMapper;
+        this.payrollMapper = payrollMapper;
         this.departmentMapper = departmentMapper;
         this.scope = scope;
         this.configService = configService;
@@ -132,7 +135,8 @@ public class JobService {
 
         RuleEngine.JobForm form = new RuleEngine.JobForm(d.deptId(), d.budgetId(), d.quota(), d.hourlyRate(),
                 d.weeklyHours(), d.weeks());
-        RuleEngine.JobPublishCheck check = RuleEngine.validateJobPublish(form, budget, dept, deptJobs);
+        BigDecimal unpaidExcess = payrollMapper.sumUnpaidExcessByBudget(d.budgetId(), null);
+        RuleEngine.JobPublishCheck check = RuleEngine.validateJobPublish(form, budget, dept, deptJobs, unpaidExcess);
         if (!check.ok()) {
             throw new BizException(400, String.join("；", check.errors()), check);
         }
@@ -235,11 +239,20 @@ public class JobService {
         } else {
             int current = job.getCurrentStepIndex() == null || job.getCurrentStepIndex() == 0
                     ? 1 : job.getCurrentStepIndex();
-            int nextIdx = Math.min(current + 1, job.getWorkflowSteps().size() - 1);
+            List<String> steps = new ArrayList<>(job.getWorkflowSteps());
+            int nextIdx = Math.min(current + 1, steps.size() - 1);
+            int internationalReview = steps.indexOf("INTL_REVIEW");
+            if ("PUBLISHED".equals(steps.get(nextIdx)) && Boolean.TRUE.equals(job.getAllowInternational())
+                    && (internationalReview < 0 || internationalReview > current)) {
+                steps.removeIf("INTL_REVIEW"::equals);
+                nextIdx = steps.indexOf("PUBLISHED");
+                steps.add(nextIdx, "INTL_REVIEW");
+                job.setWorkflowSteps(steps);
+            }
             job.setCurrentStepIndex(nextIdx);
-            job.setStatus(RuleEngine.STEP_TO_JOB_STATUS.getOrDefault(job.getWorkflowSteps().get(nextIdx), "PUBLISHED"));
+            job.setStatus(RuleEngine.STEP_TO_JOB_STATUS.getOrDefault(steps.get(nextIdx), "PUBLISHED"));
             jobMapper.updateById(job);
-            audit.log("JOB", job.getId(), operator, APPROVE_ACTIONS.getOrDefault(operator.role(), "审批通过"),
+            audit.log("JOB", job.getId(), operator, APPROVE_ACTIONS.getOrDefault(reviewer, "审批通过"),
                     blankTo(opinion, "核验无误，同意进入下一流程节点"), beforeStatus, job.getStatus());
         }
         return job;

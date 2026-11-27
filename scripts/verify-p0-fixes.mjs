@@ -99,7 +99,12 @@ const j2big = addJob('T_J5', 24)
 const r2c = await api.submitApplication(
   { jobId: j2big.id, statement: '测试', isSpecialApproval: true, specialReason: '寒假集中排班，学期内平均不超标' }, s2ok
 )
-expect('签证有效、仅工时超限时仍可发起特批（原有功能不受影响）', r2c.code === 200 && r2c.data?.status === 'PENDING_SPECIAL_APPROVAL', r2c.message)
+expect('签证有效、仅工时超限的国际生可以发起特批（需求：超限需特批留痕）', r2c.code === 200 && r2c.data?.status === 'PENDING_SPECIAL_APPROVAL', r2c.message)
+const s2dom = addStudent('T_SOFT_DOM')
+const r2d = await api.submitApplication(
+  { jobId: j2big.id, statement: '测试', isSpecialApproval: true, specialReason: '申请国内生工时例外' }, s2dom
+)
+expect('国内生工时超限仍可发起特批', r2d.code === 200 && r2d.data?.status === 'PENDING_SPECIAL_APPROVAL', r2d.message)
 
 // ---------------------------------------------------------------- 漏洞 3
 console.log('\n漏洞 3：工时上限按国际生 / 国内生读取配置中心')

@@ -15,6 +15,7 @@ import lombok.Data;
 public class FinanceTransaction {
 
     public static final String SUBMITTED = "SUBMITTED";
+    public static final String RECONCILE = "RECONCILE";
     public static final String SUCCESS = "SUCCESS";
     public static final String FAILED = "FAILED";
 

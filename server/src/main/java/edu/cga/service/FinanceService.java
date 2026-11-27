@@ -172,7 +172,8 @@ public class FinanceService {
         if (txn == null) {
             throw BizException.notFound("财务流水号不存在");
         }
-        if (!FinanceTransaction.SUBMITTED.equals(txn.getStatus())) {
+        boolean reconciling = FinanceTransaction.RECONCILE.equals(txn.getStatus());
+        if ((!FinanceTransaction.SUBMITTED.equals(txn.getStatus()) && !reconciling) || (reconciling && !success)) {
             // 幂等：同一流水号已处理过，直接返回当时的结果，不重复扣款
             Payroll p = payrollMapper.selectById(txn.getPayrollId());
             return new CallbackResult(serialNo, txn.getPayrollId(), txn.getStatus(),
@@ -188,21 +189,36 @@ public class FinanceService {
         String failReason = null;
         if (!"SUBMITTED".equals(pay.getFinanceStatus()) || !serialNo.equals(pay.getFinanceSerialNo())) {
             failReason = "流水已失效（薪酬单当前不在该流水的已提交状态）";
-        } else if (budget == null) {
-            failReason = "关联经费池不存在";
         } else if (success) {
-            String voucher = voucherNo != null ? voucherNo
-                    : "CW-" + pay.getMonth().replace("-", "") + "-" + serialNo.substring(serialNo.length() - 4);
+            String voucher = reconciling ? txn.getVoucherNo() : voucherNo;
+            if (voucher == null) {
+                voucher = "CW-" + pay.getMonth().replace("-", "") + "-" + serialNo.substring(serialNo.length() - 4);
+            }
             try {
+                if (budget == null) {
+                    throw BizException.notFound("关联经费池不存在");
+                }
                 payrollService.settlePayout(budget, pay, voucher, FINANCE_SYSTEM, "财务回写发放成功并联动扣减经费池");
                 txn.setStatus(FinanceTransaction.SUCCESS);
                 txn.setVoucherNo(voucher);
+                txn.setFailReason("");
                 txn.setCallbackAt(time.now());
                 txnMapper.updateById(txn);
                 return new CallbackResult(serialNo, pay.getId(), txn.getStatus(), pay.getFinanceStatus(), false);
             } catch (BizException e) {
-                // 回写时经费不满足 P0 发放规则：不扣款，按失败处理，待核对后重新提交
-                failReason = "回写校验未通过：" + e.getMessage();
+                if (!reconciling) {
+                    String reasonText = "财务已确认成功，内部记账待核对：" + e.getMessage();
+                    txn.setStatus(FinanceTransaction.RECONCILE);
+                    txn.setVoucherNo(voucher);
+                    txn.setCallbackAt(time.now());
+                    txn.setFailReason(reasonText.substring(0, Math.min(255, reasonText.length())));
+                    txnMapper.updateById(txn);
+                    pay.setFailReason(txn.getFailReason());
+                    payrollMapper.updateById(pay);
+                    audit.log("PAYROLL", pay.getId(), FINANCE_SYSTEM, "财务回执待对账",
+                            reasonText, "已提交财务", "财务回执待对账");
+                }
+                return new CallbackResult(serialNo, pay.getId(), txn.getStatus(), pay.getFinanceStatus(), reconciling);
             }
         } else {
             failReason = reason != null ? reason : "财务系统退回";

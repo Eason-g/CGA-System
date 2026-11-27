@@ -1,6 +1,7 @@
 package edu.cga.service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 import edu.cga.common.BizException;
@@ -77,9 +78,31 @@ public class TimesheetService {
             throw BizException.badRequest("填报周次不能晚于当前教学周（第 " + currentWeek + " 周）");
         }
 
-        List<Timesheet> weekSheets = timesheetMapper.selectByStudentAndWeek(student.getId(), weekNo);
+        LocalDate weekStart = time.weekStart(weekNo);
+        LocalDate workThrough = weekStart.plusDays(6);
+        if (workThrough.isAfter(time.today())) {
+            workThrough = time.today();
+        }
+        if (con.getEndDate() != null && con.getEndDate().isBefore(workThrough)) {
+            workThrough = con.getEndDate();
+        }
+        LocalDate workStart = con.getStartDate() != null && con.getStartDate().isAfter(weekStart)
+                ? con.getStartDate() : weekStart;
+        if (workStart.isAfter(workThrough)) {
+            throw BizException.badRequest("填报周次不在合同已履行的聘期内");
+        }
+        String eligibility = RuleEngine.checkWorkingEligibility(student, workThrough);
+        if (eligibility != null) {
+            throw BizException.forbidden(eligibility);
+        }
+        String workMonth = weekStart.format(TimeService.MONTH_FORMAT);
+        // 以前的工时用提交月保存。同学期内仍应计入跨岗累计。
+        List<Timesheet> weekSheets = timesheetMapper.selectByStudentAndWeek(student.getId(), weekNo).stream()
+                .filter(t -> t.getMonth() != null && t.getMonth().compareTo(workMonth) >= 0
+                        && t.getMonth().compareTo(time.currentMonth()) <= 0)
+                .toList();
         RuleEngine.TimesheetCheck check = RuleEngine.validateTimesheetSubmission(student, weekNo, hours, weekSheets,
-                configService.globalRules());
+                configService.globalRulesForWrite());
         if (!check.ok()) {
             throw new BizException(403, check.message(), check);
         }
@@ -91,7 +114,7 @@ public class TimesheetService {
         ts.setJobId(con.getJobId());
         ts.setDeptId(con.getDeptId());
         ts.setWeekNo(weekNo);
-        ts.setMonth(time.currentMonth());
+        ts.setMonth(workMonth);
         ts.setHours(hours);
         ts.setWorkLog(workLog.trim());
         ts.setMilestoneRef(milestoneRef == null ? "" : milestoneRef);
