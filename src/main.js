@@ -5,6 +5,7 @@ import router from './router'
 import { setUnauthorizedHandler, setToken } from './services/http'
 import { takeSsoTicketFromUrl, setPendingSsoTicket } from './services/integrationApi'
 import { useAppStore } from './stores/appStore'
+import i18n from './i18n'
 import './styles/tokens.css'
 import './styles/fluent.css'
 
@@ -12,6 +13,7 @@ const app = createApp(App)
 const pinia = createPinia()
 
 app.use(pinia)
+app.use(i18n)
 
 // P2 B.1：统一身份认证回跳时地址为 /?ticket=ST-…#/…（ticket 在 hash 之前，vue-router 读不到），
 // 在路由启动前取出并清掉地址栏里的 ticket；新的统一认证登录取代本地旧 token，登录页负责换票

@@ -1,4 +1,5 @@
-// 真实后端请求封装：基于 fetch，自动携带 JWT，统一返回 { code, data, message }
+// 真实后端请求封装：基于 fetch，自动携带 JWT 和 Accept-Language，统一返回 { code, data, message }
+import { getLocale } from '@/i18n'
 
 // 接口模式：http（默认，请求 Java 后端）/ mock（localStorage 假后端，便于未装后端时演示）
 // 在 Node 脚本里直接导入时没有 import.meta.env，按空配置处理
@@ -52,7 +53,7 @@ function handleUnauthorized() {
  * @param {object} [options] { skipAuthRedirect: 为 true 时 401 不触发登出跳转（登录接口用） }
  */
 export async function request(method, url, body, options = {}) {
-  const headers = { Accept: 'application/json' }
+  const headers = { Accept: 'application/json', 'Accept-Language': getLocale() }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
@@ -124,7 +125,7 @@ function parseFileName(disposition, fallback) {
  * 成功返回 { code: 200, data: { fileName, size }, message }；失败时后端返回 JSON，转成 { code, data, message }。
  */
 export async function download(url, fallbackName = 'download') {
-  const headers = { Accept: '*/*' }
+  const headers = { Accept: '*/*', 'Accept-Language': getLocale() }
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
