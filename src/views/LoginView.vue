@@ -35,7 +35,7 @@
           <div class="crest-badge" aria-hidden="true">
             <FluentIcon name="campus" :size="22" />
           </div>
-          <h1 class="brand-name">{{ isEn ? 'Campus TA · RA · GA Platform' : '高校“三助”一体化平台' }}</h1>
+          <h1 class="brand-name">{{ t('login.brand') }}</h1>
           <div class="school-name">
             <span class="univ-dot" />
             <span class="truncate">{{ store.schoolName }}</span>
@@ -51,7 +51,7 @@
             :class="{ active: loginTab === 'password' }"
             @click="loginTab = 'password'"
           >
-            {{ isEn ? 'Account Login' : '账号登录' }}
+            {{ t('login.tabPassword') }}
           </button>
           <button
             type="button"
@@ -60,14 +60,14 @@
             :class="{ active: loginTab === 'sso' }"
             @click="loginTab = 'sso'"
           >
-            {{ isEn ? 'Unified Identity' : '统一身份认证' }}
+            {{ t('login.tabSso') }}
           </button>
         </div>
 
         <!-- Tab 1: Crisp Two-Field Form (ID + Password) -->
         <form v-if="loginTab === 'password'" class="login-form" @submit.prevent="handlePasswordLogin">
           <div class="field-group">
-            <label class="field-label" for="sso-account">{{ isEn ? 'Student / Staff ID or Email' : '学工号 / 校园邮箱' }}</label>
+            <label class="field-label" for="sso-account">{{ t('login.account') }}</label>
             <div class="input-box">
               <FluentIcon name="user" :size="15" class="input-ic" />
               <input
@@ -76,14 +76,14 @@
                 type="text"
                 class="clean-input"
                 autocomplete="username"
-                :placeholder="isEn ? 'Enter ID or campus email' : '请输入学号、工号或邮箱'"
+                :placeholder="t('login.accountPlaceholder')"
                 required
               />
             </div>
           </div>
 
           <div class="field-group">
-            <label class="field-label" for="sso-password">{{ isEn ? 'Password' : '密码' }}</label>
+            <label class="field-label" for="sso-password">{{ t('login.password') }}</label>
             <div class="input-box">
               <FluentIcon name="lock" :size="15" class="input-ic" />
               <input
@@ -92,13 +92,13 @@
                 :type="showPassword ? 'text' : 'password'"
                 class="clean-input has-trail"
                 autocomplete="current-password"
-                :placeholder="isEn ? 'Enter password' : '请输入密码'"
+                :placeholder="t('login.passwordPlaceholder')"
                 required
               />
               <button
                 type="button"
                 class="eye-btn"
-                :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+                :aria-label="showPassword ? t('login.hidePassword') : t('login.showPassword')"
                 @click="showPassword = !showPassword"
               >
                 <FluentIcon :name="showPassword ? 'eye-off' : 'eye'" :size="15" />
@@ -109,10 +109,10 @@
           <div class="form-aux">
             <label class="check-label">
               <input v-model="rememberMe" type="checkbox" class="clean-check" />
-              <span>{{ isEn ? 'Keep signed in' : '保持登录状态' }}</span>
+              <span>{{ t('login.remember') }}</span>
             </label>
             <button type="button" class="text-link" @click="showHelp = true">
-              {{ isEn ? 'Forgot password?' : '忘记密码？' }}
+              {{ t('login.forgot') }}
             </button>
           </div>
 
@@ -122,61 +122,57 @@
           </div>
 
           <button type="submit" class="submit-btn" :disabled="loggingIn">
-            <span>{{ loggingIn ? (isEn ? 'Verifying...' : '正在验证...') : (isEn ? 'Sign In' : '登 录') }}</span>
+            <span>{{ loggingIn ? t('login.verifying') : t('login.signIn') }}</span>
           </button>
         </form>
 
         <!-- Tab 2：统一身份认证（P2 B.1，演示环境为模拟 CAS） -->
         <div v-else class="sso-section">
           <p class="sso-desc">
-            {{ store.site.sso?.displayName || '统一身份认证（演示环境为模拟 CAS）' }}：跳转到认证中心输入学工号和密码，
-            认证通过后自动回到本系统并完成登录。
+            {{ isEn ? t('login.ssoName') : store.site.sso?.displayName || t('login.ssoName') }}{{ t('common.colon') }}{{ t('login.ssoDesc') }}
           </p>
           <div v-if="errorMsg" class="error-strip">
             <FluentIcon name="x-circle" :size="14" />
             <span>{{ errorMsg }}</span>
           </div>
           <button type="button" class="submit-btn" :disabled="ssoBusy || !ssoAvailable" @click="startSsoLogin">
-            <span>{{ ssoBusy ? '正在处理统一认证...' : '统一身份认证登录' }}</span>
+            <span>{{ ssoBusy ? t('login.ssoBusy') : t('login.ssoBtn') }}</span>
           </button>
           <p v-if="!ssoAvailable" class="sso-note">
-            {{ isHttpMode ? '统一身份认证未启用' : '该功能需要连接后端（当前为 mock 演示模式）' }}
+            {{ isHttpMode ? t('login.ssoDisabled') : t('login.ssoNeedBackend') }}
           </p>
-          <p v-else class="sso-note">模拟认证中心仅供演示，不连接任何真实学校的统一身份认证系统。</p>
+          <p v-else class="sso-note">{{ t('login.ssoMockNote') }}</p>
         </div>
 
         <!-- Minimal Card Utility Footer -->
         <footer class="card-foot">
-          <button type="button" class="foot-btn" @click="isEn = !isEn">
-            <FluentIcon name="globe" :size="13" />
-            <span>{{ isEn ? '简体中文' : 'English' }}</span>
-          </button>
+          <LanguageSwitch />
           <div class="foot-right">
             <button type="button" class="foot-btn" @click="showHelp = true">
-              {{ isEn ? 'Help' : '帮助' }}
+              {{ t('login.help') }}
             </button>
             <span class="foot-dot">·</span>
             <button type="button" class="foot-btn accent" @click="showRoleModal = true">
-              {{ isEn ? 'Demo Roles' : '体验账号' }}
+              {{ t('login.demoRoles') }}
             </button>
           </div>
         </footer>
       </div>
 
       <p class="page-copyright">
-        {{ isEn ? 'TA/RA/GA Platform · Unified identity (mock CAS in demo)' : '高校“三助”岗位一体化管理平台 · 统一身份认证（演示环境为模拟 CAS）' }}
+        {{ t('login.copyright') }}
       </p>
     </section>
 
     <!-- Sleek Role Switcher Modal -->
     <div v-if="showRoleModal" class="f-overlay" @click.self="showRoleModal = false">
-      <div class="f-modal" role="dialog" aria-modal="true" aria-label="系统角色体验账号">
+      <div class="f-modal" role="dialog" aria-modal="true" :aria-label="t('login.rolesTitle')">
         <header class="f-modal-header">
           <div>
-            <h2 class="text-sub">角色体验账号</h2>
-            <p class="text-xs text-muted mt-2">覆盖学生端与管理端 6 类身份，使用演示密码登录</p>
+            <h2 class="text-sub">{{ t('login.rolesTitle') }}</h2>
+            <p class="text-xs text-muted mt-2">{{ t('login.rolesDesc') }}</p>
           </div>
-          <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="showRoleModal = false">
+          <button type="button" class="f-btn f-btn-subtle f-btn-sm" :aria-label="t('common.close')" @click="showRoleModal = false">
             <FluentIcon name="close" :size="17" />
           </button>
         </header>
@@ -186,9 +182,9 @@
             <div class="role-avatar" :class="u.portal">{{ u.name.slice(0, 1) }}</div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-8">
-                <span class="fw-600 text-sm">{{ u.roleLabel }}</span>
+                <span class="fw-600 text-sm">{{ presetLabel(u) }}</span>
                 <span class="f-pill" :class="u.portal === 'student' ? 'f-pill-blue' : 'f-pill-neutral'">
-                  {{ u.portal === 'student' ? '学生端' : '管理端' }}
+                  {{ u.portal === 'student' ? t('login.portalStudent') : t('login.portalAdmin') }}
                 </span>
               </div>
               <div class="text-xs text-muted mt-2 truncate">
@@ -196,8 +192,8 @@
               </div>
             </div>
             <div class="flex items-center gap-6 shrink-0">
-              <button type="button" class="f-btn f-btn-sm" @click="fillAccount(u)">填入</button>
-              <button type="button" class="f-btn f-btn-primary f-btn-sm" @click="quickLogin(u)">进入</button>
+              <button type="button" class="f-btn f-btn-sm" @click="fillAccount(u)">{{ t('login.fill') }}</button>
+              <button type="button" class="f-btn f-btn-primary f-btn-sm" @click="quickLogin(u)">{{ t('login.enter') }}</button>
             </div>
           </div>
         </div>
@@ -205,11 +201,11 @@
         <footer class="f-modal-footer justify-between">
           <button type="button" class="f-btn f-btn-sm" @click="handleReset">
             <FluentIcon name="refresh" :size="13" />
-            <span>重置初始数据</span>
+            <span>{{ t('login.reset') }}</span>
           </button>
           <div class="flex items-center gap-8">
-            <span v-if="isHttpMode" class="demo-pwd-note">演示密码 {{ DEMO_PASSWORD }}</span>
-            <button type="button" class="f-btn f-btn-sm" @click="showRoleModal = false">关闭</button>
+            <span v-if="isHttpMode" class="demo-pwd-note">{{ t('login.demoPassword', { pwd: DEMO_PASSWORD }) }}</span>
+            <button type="button" class="f-btn f-btn-sm" @click="showRoleModal = false">{{ t('common.close') }}</button>
           </div>
         </footer>
       </div>
@@ -217,25 +213,25 @@
 
     <!-- Clean Help Modal -->
     <div v-if="showHelp" class="f-overlay" @click.self="showHelp = false">
-      <div class="f-modal" role="dialog" aria-modal="true" aria-label="登录帮助">
+      <div class="f-modal" role="dialog" aria-modal="true" :aria-label="t('login.helpTitle')">
         <header class="f-modal-header">
-          <h2 class="text-sub">{{ isEn ? 'Sign-in Help' : '登录说明' }}</h2>
-          <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="showHelp = false">
+          <h2 class="text-sub">{{ t('login.helpTitle') }}</h2>
+          <button type="button" class="f-btn f-btn-subtle f-btn-sm" :aria-label="t('common.close')" @click="showHelp = false">
             <FluentIcon name="close" :size="17" />
           </button>
         </header>
         <div class="f-modal-body flex-col gap-14 text-xs text-muted" style="line-height: 1.7;">
           <div>
-            <div class="fw-600 text-sm" style="color: var(--color-text);">登录方式</div>
-            <p class="mt-4">“账号登录”使用学工号、用户名或校园邮箱加密码；“统一身份认证”跳转到认证中心登录后，带一次性票据回到本系统。演示环境的认证中心为本系统自带的模拟 CAS，接入学校真实的统一身份认证需按其接口新增实现。</p>
+            <div class="fw-600 text-sm" style="color: var(--color-text);">{{ t('login.helpMethodsTitle') }}</div>
+            <p class="mt-4">{{ t('login.helpMethods') }}</p>
           </div>
           <div>
-            <div class="fw-600 text-sm" style="color: var(--color-text);">国际学生合规提示</div>
-            <p class="mt-4">学籍状态与签证信息可由校级管理员、国际生办从学籍系统同步（演示环境为模拟学籍系统）；申请助教/助研岗位时前置校验学籍在读、居留许可、语言证明与每周工时上限。</p>
+            <div class="fw-600 text-sm" style="color: var(--color-text);">{{ t('login.helpIntlTitle') }}</div>
+            <p class="mt-4">{{ t('login.helpIntl') }}</p>
           </div>
         </div>
         <footer class="f-modal-footer">
-          <button type="button" class="f-btn f-btn-primary f-btn-sm" @click="showHelp = false">知道了</button>
+          <button type="button" class="f-btn f-btn-primary f-btn-sm" @click="showHelp = false">{{ t('login.gotIt') }}</button>
         </footer>
       </div>
     </div>
@@ -247,13 +243,16 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/appStore'
 import FluentIcon from '@/components/FluentIcon.vue'
+import LanguageSwitch from '@/components/LanguageSwitch.vue'
+import { useI18n } from '@/i18n'
 import { isHttpMode, DEMO_PASSWORD } from '@/services/http'
 import { integrationApi, ssoServiceUrl, consumePendingSsoTicket } from '@/services/integrationApi'
 
 const store = useAppStore()
 const router = useRouter()
+// 语言使用全局状态（与学生端、管理端顶栏的切换按钮同步，刷新后保持）
+const { t, isEn, localized } = useI18n()
 
-const isEn = ref(false)
 const loginTab = ref('password')
 const account = ref('zhang.mingyuan')
 const password = ref('')
@@ -283,7 +282,7 @@ async function startSsoLogin() {
     return
   }
   ssoBusy.value = false
-  errorMsg.value = res.message || '统一身份认证暂不可用'
+  errorMsg.value = localized(res, 'message') || t('login.ssoUnavailable')
 }
 
 // 从认证中心回跳：main.js 已取出地址栏里的 ticket 并清掉，这里换取本系统 JWT
@@ -301,25 +300,27 @@ onMounted(async () => {
   }
 })
 
+// 体验账号的名称与简短说明按预置账号 ID 取词条；未知账号按角色代码翻译（不显示后端的中文 roleLabel）
+function presetLabel(u) {
+  const key = `preset.${u.id}.label`
+  const text = t(key)
+  return text === key ? t(`role.${u.role}`) : text
+}
+
 function shortTag(u) {
-  return {
-    U_INTL_STU: 'X1签证 · 20h上限',
-    U_CN_STU: '已任RA 12h/周',
-    U_MENTOR: '计算机学院',
-    U_DEPT_ADMIN: '院系数据隔离',
-    U_INTL_OFFICER: '国际生会签/特批',
-    U_SCHOOL_ADMIN: '全校财务与配置'
-  }[u.id] || ''
+  const key = `preset.${u.id}.tag`
+  const text = t(key)
+  return text === key ? '' : text
 }
 
 async function handlePasswordLogin() {
   errorMsg.value = ''
   if (!account.value.trim()) {
-    errorMsg.value = '请输入学工号或校园邮箱'
+    errorMsg.value = t('login.errAccount')
     return
   }
   if (isHttpMode && !password.value) {
-    errorMsg.value = '请输入密码'
+    errorMsg.value = t('login.errPassword')
     return
   }
   loggingIn.value = true
@@ -331,7 +332,7 @@ async function handlePasswordLogin() {
       // 显示后端返回的错误文案（如“账号或密码错误”“无法连接服务器”）
       errorMsg.value = store.lastLoginError
     } else {
-      errorMsg.value = isEn.value ? 'Account not found. Check Demo Roles below.' : '未找到该学工号，请核对或点击右下角“体验账号”'
+      errorMsg.value = t('login.errNotFound')
     }
   } finally {
     loggingIn.value = false
@@ -344,7 +345,7 @@ function fillAccount(u) {
   loginTab.value = 'password'
   errorMsg.value = ''
   showRoleModal.value = false
-  store.notify(`已填入 ${u.roleLabel}（${u.name}）账号`, 'info')
+  store.notify(t('login.filled', { role: presetLabel(u), name: u.name }), 'info')
 }
 
 // “进入”：http 模式下由 store.loginAs 使用该账号 + 演示密码走正常登录

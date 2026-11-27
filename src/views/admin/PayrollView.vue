@@ -2,20 +2,20 @@
   <div class="flex-col gap-20">
     <header class="page-header">
       <div class="flex items-center gap-12">
-        <h1 class="text-title">薪酬核算与预算联动</h1>
+        <h1 class="text-title">{{ $t('admin.payroll.title') }}</h1>
         <button type="button" class="f-expand-trigger" @click="showRule = !showRule">
-          <span>核算公式</span>
+          <span>{{ $t('admin.payroll.formula') }}</span>
           <FluentIcon :name="showRule ? 'chevron-up' : 'chevron-down'" :size="14" />
         </button>
       </div>
       <button v-if="canFinance" type="button" class="f-btn f-btn-primary" :disabled="busy" @click="handleAutoCalc">
         <FluentIcon name="sparkles" :size="15" />
-        <span>核算 {{ currentMonth }} 薪酬</span>
+        <span>{{ $t('admin.payroll.calc', { month: currentMonth }) }}</span>
       </button>
     </header>
 
     <div v-if="showRule" class="f-expand-panel" style="margin-top: -8px;">
-      实发薪酬 = 导师审核通过工时 × 岗位时薪 × 周期考核系数（优秀 1.1x / 合格 1.0x / 不合格 0.85x）；<template v-if="isHttpMode">校级管理员“提交财务”后经费暂不变动，财务系统回写发放成功时才扣减对应经费池，回写失败可重新提交。</template><template v-else>确认打款后实时扣减对应经费池余额。</template>
+      {{ $t('admin.payroll.rule') }}<template v-if="isHttpMode">{{ $t('admin.payroll.ruleHttp') }}</template><template v-else>{{ $t('admin.payroll.ruleMock') }}</template>
     </div>
 
     <!-- 3 Compact Budget Source Cards -->
@@ -29,20 +29,20 @@
         <div class="f-progress-track mt-8">
           <div class="f-progress-fill" :class="s.rate >= 92 ? 'error' : s.rate >= 80 ? 'caution' : ''" :style="{ width: s.rate + '%' }" />
         </div>
-        <div class="text-xs text-muted mt-6 tabular-nums">已发 ¥{{ s.used.toLocaleString() }} · 冻结 ¥{{ s.frozen.toLocaleString() }}</div>
+        <div class="text-xs text-muted mt-6 tabular-nums">{{ $t('admin.payroll.usedFrozen', { u: s.used.toLocaleString(), f: s.frozen.toLocaleString() }) }}</div>
       </div>
     </section>
 
     <section class="acrylic-card table-card">
       <div class="flex items-center justify-between p-16 border-b flex-wrap gap-12">
         <div class="f-segmented">
-          <button type="button" :class="{ active: sourceFilter === 'ALL' }" @click="sourceFilter = 'ALL'">全部</button>
-          <button type="button" :class="{ active: sourceFilter === 'TA_FUND' }" @click="sourceFilter = 'TA_FUND'">教务经费</button>
-          <button type="button" :class="{ active: sourceFilter === 'RA_PROJECT' }" @click="sourceFilter = 'RA_PROJECT'">科研经费</button>
-          <button type="button" :class="{ active: sourceFilter === 'GA_FUND' }" @click="sourceFilter = 'GA_FUND'">行政专项</button>
+          <button type="button" :class="{ active: sourceFilter === 'ALL' }" @click="sourceFilter = 'ALL'">{{ $t('admin.common.all') }}</button>
+          <button type="button" :class="{ active: sourceFilter === 'TA_FUND' }" @click="sourceFilter = 'TA_FUND'">{{ $t('admin.payroll.filters.TA_FUND') }}</button>
+          <button type="button" :class="{ active: sourceFilter === 'RA_PROJECT' }" @click="sourceFilter = 'RA_PROJECT'">{{ $t('admin.payroll.filters.RA_PROJECT') }}</button>
+          <button type="button" :class="{ active: sourceFilter === 'GA_FUND' }" @click="sourceFilter = 'GA_FUND'">{{ $t('admin.payroll.filters.GA_FUND') }}</button>
         </div>
         <div class="text-xs text-muted tabular-nums">
-          合计：<strong class="text-blue">¥{{ totalFilteredAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) }}</strong>
+          {{ $t('admin.payroll.total') }}<strong class="text-blue">¥{{ totalFilteredAmount.toLocaleString(locale, { minimumFractionDigits: 2 }) }}</strong>
         </div>
       </div>
 
@@ -50,13 +50,13 @@
         <table class="f-table">
           <thead>
             <tr>
-              <th>学生</th>
-              <th>岗位</th>
-              <th>月份</th>
-              <th>核算明细</th>
-              <th>实发</th>
-              <th>状态</th>
-              <th>操作</th>
+              <th>{{ $t('admin.common.student') }}</th>
+              <th>{{ $t('admin.common.job') }}</th>
+              <th>{{ $t('admin.common.month') }}</th>
+              <th>{{ $t('admin.payroll.colDetail') }}</th>
+              <th>{{ $t('admin.payroll.colAmount') }}</th>
+              <th>{{ $t('admin.common.status') }}</th>
+              <th>{{ $t('admin.common.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -68,10 +68,10 @@
               <td class="tabular-nums fw-600 text-blue">¥{{ p.amount.toFixed(2) }}</td>
               <td>
                 <span class="f-pill" :class="`f-pill-${FINANCE_STATUS_MAP[p.financeStatus]?.tone || 'neutral'}`">
-                  {{ FINANCE_STATUS_MAP[p.financeStatus]?.label || p.financeStatus }}
+                  {{ statusLabel(FINANCE_STATUS_MAP, p.financeStatus) }}
                 </span>
                 <div v-if="p.financeStatus === 'SUBMITTED' && p.financeSerialNo" class="text-xs text-muted mt-4 tabular-nums">
-                  流水 {{ p.financeSerialNo }}
+                  {{ $t('admin.payroll.serial', { n: p.financeSerialNo }) }}
                 </div>
                 <div v-if="['PAY_FAILED', 'SUBMITTED'].includes(p.financeStatus) && p.failReason" class="text-xs text-error mt-4 fail-reason">
                   {{ p.failReason }}
@@ -87,14 +87,14 @@
                     :disabled="busy"
                     @click="handleSubmitFinance(p)"
                   >
-                    {{ p.financeStatus === 'PAY_FAILED' ? '重新提交' : '提交财务' }}
+                    {{ p.financeStatus === 'PAY_FAILED' ? $t('admin.payroll.resubmit') : $t('admin.payroll.submitFinance') }}
                   </button>
                   <div v-else class="flex gap-6 flex-wrap">
-                    <button type="button" class="f-btn f-btn-sm" :disabled="busy" title="演示：模拟财务系统回写成功" @click="handleSimulate(p, true)">
-                      模拟成功
+                    <button type="button" class="f-btn f-btn-sm" :disabled="busy" :title="$t('admin.payroll.simOkTitle')" @click="handleSimulate(p, true)">
+                      {{ $t('admin.payroll.simOk') }}
                     </button>
-                    <button type="button" class="f-btn f-btn-danger-outline f-btn-sm" :disabled="busy" title="演示：模拟财务系统回写失败" @click="handleSimulate(p, false)">
-                      模拟失败
+                    <button type="button" class="f-btn f-btn-danger-outline f-btn-sm" :disabled="busy" :title="$t('admin.payroll.simFailTitle')" @click="handleSimulate(p, false)">
+                      {{ $t('admin.payroll.simFail') }}
                     </button>
                   </div>
                 </template>
@@ -105,7 +105,7 @@
                   :disabled="busy"
                   @click="handlePayout(p)"
                 >
-                  确认打款
+                  {{ $t('admin.payroll.confirmPay') }}
                 </button>
                 <button
                   v-else-if="p.financeStatus === 'PENDING_CALC' && canFinance"
@@ -114,15 +114,15 @@
                   :disabled="busy"
                   @click="handleAutoCalc"
                 >
-                  核算
+                  {{ $t('admin.payroll.calcBtn') }}
                 </button>
-                <button v-else type="button" class="f-btn-link text-xs" @click="store.openArchive(p.contractId)">归档</button>
+                <button v-else type="button" class="f-btn-link text-xs" @click="store.openArchive(p.contractId)">{{ $t('admin.common.archive') }}</button>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
-      <EmptyState v-else icon="wallet" description="暂无薪酬记录" />
+      <EmptyState v-else icon="wallet" :description="$t('admin.payroll.empty')" />
     </section>
   </div>
 </template>
@@ -136,8 +136,11 @@ import { isHttpMode } from '@/services/http'
 import { materialFinanceApi } from '@/services/materialFinanceApi'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import { useI18n } from '@/i18n'
+import { statusLabel } from './adminI18n'
 
 const store = useAppStore()
+const { t, locale } = useI18n()
 const user = computed(() => store.currentUser)
 
 const sourceFilter = ref('ALL')
@@ -150,10 +153,10 @@ const visiblePayrolls = computed(() => filterByRoleDept(store.db, store.db.payro
 
 const sourceSummaries = computed(() => {
   const defs = [
-    { sourceType: 'TA_FUND', label: '教务经费（TA）' },
-    { sourceType: 'RA_PROJECT', label: '科研经费（RA）' },
-    { sourceType: 'GA_FUND', label: '行政专项（GA）' }
-  ]
+    { sourceType: 'TA_FUND' },
+    { sourceType: 'RA_PROJECT' },
+    { sourceType: 'GA_FUND' }
+  ].map((d) => ({ ...d, label: t(`admin.payroll.sources.${d.sourceType}`) }))
   return defs.map((d) => {
     const list = visibleBudgets.value.filter((b) => b.sourceType === d.sourceType)
     const total = list.reduce((s, b) => s + Number(b.totalAmount), 0)
@@ -190,7 +193,7 @@ async function handleSimulate(payroll, success) {
   busy.value = true
   try {
     await store.mutate(() =>
-      materialFinanceApi.simulateFinanceCallback(payroll.id, success, success ? '' : '模拟财务系统：收款银行卡号校验失败')
+      materialFinanceApi.simulateFinanceCallback(payroll.id, success, success ? '' : t('admin.payroll.simFailReason'))
     )
   } finally { busy.value = false }
 }

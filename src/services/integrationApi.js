@@ -1,14 +1,25 @@
 // P2 B 批：站点信息、统一身份认证（模拟 CAS）、学籍系统与科研系统对接（均为模拟实现）
 // 这些功能只在 http 模式下可用；mock 模式返回提示，不在 localStorage 假后端里实现
 import { http, isHttpMode } from '@/services/http'
+import { t } from '@/i18n'
 
-const NEED_BACKEND = { code: 400, data: null, message: '该功能需要连接后端' }
+const needBackend = () => ({ code: 400, data: null, message: t('admin.svc.needBackend') })
 const enc = encodeURIComponent
 
 // mock 模式下的默认站点信息（与后端 app.school-name 默认值一致）
+// 名称用 getter 按当前语言取词条；http 模式下后端返回的值会覆盖它们
 export const DEFAULT_SITE = {
-  schoolName: '示范高校',
-  sso: { enabled: false, provider: 'mock', mock: true, displayName: '统一身份认证（演示环境为模拟 CAS）' }
+  get schoolName() {
+    return t('admin.svc.schoolName')
+  },
+  sso: {
+    enabled: false,
+    provider: 'mock',
+    mock: true,
+    get displayName() {
+      return t('admin.svc.ssoName')
+    }
+  }
 }
 
 // 统一认证回跳地址：当前页面去掉查询串和 hash（hash 路由下 ticket 会被追加在 ? 之后、# 之前）
@@ -48,25 +59,25 @@ export const integrationApi = {
   },
 
   getSsoLoginUrl(service) {
-    if (!isHttpMode) return Promise.resolve(NEED_BACKEND)
+    if (!isHttpMode) return Promise.resolve(needBackend())
     return http.get(`/api/auth/sso/login-url?service=${enc(service)}`, { skipAuthRedirect: true })
   },
 
   // 成功时 data 为 { token, user }，与密码登录相同；401/403 不触发全局登出跳转
   exchangeSsoTicket({ ticket, service }) {
-    if (!isHttpMode) return Promise.resolve(NEED_BACKEND)
+    if (!isHttpMode) return Promise.resolve(needBackend())
     return http.post('/api/auth/sso/exchange', { ticket, service }, { skipAuthRedirect: true })
   },
 
   // 学籍同步（校级管理员、国际生办）：data 为 { source, syncedAt, checked, changedStudents, diffs, unmatched, skipped }
   syncSis() {
-    if (!isHttpMode) return Promise.resolve(NEED_BACKEND)
+    if (!isHttpMode) return Promise.resolve(needBackend())
     return http.post('/api/integration/sis/sync')
   },
 
   // 科研项目查询与预校验：data 为 { ok, source, project, jobEndDate, checks }
   getResearchProject({ code, deptId, deadline, weeks }) {
-    if (!isHttpMode) return Promise.resolve(NEED_BACKEND)
+    if (!isHttpMode) return Promise.resolve(needBackend())
     const q = new URLSearchParams()
     if (deptId) q.set('deptId', deptId)
     if (deadline) q.set('deadline', deadline)

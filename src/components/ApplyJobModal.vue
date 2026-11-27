@@ -1,6 +1,6 @@
 <template>
   <div class="f-overlay" @click.self="$emit('close')">
-    <div class="f-modal" role="dialog" aria-modal="true" aria-label="岗位申请与合规前置校验">
+    <div class="f-modal" role="dialog" aria-modal="true" :aria-label="t('apply.dialogLabel')">
       <header class="f-modal-header">
         <div>
           <div class="flex items-center gap-8">
@@ -9,7 +9,7 @@
           </div>
           <h2 class="text-sub mt-6">{{ job.title }}</h2>
         </div>
-        <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="$emit('close')" aria-label="关闭">
+        <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="$emit('close')" :aria-label="t('common.close')">
           <FluentIcon name="close" :size="18" />
         </button>
       </header>
@@ -20,10 +20,10 @@
           <div class="flex items-center justify-between mb-10">
             <span class="fw-600 flex items-center gap-8">
               <FluentIcon name="shield" :size="16" />
-              <span>申请资格与合规前置硬校验</span>
+              <span>{{ t('apply.checkTitle') }}</span>
             </span>
             <span class="f-pill" :class="checkResult.passed ? 'f-pill-success' : 'f-pill-error'">
-              {{ checkResult.passed ? '全部达标 · 允许提交' : '存在拦截项 · 禁止直投' }}
+              {{ checkResult.passed ? t('apply.allPassed') : t('apply.hasBlockers') }}
             </span>
           </div>
 
@@ -33,9 +33,9 @@
                 <FluentIcon :name="item.passed ? 'check-circle' : 'x-circle'" :size="18" />
               </span>
               <div class="check-content">
-                <div class="fw-600 text-sm">{{ item.label }}</div>
+                <div class="fw-600 text-sm">{{ localized(item, 'label') }}</div>
                 <div class="text-xs mt-2" :class="item.passed ? 'text-muted' : 'text-error fw-600'">
-                  {{ item.detail }}
+                  {{ localized(item, 'detail') }}
                 </div>
               </div>
             </div>
@@ -48,71 +48,71 @@
             class="f-banner caution mt-12"
           >
             <FluentIcon name="alert" :size="16" />
-            <div class="text-xs"><strong>{{ hint.label }}：</strong>{{ hint.detail }}</div>
+            <div class="text-xs"><strong>{{ localized(hint, 'label') }}{{ t('common.colon') }}</strong>{{ localized(hint, 'detail') }}</div>
           </div>
 
           <div v-if="checkResult.alreadyApplied" class="f-banner caution mt-12">
             <FluentIcon name="alert" :size="16" />
-            <span>您已投递过该岗位（状态：{{ checkResult.existingApp?.status }}），不可重复申请。</span>
+            <span>{{ t('apply.alreadyApplied', { status: localized(APP_STATUS_MAP[checkResult.existingApp?.status], 'label') || checkResult.existingApp?.status }) }}</span>
           </div>
           <div v-else-if="checkResult.quotaFull" class="f-banner error mt-12">
             <FluentIcon name="x-circle" :size="16" />
-            <span>该岗位招聘名额已招满（{{ job.hiredCount }}/{{ job.quota }}）。</span>
+            <span>{{ t('apply.quotaFull', { hired: job.hiredCount, quota: job.quota }) }}</span>
           </div>
         </section>
 
         <!-- Standard Application Form -->
         <div class="f-field">
-          <label class="f-label">个人申请陈述 <span class="req">*</span></label>
+          <label class="f-label">{{ t('apply.statement') }} <span class="req">*</span></label>
           <textarea
             v-model="statement"
             class="f-textarea"
             rows="3"
-            placeholder="请简述您的专业背景、相关课程/科研经验以及每周可稳定投入的时间..."
+            :placeholder="t('apply.statementPlaceholder')"
           />
         </div>
 
         <!-- http 模式：上传真实材料（pdf/jpg/png，≤10MB）；mock 模式保留简历文件名 -->
         <div v-if="isHttpMode" class="f-field">
-          <label class="f-label">申请材料（简历及其他证明，PDF / JPG / PNG，单个 ≤ 10MB）</label>
+          <label class="f-label">{{ t('apply.materials') }}</label>
           <div class="flex items-center gap-8 flex-wrap">
             <label class="f-btn f-btn-sm upload-btn" :class="{ disabled: uploading }">
               <FluentIcon name="plus" :size="14" />
-              <span>上传简历</span>
+              <span>{{ t('apply.uploadResume') }}</span>
               <input type="file" :accept="ACCEPT_TYPES" hidden :disabled="uploading" @change="onPick($event, 'RESUME')" />
             </label>
             <label class="f-btn f-btn-sm upload-btn" :class="{ disabled: uploading }">
               <FluentIcon name="plus" :size="14" />
-              <span>上传其他材料</span>
+              <span>{{ t('apply.uploadOther') }}</span>
               <input type="file" :accept="ACCEPT_TYPES" hidden :disabled="uploading" @change="onPick($event, 'OTHER')" />
             </label>
-            <span v-if="uploading" class="text-xs text-muted">上传中…</span>
+            <span v-if="uploading" class="text-xs text-muted">{{ t('common.uploading') }}</span>
           </div>
           <ul v-if="attachments.length" class="att-list mt-8">
             <li v-for="a in attachments" :key="a.id" class="att-row">
-              <span class="f-pill f-pill-neutral">{{ ATTACHMENT_KIND_MAP[a.kind] }}</span>
+              <span class="f-pill f-pill-neutral">{{ kindLabel(a.kind) }}</span>
               <span class="text-sm truncate">{{ a.originalName }}</span>
               <span class="text-xs text-muted">{{ formatFileSize(a.sizeBytes) }}</span>
-              <button type="button" class="f-btn-link text-xs" @click="removeAttachment(a.id)">移除</button>
+              <button type="button" class="f-btn-link text-xs" @click="removeAttachment(a.id)">{{ t('common.remove') }}</button>
             </li>
           </ul>
-          <div v-else class="text-xs text-muted mt-4">未上传材料时，将使用学籍档案中的默认简历。</div>
+          <div v-else class="text-xs text-muted mt-4">{{ t('apply.noMaterials') }}</div>
         </div>
         <div v-else class="f-field">
-          <label class="f-label">附件简历（已关联学籍档案）</label>
+          <label class="f-label">{{ t('apply.resumeMock') }}</label>
           <input v-model="resumeFileName" type="text" class="f-input" />
         </div>
 
         <!-- Special Approval Trigger Link & Form when hard-blocked -->
         <div v-if="!checkResult.passed && checkResult.canSpecialApprove" class="special-section">
           <div class="flex items-center justify-between">
-            <span class="text-xs text-muted">系统硬校验未通过，主申请按钮已禁用。</span>
+            <span class="text-xs text-muted">{{ t('apply.blockedNote') }}</span>
             <button
               type="button"
               class="f-btn-link text-xs"
               @click="showSpecialForm = !showSpecialForm"
             >
-              {{ showSpecialForm ? '收起特批表单' : '确需超限/豁免？发起国际生办特批申请' }}
+              {{ showSpecialForm ? t('apply.hideSpecial') : t('apply.showSpecial') }}
             </button>
           </div>
 
@@ -120,16 +120,16 @@
             <div class="f-banner caution mb-12">
               <FluentIcon name="alert" :size="16" />
               <div class="text-xs">
-                <strong>特批留痕说明：</strong>提交后单据将以<span class="fw-600">「特批留痕」</span>标黄推送至国际合作交流处专项审核，审批通过后方可进入导师选拔流程。
+                <strong>{{ t('apply.specialNoteTitle') }}</strong>{{ t('apply.specialNote') }}
               </div>
             </div>
             <div class="f-field">
-              <label class="f-label">特批申请理由（必填，不少于 6 字） <span class="req">*</span></label>
+              <label class="f-label">{{ t('apply.specialReason') }} <span class="req">*</span></label>
               <textarea
                 v-model="specialReason"
                 class="f-textarea"
                 rows="3"
-                placeholder="请详细说明申请工时/语言特批的合理依据（如全英文学位背景、短期集中助教排班说明等）..."
+                :placeholder="t('apply.specialReasonPlaceholder')"
               />
             </div>
           </div>
@@ -139,12 +139,12 @@
           class="f-banner error mt-12"
         >
           <FluentIcon name="alert" :size="16" />
-          <div class="text-xs">{{ checkResult.specialBlockedReason }}</div>
+          <div class="text-xs">{{ specialBlockedText }}</div>
         </div>
       </div>
 
       <footer class="f-modal-footer">
-        <button type="button" class="f-btn" @click="$emit('close')">取消</button>
+        <button type="button" class="f-btn" @click="$emit('close')">{{ t('common.cancel') }}</button>
         <button
           v-if="showSpecialForm && !checkResult.passed && checkResult.canSpecialApprove"
           type="button"
@@ -152,7 +152,7 @@
           :disabled="submitting || specialReason.trim().length < 6"
           @click="handleSubmit(true)"
         >
-          提交特批申请（留痕审核）
+          {{ t('apply.submitSpecial') }}
         </button>
         <button
           v-else
@@ -161,7 +161,7 @@
           :disabled="!checkResult.passed || submitting"
           @click="handleSubmit(false)"
         >
-          确认提交申请
+          {{ t('apply.submit') }}
         </button>
       </footer>
     </div>
@@ -171,7 +171,8 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useAppStore } from '@/stores/appStore'
-import { validateStudentApplication } from '@/services/ruleEngine'
+import { validateStudentApplication, APP_STATUS_MAP } from '@/services/ruleEngine'
+import { useI18n } from '@/i18n'
 import { api } from '@/services/api'
 import { isHttpMode } from '@/services/http'
 import {
@@ -188,16 +189,35 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'submitted'])
 const store = useAppStore()
+const { t, isEn, localized } = useI18n()
 
 const student = computed(() => store.currentUser)
 const checkResult = computed(() => validateStudentApplication(store.db, student.value, props.job))
 
+// 申请陈述预填：国际生或英文界面用英文模板，其余用中文模板（学生可自行修改）
 const statement = ref(
-  student.value?.isInternational
-    ? `I am ${student.value.name} (${student.value.major}, ${student.value.degree}). I have verified my academic schedule and wish to apply for this position.`
-    : `本人为${store.getDeptShortName(student.value?.deptId)}${student.value?.degree}，专业方向${student.value?.major}，已核对时间安排并申请该岗位。`
+  student.value?.isInternational || isEn.value
+    ? t('apply.defaultStatementEn', { name: student.value?.name || '', major: student.value?.major || '', degree: student.value?.degree || '' })
+    : t('apply.defaultStatementZh', { dept: store.getDeptShortName(student.value?.deptId), degree: student.value?.degree || '', major: student.value?.major || '' })
 )
-const resumeFileName = ref(`${student.value?.name || '学生'}_个人简历.pdf`)
+const resumeFileName = ref(t('apply.defaultResumeName', { name: student.value?.name || t('role.STUDENT') }))
+
+// 附件类型按代码翻译
+function kindLabel(kind) {
+  const key = `attachmentKind.${kind}`
+  const text = t(key)
+  return text === key ? ATTACHMENT_KIND_MAP[kind] || kind : text
+}
+
+// 不可特批的原因：英文模式优先用规则引擎的 specialBlockedReasonEn，没有时按状态给出通用英文说明
+const specialBlockedText = computed(() => {
+  const r = checkResult.value
+  if (!isEn.value || r.specialBlockedReasonEn) return localized(r, 'specialBlockedReason')
+  if (r.alreadyApplied) return t('apply.blockedApplied')
+  if (r.quotaFull) return t('apply.blockedFull')
+  const hard = (r.checks || []).filter((c) => !c.passed && !c.overridable).map((c) => localized(c, 'label'))
+  return hard.length ? t('apply.blockedHard', { items: hard.join(', ') }) : t('apply.blockedNone')
+})
 const showSpecialForm = ref(false)
 const specialReason = ref('')
 const submitting = ref(false)
@@ -213,9 +233,9 @@ async function onPick(event, kind) {
     const res = await materialFinanceApi.uploadAttachment(file, kind)
     if (res.code === 200 && res.data) {
       attachments.value.push(res.data)
-      store.notify(`已上传「${res.data.originalName}」`, 'success')
+      store.notify(t('apply.uploaded', { name: res.data.originalName }), 'success')
     } else {
-      store.notify(res.message || '上传失败', 'error')
+      store.notify(localized(res, 'message') || t('apply.uploadFailed'), 'error')
     }
   } finally {
     uploading.value = false

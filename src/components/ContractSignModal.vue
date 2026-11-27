@@ -1,12 +1,12 @@
 <template>
   <div class="f-overlay" @click.self="$emit('close')">
-    <div class="f-modal wide" role="dialog" aria-modal="true" aria-label="电子聘用协议签署">
+    <div class="f-modal wide" role="dialog" aria-modal="true" :aria-label="t('sign.dialogLabel')">
       <header class="f-modal-header">
         <div>
-          <div class="text-xs text-muted">协议编号：{{ contract.id }}</div>
-          <h2 class="text-sub mt-4">高校“三助”岗位电子聘用协议</h2>
+          <div class="text-xs text-muted">{{ t('sign.contractNo', { id: contract.id }) }}</div>
+          <h2 class="text-sub mt-4">{{ t('sign.title') }}</h2>
         </div>
-        <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="$emit('close')" aria-label="关闭">
+        <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="$emit('close')" :aria-label="t('common.close')">
           <FluentIcon name="close" :size="18" />
         </button>
       </header>
@@ -14,21 +14,21 @@
       <div class="f-modal-body flex-col gap-16">
         <!-- Contract Document Box -->
         <div class="contract-doc">
-          <div class="doc-title">高校助教 / 助研 / 助管岗位聘用协议书</div>
+          <div class="doc-title">{{ t('sign.docTitle') }}</div>
           <div class="doc-grid">
-            <div><span class="text-muted">甲方（设岗单位）：</span><strong>{{ store.getDeptName(contract.deptId) }}</strong></div>
-            <div><span class="text-muted">指导教师/负责人：</span><strong>{{ mentor?.name || '-' }}</strong></div>
-            <div><span class="text-muted">乙方（受聘学生）：</span><strong>{{ student?.name }}（学号 {{ student?.studentNo }}）</strong></div>
-            <div><span class="text-muted">岗位类别与名称：</span><strong>[{{ job?.type }}] {{ job?.title }}</strong></div>
-            <div><span class="text-muted">聘用起止日期：</span><strong class="tabular-nums">{{ contract.startDate }} 至 {{ contract.endDate }}</strong></div>
-            <div><span class="text-muted">约定工时与酬金：</span><strong class="tabular-nums">{{ contract.weeklyHours }} 小时/周 · ¥{{ contract.hourlyRate }}/小时</strong></div>
+            <div><span class="text-muted">{{ t('sign.partyA') }}</span><strong>{{ store.getDeptName(contract.deptId) }}</strong></div>
+            <div><span class="text-muted">{{ t('sign.mentor') }}</span><strong>{{ mentor?.name || '-' }}</strong></div>
+            <div><span class="text-muted">{{ t('sign.partyB') }}</span><strong>{{ t('sign.studentWithNo', { name: student?.name, no: student?.studentNo }) }}</strong></div>
+            <div><span class="text-muted">{{ t('sign.position') }}</span><strong>[{{ job?.type }}] {{ job?.title }}</strong></div>
+            <div><span class="text-muted">{{ t('sign.period') }}</span><strong class="tabular-nums">{{ t('sign.periodValue', { start: contract.startDate, end: contract.endDate }) }}</strong></div>
+            <div><span class="text-muted">{{ t('sign.hoursPay') }}</span><strong class="tabular-nums">{{ t('sign.hoursPayValue', { h: contract.weeklyHours, rate: contract.hourlyRate }) }}</strong></div>
           </div>
 
           <ol class="doc-clauses">
-            <li>乙方应严格遵守学校“三助”岗位管理规定，按周如实填报实际工时与工作日志，接受指导教师审核与周期性考核。</li>
-            <li>乙方在全校范围内兼任所有三助（TA/RA/GA）岗位之累计周工时，不得超过学校规定的每周 {{ maxHours }} 小时红线。</li>
-            <li>实发薪酬按「审核通过工时 × 时薪 × 周期考核系数」自动核算，经财务处审核通过后从对应专项经费池发放。</li>
-            <li>若聘期内发生学籍异动、签证失效或连续考核不合格，甲方有权依法依规中止本聘用协议并记录审计留痕。</li>
+            <li>{{ t('sign.clause1') }}</li>
+            <li>{{ t('sign.clause2', { max: maxHours }) }}</li>
+            <li>{{ t('sign.clause3') }}</li>
+            <li>{{ t('sign.clause4') }}</li>
           </ol>
         </div>
 
@@ -38,10 +38,10 @@
             <input v-model="complianceAgreed" type="checkbox" class="f-checkbox" />
             <div>
               <div class="fw-600 text-sm">
-                《国际生合法工时合规声明》（国际生强制确认项）
+                {{ t('sign.intlTitle') }}
               </div>
               <p class="text-xs text-muted mt-4">
-                本人确认持有有效学习类居留许可（{{ student.visaType }}，有效期至 {{ student.visaExpiry }}），严格遵守中国出入境管理法规及高校国际生勤工助学规定，承诺每周累计校内三助工时绝不超过 20 小时，若签证状态变更将第一时间向国际合作交流处报备。
+                {{ t('sign.intlText', { visa: student.visaType, expiry: student.visaExpiry, max: maxHours }) }}
               </p>
             </div>
           </label>
@@ -52,10 +52,10 @@
           <div class="flex items-center justify-between mb-8">
             <label class="f-label">
               <FluentIcon name="pen" :size="15" />
-              <span>乙方手写电子签名区（支持鼠标/触控手写）</span>
+              <span>{{ t('sign.padLabel') }}</span>
               <span class="req">*</span>
             </label>
-            <button type="button" class="f-btn f-btn-sm" @click="clearCanvas">重写签名</button>
+            <button type="button" class="f-btn f-btn-sm" @click="clearCanvas">{{ t('sign.clear') }}</button>
           </div>
 
           <div class="canvas-wrap">
@@ -70,20 +70,20 @@
               @pointercancel="endDraw"
               @lostpointercapture="endDraw"
             />
-            <span v-if="!hasSigned" class="canvas-placeholder">请在此区域内手写您的姓名完成电子签章</span>
+            <span v-if="!hasSigned" class="canvas-placeholder">{{ t('sign.padPlaceholder') }}</span>
           </div>
         </div>
       </div>
 
       <footer class="f-modal-footer">
-        <button type="button" class="f-btn" @click="$emit('close')">暂不签署</button>
+        <button type="button" class="f-btn" @click="$emit('close')">{{ t('sign.later') }}</button>
         <button
           type="button"
           class="f-btn f-btn-primary"
           :disabled="!canSubmit || submitting"
           @click="submitSign"
         >
-          确认签署并生效
+          {{ t('sign.submit') }}
         </button>
       </footer>
     </div>
@@ -95,6 +95,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores/appStore'
 import { api } from '@/services/api'
 import { getMaxWeeklyHours } from '@/services/ruleEngine'
+import { useI18n } from '@/i18n'
 import FluentIcon from './FluentIcon.vue'
 
 const props = defineProps({
@@ -103,6 +104,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'signed'])
 const store = useAppStore()
+const { t } = useI18n()
 
 const student = computed(() => store.getUser(props.contract.studentId))
 const maxHours = computed(() => getMaxWeeklyHours(store.db, student.value))

@@ -2,24 +2,27 @@
   <div class="feedback-page">
     <div class="acrylic-card p-24 feedback-card flex-col gap-16">
       <header class="flex-col gap-4">
-        <h1 class="text-title">服务评价</h1>
-        <p class="text-xs text-muted">请输入助教 / 助管提供的 8 位评价码，匿名为其服务打分。无需登录。</p>
+        <div class="flex items-center justify-between gap-8">
+          <h1 class="text-title">{{ t('feedback.title') }}</h1>
+          <LanguageSwitch />
+        </div>
+        <p class="text-xs text-muted">{{ t('feedback.intro') }}</p>
       </header>
 
       <form v-if="!info" class="flex-col gap-12" @submit.prevent="lookup">
         <div class="f-field">
-          <label class="f-label">评价码</label>
+          <label class="f-label">{{ t('feedback.code') }}</label>
           <input
             v-model="code"
             type="text"
             class="f-input code-input"
             maxlength="8"
             autocomplete="off"
-            placeholder="如 7K2QXMPA"
+            :placeholder="t('feedback.codePlaceholder')"
           />
         </div>
         <div v-if="error" class="f-banner error"><span class="text-xs">{{ error }}</span></div>
-        <button type="submit" class="f-btn f-btn-primary" :disabled="busy || code.trim().length !== 8">查询</button>
+        <button type="submit" class="f-btn f-btn-primary" :disabled="busy || code.trim().length !== 8">{{ t('feedback.lookup') }}</button>
       </form>
 
       <template v-else>
@@ -28,28 +31,28 @@
             <span v-if="info.jobType" class="f-type-tag" :class="info.jobType.toLowerCase()">{{ info.jobType }}</span>
             <span class="fw-600">{{ info.jobTitle }}</span>
           </div>
-          <div class="text-sm">服务助理：{{ info.assistantName }}</div>
-          <div class="text-xs text-muted">评价截止：{{ info.deadline }}</div>
+          <div class="text-sm">{{ t('feedback.assistant') }}{{ info.assistantName }}</div>
+          <div class="text-xs text-muted">{{ t('feedback.deadline') }}{{ info.deadline }}</div>
         </div>
 
         <div v-if="submitted" class="f-banner success">
           <span class="text-sm">{{ submittedText }}</span>
         </div>
         <div v-else-if="!info.open" class="f-banner caution">
-          <span class="text-sm">{{ info.closedReason || '本轮评价已结束' }}</span>
+          <span class="text-sm">{{ localized(info, 'closedReason') || t('feedback.closed') }}</span>
         </div>
 
         <form v-else class="flex-col gap-12" @submit.prevent="submit">
           <div class="f-field">
-            <label class="f-label">服务满意度 <span class="req">*</span></label>
-            <div class="star-row" role="radiogroup" aria-label="评分">
+            <label class="f-label">{{ t('feedback.rating') }} <span class="req">*</span></label>
+            <div class="star-row" role="radiogroup" :aria-label="t('feedback.ratingAria')">
               <button
                 v-for="n in 5"
                 :key="n"
                 type="button"
                 class="star-btn"
                 :class="{ on: n <= rating }"
-                :aria-label="`${n} 星`"
+                :aria-label="t('feedback.stars', { n })"
                 :aria-checked="rating === n"
                 role="radio"
                 @click="rating = n"
@@ -60,18 +63,18 @@
             </div>
           </div>
           <div class="f-field">
-            <label class="f-label">一句话评价（选填）</label>
-            <textarea v-model="comment" class="f-textarea" rows="2" maxlength="200" placeholder="例如：答疑很耐心，反馈及时" />
+            <label class="f-label">{{ t('feedback.comment') }}</label>
+            <textarea v-model="comment" class="f-textarea" rows="2" maxlength="200" :placeholder="t('feedback.commentPlaceholder')" />
             <div class="text-xs text-muted align-right">{{ comment.length }}/200</div>
           </div>
           <div v-if="error" class="f-banner error"><span class="text-xs">{{ error }}</span></div>
-          <button type="submit" class="f-btn f-btn-primary" :disabled="busy || rating < 1">提交评价</button>
+          <button type="submit" class="f-btn f-btn-primary" :disabled="busy || rating < 1">{{ t('feedback.submit') }}</button>
         </form>
 
-        <button type="button" class="f-btn-link text-xs" @click="reset">换一个评价码</button>
+        <button type="button" class="f-btn-link text-xs" @click="reset">{{ t('feedback.another') }}</button>
       </template>
 
-      <footer class="text-xs text-muted">评价匿名提交，助理本人只能看到平均分；同一浏览器每轮只能提交一次。</footer>
+      <footer class="text-xs text-muted">{{ t('feedback.footer') }}</footer>
     </div>
   </div>
 </template>
@@ -80,11 +83,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '@/services/api'
+import { useI18n } from '@/i18n'
+import LanguageSwitch from '@/components/LanguageSwitch.vue'
 
 const CLIENT_KEY = 'CGA_FEEDBACK_CLIENT_ID'
 const DONE_KEY = 'CGA_FEEDBACK_SUBMITTED'
 
 const route = useRoute()
+const { t, isEn, localized } = useI18n()
 const code = ref('')
 const info = ref(null)
 const rating = ref(0)
@@ -92,10 +98,17 @@ const comment = ref('')
 const busy = ref(false)
 const error = ref('')
 const submitted = ref(false)
-const submittedText = ref('')
+// 提交结果提示存词条 key（或后端返回的对象），切换语言后随之刷新
+const submittedState = ref(null)
+const submittedText = computed(() => {
+  const s = submittedState.value
+  if (!s) return ''
+  if (typeof s === 'string') return t(s)
+  // 后端提示：英文模式没有 messageEn 时用通用英文
+  return isEn.value ? s.messageEn || t('feedback.alreadySubmitted') : s.message
+})
 
-const RATING_TEXT = ['', '很不满意', '不满意', '一般', '满意', '非常满意']
-const ratingText = computed(() => RATING_TEXT[rating.value] || '点击星星打分')
+const ratingText = computed(() => (rating.value >= 1 && rating.value <= 5 ? t(`feedback.ratingText.r${rating.value}`) : t('feedback.ratingHint')))
 
 // 浏览器随机 ID：存在 localStorage，后端只保存它的 SHA-256，用于“每轮只能提交一次”
 function clientId() {
@@ -142,9 +155,9 @@ async function lookup() {
       info.value = res.data
       code.value = c
       submitted.value = submittedCodes().includes(c)
-      submittedText.value = '您已提交过本轮评价，感谢参与！'
+      submittedState.value = 'feedback.alreadySubmitted'
     } else {
-      error.value = res.message || '评价码无效'
+      error.value = localized(res, 'message') || t('feedback.invalidCode')
     }
   } finally {
     busy.value = false
@@ -163,14 +176,14 @@ async function submit() {
     })
     if (res.code === 200) {
       submitted.value = true
-      submittedText.value = '评价已提交，感谢您的反馈！'
+      submittedState.value = 'feedback.thanks'
       markSubmitted(code.value)
     } else if (res.code === 409) {
       submitted.value = true
-      submittedText.value = res.message
+      submittedState.value = res.message ? res : 'feedback.alreadySubmitted'
       markSubmitted(code.value)
     } else {
-      error.value = res.message || '提交失败，请稍后再试'
+      error.value = localized(res, 'message') || t('feedback.submitFailed')
     }
   } finally {
     busy.value = false

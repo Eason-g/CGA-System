@@ -2,12 +2,11 @@
   <div class="rp-box mt-12">
     <div class="rp-head">
       <div class="text-xs text-muted">
-        绑定的科研项目在建岗时由后端到科研系统（模拟）校验：项目存在、负责人为发岗导师（管理员代建要求同院系）、
-        项目结束日不早于预计聘期结束日。
+        {{ $t('admin.research.desc') }}
       </div>
       <button type="button" class="f-btn f-btn-sm shrink-0" :disabled="busy || !code" @click="verify">
         <FluentIcon name="search" :size="13" />
-        <span>{{ busy ? '校验中…' : '校验项目' }}</span>
+        <span>{{ busy ? $t('admin.research.verifying') : $t('admin.research.verify') }}</span>
       </button>
     </div>
 
@@ -18,14 +17,13 @@
         <span class="f-pill f-pill-neutral">{{ result.source }}</span>
       </div>
       <div v-if="result.project" class="text-xs text-muted mt-4 tabular-nums">
-        负责人 {{ result.project.leaderName }} · 周期 {{ result.project.startDate }} 至 {{ result.project.endDate }}
-        · 可用经费 ¥{{ Number(result.project.availableFunds || 0).toLocaleString() }}
-        <template v-if="result.jobEndDate"> · 岗位预计聘期至 {{ result.jobEndDate }}</template>
+        {{ $t('admin.research.meta', { leader: result.project.leaderName, start: result.project.startDate, end: result.project.endDate }) }}{{ $t('admin.research.funds', { n: Number(result.project.availableFunds || 0).toLocaleString() }) }}
+        <template v-if="result.jobEndDate">{{ $t('admin.research.jobEnd', { d: result.jobEndDate }) }}</template>
       </div>
       <ul class="rp-checks">
         <li v-for="c in result.checks" :key="c.key" :class="c.passed ? 'pass' : 'fail'">
           <FluentIcon :name="c.passed ? 'check-circle' : 'x-circle'" :size="13" />
-          <span>{{ c.label }}：{{ c.detail }}</span>
+          <span>{{ localized(c, 'label') }}{{ $t('admin.common.colon') }}{{ localized(c, 'detail') }}</span>
         </li>
       </ul>
     </div>
@@ -36,6 +34,7 @@
 import { ref, watch } from 'vue'
 import { integrationApi } from '@/services/integrationApi'
 import FluentIcon from '@/components/FluentIcon.vue'
+import { useI18n } from '@/i18n'
 
 const props = defineProps({
   code: { type: String, default: '' },
@@ -44,6 +43,7 @@ const props = defineProps({
   weeks: { type: [Number, String], default: null }
 })
 
+const { t, localized } = useI18n()
 const busy = ref(false)
 const result = ref(null)
 const error = ref('')
@@ -70,7 +70,7 @@ async function verify() {
     })
     if (mine !== seq) return
     if (res.code === 200 && res.data) result.value = res.data
-    else error.value = res.message || '校验失败'
+    else error.value = localized(res, 'message') || t('admin.research.failed')
   } finally {
     busy.value = false
   }

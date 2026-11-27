@@ -6,6 +6,7 @@ import { integrationApi, DEFAULT_SITE, ssoServiceUrl } from '@/services/integrat
 import { isHttpMode, DEMO_PASSWORD, getToken, setToken } from '@/services/http'
 import { setTodayStr, localDateStr } from '@/services/ruleEngine'
 import { createSeedData } from '@/mock/seedData'
+import { t, isEn, localized } from '@/i18n'
 
 // http 模式下的初始空库：结构与 mock db 一致，登录后由 /api/snapshot 填充
 function createEmptyDB() {
@@ -98,6 +99,16 @@ export const useAppStore = defineStore('app', () => {
     return (db.value?.notifications || []).filter((n) => n.userId === currentUser.value.id)
   })
 
+  /**
+   * 接口返回的提示文案：英文模式优先 messageEn。
+   * - 失败提示：没有 messageEn 时退回后端中文 message（信息更具体），再退回词条 fallbackKey
+   * - 成功提示（success: true）：英文模式下没有 messageEn 时用词条 fallbackKey，避免成功提示夹中文
+   */
+  function resMessage(res, fallbackKey, params, { success = false } = {}) {
+    if (success && isEn.value) return res?.messageEn || t(fallbackKey, params)
+    return localized(res, 'message') || t(fallbackKey, params)
+  }
+
   function notify(message, type = 'info') {
     const id = Date.now() + Math.random()
     toasts.value.push({ id, message, type })
@@ -165,7 +176,7 @@ export const useAppStore = defineStore('app', () => {
         await refreshSnapshot()
       } else if (res.code === 0) {
         // 连不上后端：保留 token，提示后回到登录页
-        notify(res.message, 'error')
+        notify(resMessage(res, 'http.networkError'), 'error')
       } else {
         clearSession()
       }
@@ -179,10 +190,10 @@ export const useAppStore = defineStore('app', () => {
     const res = await withLoading(() => api.loginByCredentials(account, password))
     if (res.code === 200 && res.data?.token && res.data?.user) {
       await startSession(res.data.token, res.data.user)
-      notify(res.message || `欢迎回来，${res.data.user.name}`, 'success')
+      notify(resMessage(res, 'toast.welcomeBack', { name: res.data.user.name }, { success: true }), 'success')
       return res.data.user
     }
-    lastLoginError.value = res.message || '认证失败'
+    lastLoginError.value = resMessage(res, 'toast.authFailed')
     notify(lastLoginError.value, 'error')
     return null
   }
@@ -193,10 +204,10 @@ export const useAppStore = defineStore('app', () => {
     const res = await withLoading(() => integrationApi.exchangeSsoTicket({ ticket, service: ssoServiceUrl() }))
     if (res.code === 200 && res.data?.token && res.data?.user) {
       await startSession(res.data.token, res.data.user)
-      notify(res.message || `欢迎回来，${res.data.user.name}`, 'success')
+      notify(resMessage(res, 'toast.welcomeBack', { name: res.data.user.name }, { success: true }), 'success')
       return res.data.user
     }
-    lastLoginError.value = res.message || '统一身份认证失败'
+    lastLoginError.value = resMessage(res, 'toast.ssoFailed')
     notify(lastLoginError.value, 'error')
     return null
   }
@@ -206,7 +217,7 @@ export const useAppStore = defineStore('app', () => {
       // 体验账号：用预置账号 + 演示密码走正常登录
       const preset = HTTP_PRESET_USERS.find((u) => u.id === userId)
       if (!preset) {
-        notify('演示账号不存在', 'error')
+        notify(t('toast.demoMissing'), 'error')
         return null
       }
       return httpLogin(preset.username || preset.studentNo, DEMO_PASSWORD)
@@ -216,10 +227,10 @@ export const useAppStore = defineStore('app', () => {
       currentUserId.value = res.data.id
       saveUserId(res.data.id)
       await refreshSnapshot()
-      notify(res.message, 'success')
+      notify(resMessage(res, 'toast.welcomeBack', { name: res.data.name }, { success: true }), 'success')
       return res.data
     } else {
-      notify(res.message || '登录失败', 'error')
+      notify(resMessage(res, 'toast.loginFailed'), 'error')
       return null
     }
   }
@@ -231,10 +242,10 @@ export const useAppStore = defineStore('app', () => {
       currentUserId.value = res.data.id
       saveUserId(res.data.id)
       await refreshSnapshot()
-      notify(res.message, 'success')
+      notify(resMessage(res, 'toast.welcomeBack', { name: res.data.name }, { success: true }), 'success')
       return res.data
     } else {
-      notify(res.message || '认证失败', 'error')
+      notify(resMessage(res, 'toast.authFailed'), 'error')
       return null
     }
   }
@@ -242,12 +253,12 @@ export const useAppStore = defineStore('app', () => {
   function logout() {
     if (isHttpMode) {
       clearSession()
-      notify('已退出登录', 'info')
+      notify(t('toast.loggedOut'), 'info')
       return
     }
     currentUserId.value = null
     saveUserId(null)
-    notify('已退出当前演示身份', 'info')
+    notify(t('toast.demoLoggedOut'), 'info')
   }
 
   async function resetDemoData() {
@@ -257,16 +268,16 @@ export const useAppStore = defineStore('app', () => {
       if (res.code === 200) {
         if (res.data) applySnapshot(res.data)
         else await refreshSnapshot()
-        notify(res.message || '已一键重置为初始演示数据', 'success')
+        notify(resMessage(res, 'toast.resetDone', null, { success: true }), 'success')
       } else {
-        notify(res.message || '重置失败', 'error')
+        notify(resMessage(res, 'toast.resetFailed'), 'error')
       }
       return res
     }
     const res = await withLoading(() => api.resetDemoData())
     if (res.code === 200 && res.data) {
       db.value = res.data
-      notify('已一键重置为初始演示数据', 'success')
+      notify(t('toast.resetDone'), 'success')
     }
     return res
   }
@@ -276,10 +287,10 @@ export const useAppStore = defineStore('app', () => {
     if (res.code === 200) {
       await refreshSnapshot()
       if (successToast && res.message) {
-        notify(res.message, 'success')
+        notify(resMessage(res, 'toast.done', null, { success: true }), 'success')
       }
     } else {
-      notify(res.message || '操作被规则引擎拦截', 'error')
+      notify(resMessage(res, 'toast.blocked'), 'error')
     }
     return res
   }
@@ -292,13 +303,15 @@ export const useAppStore = defineStore('app', () => {
     archiveContractId.value = null
   }
 
-  // Lookup helpers
+  // Lookup helpers（院系名称：英文模式优先 nameEn / shortNameEn，没有时退回中文）
   function getDeptName(deptId) {
-    return db.value?.departments?.find((d) => d.id === deptId)?.name || deptId || '-'
+    const dept = db.value?.departments?.find((d) => d.id === deptId)
+    return localized(dept, 'name') || deptId || '-'
   }
 
   function getDeptShortName(deptId) {
-    return db.value?.departments?.find((d) => d.id === deptId)?.shortName || deptId || '-'
+    const dept = db.value?.departments?.find((d) => d.id === deptId)
+    return localized(dept, 'shortName') || deptId || '-'
   }
 
   function getUser(userId) {
@@ -328,6 +341,7 @@ export const useAppStore = defineStore('app', () => {
     userNotifications,
     archiveContractId,
     notify,
+    resMessage,
     dismissToast,
     refreshSnapshot,
     lastLoginError,

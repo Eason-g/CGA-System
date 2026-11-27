@@ -1,12 +1,12 @@
 <template>
   <div class="flex-col gap-20">
     <header class="page-header">
-      <h1 class="text-title">可配置化中心</h1>
+      <h1 class="text-title">{{ $t('admin.config.title') }}</h1>
       <div class="flex gap-8">
-        <button type="button" class="f-btn" @click="reloadLocal">还原</button>
+        <button type="button" class="f-btn" @click="reloadLocal">{{ $t('admin.config.restore') }}</button>
         <button type="button" class="f-btn f-btn-primary" :disabled="saving" @click="handleSave">
           <FluentIcon name="check" :size="15" />
-          <span>保存并生效</span>
+          <span>{{ $t('admin.config.saveApply') }}</span>
         </button>
       </div>
     </header>
@@ -14,7 +14,7 @@
     <!-- Section 1: Approval Workflows -->
     <section class="acrylic-card p-20 flex-col gap-14">
       <div class="flex items-center justify-between flex-wrap gap-12">
-        <h2 class="text-lg fw-600">审批流节点配置</h2>
+        <h2 class="text-lg fw-600">{{ $t('admin.config.workflowTitle') }}</h2>
         <div class="f-segmented">
           <button v-for="t in ['TA', 'RA', 'GA']" :key="t" type="button" :class="{ active: wfType === t }" @click="wfType = t">
             {{ t }}
@@ -27,29 +27,29 @@
           <div class="flex items-center gap-12 flex-1">
             <span class="node-idx">{{ idx + 1 }}</span>
             <div class="flex items-center gap-8 flex-wrap">
-              <span class="fw-600 text-sm">{{ node.label }}</span>
-              <span class="text-xs text-muted">{{ node.role }}</span>
-              <span v-if="node.conditional === 'allowInternational'" class="f-pill f-pill-caution">仅国际生岗触发</span>
+              <span class="fw-600 text-sm">{{ stepLabel(node.key, node.label) }}</span>
+              <span class="text-xs text-muted">{{ isEn ? roleLabel(node.role) : node.role }}</span>
+              <span v-if="node.conditional === 'allowInternational'" class="f-pill f-pill-caution">{{ $t('admin.config.intlOnly') }}</span>
             </div>
           </div>
 
           <div class="flex items-center gap-6">
-            <button v-if="idx > 1 && idx < draftWorkflows[wfType].length - 1" type="button" class="f-btn f-btn-sm" @click="moveNode(idx, -1)">上移</button>
-            <button v-if="idx > 0 && idx < draftWorkflows[wfType].length - 2" type="button" class="f-btn f-btn-sm" @click="moveNode(idx, 1)">下移</button>
-            <button v-if="node.key !== 'MENTOR_SUBMIT' && node.key !== 'PUBLISHED'" type="button" class="f-btn f-btn-danger-outline f-btn-sm" @click="removeNode(idx)">移除</button>
+            <button v-if="idx > 1 && idx < draftWorkflows[wfType].length - 1" type="button" class="f-btn f-btn-sm" @click="moveNode(idx, -1)">{{ $t('admin.config.moveUp') }}</button>
+            <button v-if="idx > 0 && idx < draftWorkflows[wfType].length - 2" type="button" class="f-btn f-btn-sm" @click="moveNode(idx, 1)">{{ $t('admin.config.moveDown') }}</button>
+            <button v-if="node.key !== 'MENTOR_SUBMIT' && node.key !== 'PUBLISHED'" type="button" class="f-btn f-btn-danger-outline f-btn-sm" @click="removeNode(idx)">{{ $t('admin.config.remove') }}</button>
           </div>
         </div>
       </div>
 
       <div class="add-node-bar">
         <select v-model="newNodeKey" class="f-select" style="max-width: 240px;">
-          <option value="DEPT_REVIEW">院系初审</option>
-          <option value="INTL_REVIEW">国际生办会签</option>
-          <option value="SCHOOL_REVIEW">校级终审</option>
+          <option value="DEPT_REVIEW">{{ $t('admin.config.nodeOptions.DEPT_REVIEW') }}</option>
+          <option value="INTL_REVIEW">{{ $t('admin.config.nodeOptions.INTL_REVIEW') }}</option>
+          <option value="SCHOOL_REVIEW">{{ $t('admin.config.nodeOptions.SCHOOL_REVIEW') }}</option>
         </select>
         <button type="button" class="f-btn" @click="addNode">
           <FluentIcon name="plus" :size="14" />
-          <span>插入节点</span>
+          <span>{{ $t('admin.config.insertNode') }}</span>
         </button>
       </div>
     </section>
@@ -57,7 +57,7 @@
     <!-- Section 2: Evaluation Weights -->
     <section class="acrylic-card p-20 flex-col gap-14">
       <div class="flex items-center justify-between flex-wrap gap-12">
-        <h2 class="text-lg fw-600">考核维度权重</h2>
+        <h2 class="text-lg fw-600">{{ $t('admin.config.evalTitle') }}</h2>
         <div class="f-segmented">
           <button v-for="t in ['TA', 'RA', 'GA']" :key="t" type="button" :class="{ active: evalType === t }" @click="evalType = t">
             {{ t }}
@@ -72,17 +72,17 @@
             <input v-model.number="dim.weight" type="number" min="0" max="100" class="f-input tabular-nums" style="width: 84px;" />
             <span class="text-sm fw-600">%</span>
           </div>
-          <button v-if="draftEvals[evalType].length > 1" type="button" class="f-btn f-btn-danger-outline f-btn-sm" @click="draftEvals[evalType].splice(idx, 1)">删除</button>
+          <button v-if="draftEvals[evalType].length > 1" type="button" class="f-btn f-btn-danger-outline f-btn-sm" @click="draftEvals[evalType].splice(idx, 1)">{{ $t('admin.common.delete') }}</button>
         </div>
       </div>
 
       <div class="flex items-center justify-between">
         <button type="button" class="f-btn f-btn-sm" @click="addDimension">
           <FluentIcon name="plus" :size="14" />
-          <span>新增维度</span>
+          <span>{{ $t('admin.config.addDim') }}</span>
         </button>
         <span class="text-xs fw-600 tabular-nums" :class="currentWeightSum === 100 ? 'text-success' : 'text-error'">
-          合计 {{ currentWeightSum }}% {{ currentWeightSum === 100 ? '✓' : '（须为 100%）' }}
+          {{ $t('admin.config.weightSum', { n: currentWeightSum }) }} {{ currentWeightSum === 100 ? '✓' : $t('admin.config.mustBe100') }}
         </span>
       </div>
     </section>
@@ -91,8 +91,8 @@
     <section class="acrylic-card p-20 flex-col gap-14">
       <div class="flex items-center justify-between flex-wrap gap-12">
         <div>
-          <h2 class="text-lg fw-600">岗位差异化字段</h2>
-          <div class="text-xs text-muted mt-4">发布页按此渲染表单；后端建岗时校验必填项、下拉选项与经费来源。语言要求文案、里程碑截止日期由系统自动生成。</div>
+          <h2 class="text-lg fw-600">{{ $t('admin.config.fieldsTitle') }}</h2>
+          <div class="text-xs text-muted mt-4">{{ $t('admin.config.fieldsDesc') }}</div>
         </div>
         <div class="f-segmented">
           <button v-for="t in ['TA', 'RA', 'GA']" :key="t" type="button" :class="{ active: fieldType === t }" @click="fieldType = t">
@@ -104,36 +104,36 @@
       <div class="flex-col gap-8">
         <div v-for="(field, idx) in currentSchema.fields" :key="`${fieldType}_${idx}`" class="field-edit-card">
           <div class="field-edit-row">
-            <input v-model="field.label" type="text" class="f-input flex-1" maxlength="32" placeholder="字段名称" />
+            <input v-model="field.label" type="text" class="f-input flex-1" maxlength="32" :placeholder="$t('admin.config.fieldNamePh')" />
             <input
               v-model="field.key"
               type="text"
               class="f-input key-input"
               :disabled="!field._new"
-              placeholder="字段标识"
-              title="字段标识即提交到 extraFields 的字段名；已有字段不可修改"
+              :placeholder="$t('admin.config.fieldKeyPh')"
+              :title="$t('admin.config.fieldKeyTitle')"
             />
             <select v-model="field.type" class="f-select type-input">
               <option v-for="opt in FIELD_TYPE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
             <label class="flex items-center gap-6 text-xs nowrap">
               <input v-model="field.required" type="checkbox" class="f-checkbox" />
-              <span>必填</span>
+              <span>{{ $t('admin.config.required') }}</span>
             </label>
             <div class="flex items-center gap-4">
-              <button type="button" class="f-btn f-btn-sm" :disabled="idx === 0" @click="moveField(idx, -1)">上移</button>
-              <button type="button" class="f-btn f-btn-sm" :disabled="idx === currentSchema.fields.length - 1" @click="moveField(idx, 1)">下移</button>
-              <button type="button" class="f-btn f-btn-danger-outline f-btn-sm" @click="currentSchema.fields.splice(idx, 1)">删除</button>
+              <button type="button" class="f-btn f-btn-sm" :disabled="idx === 0" @click="moveField(idx, -1)">{{ $t('admin.config.moveUp') }}</button>
+              <button type="button" class="f-btn f-btn-sm" :disabled="idx === currentSchema.fields.length - 1" @click="moveField(idx, 1)">{{ $t('admin.config.moveDown') }}</button>
+              <button type="button" class="f-btn f-btn-danger-outline f-btn-sm" @click="currentSchema.fields.splice(idx, 1)">{{ $t('admin.common.delete') }}</button>
             </div>
           </div>
           <div class="field-edit-row">
-            <input v-model="field.placeholder" type="text" class="f-input flex-1" placeholder="输入提示（选填）" />
+            <input v-model="field.placeholder" type="text" class="f-input flex-1" :placeholder="$t('admin.config.placeholderPh')" />
             <textarea
               v-if="field.type === 'select'"
               :value="optionsText(field)"
               class="f-textarea flex-1"
               rows="2"
-              placeholder="每行一个选项：取值|显示名称，如 6.5|IELTS 6.5"
+              :placeholder="$t('admin.config.optionsPh')"
               @change="setOptions(field, $event.target.value)"
             />
           </div>
@@ -143,10 +143,10 @@
       <div class="flex items-center justify-between flex-wrap gap-12">
         <button type="button" class="f-btn f-btn-sm" @click="addField">
           <FluentIcon name="plus" :size="14" />
-          <span>新增自定义字段</span>
+          <span>{{ $t('admin.config.addField') }}</span>
         </button>
         <div class="flex items-center gap-12 flex-wrap text-xs">
-          <span class="fw-600">允许的经费来源：</span>
+          <span class="fw-600">{{ $t('admin.config.allowedFunds') }}</span>
           <label v-for="opt in FUND_SOURCE_OPTIONS" :key="opt.value" class="flex items-center gap-4">
             <input
               type="checkbox"
@@ -161,15 +161,15 @@
 
       <div class="rules-grid">
         <div class="f-field">
-          <label class="f-label">默认时薪（元/h）</label>
+          <label class="f-label">{{ $t('admin.config.defaultRate') }}</label>
           <input v-model.number="currentSchema.defaults.hourlyRate" type="number" min="1" max="1000" class="f-input tabular-nums" />
         </div>
         <div class="f-field">
-          <label class="f-label">默认周工时（h）</label>
+          <label class="f-label">{{ $t('admin.config.defaultHours') }}</label>
           <input v-model.number="currentSchema.defaults.weeklyHours" type="number" min="1" max="40" class="f-input tabular-nums" />
         </div>
         <div class="f-field">
-          <label class="f-label">默认聘期周数</label>
+          <label class="f-label">{{ $t('admin.config.defaultWeeks') }}</label>
           <input v-model.number="currentSchema.defaults.weeks" type="number" min="1" max="52" class="f-input tabular-nums" />
         </div>
       </div>
@@ -177,18 +177,18 @@
 
     <!-- Section 4: Global Compliance Rules -->
     <section class="acrylic-card p-20">
-      <h2 class="text-lg fw-600 mb-12">全校红线阈值</h2>
+      <h2 class="text-lg fw-600 mb-12">{{ $t('admin.config.rulesTitle') }}</h2>
       <div class="rules-grid">
         <div class="f-field">
-          <label class="f-label">周工时上限（h）</label>
+          <label class="f-label">{{ $t('admin.config.maxHours') }}</label>
           <input v-model.number="draftRules.maxWeeklyHoursDefault" type="number" min="8" max="30" class="f-input tabular-nums" />
         </div>
         <div class="f-field">
-          <label class="f-label">国际生工时上限（h）</label>
+          <label class="f-label">{{ $t('admin.config.maxHoursIntl') }}</label>
           <input v-model.number="draftRules.maxWeeklyHoursIntl" type="number" min="8" max="20" class="f-input tabular-nums" />
         </div>
         <div class="f-field">
-          <label class="f-label">临期预警天数（天）</label>
+          <label class="f-label">{{ $t('admin.config.expiryDays') }}</label>
           <input v-model.number="draftRules.expiryWarningDays" type="number" min="5" max="60" class="f-input tabular-nums" />
         </div>
       </div>
@@ -197,16 +197,16 @@
     <!-- Section 5: 智能推荐权重（P2 C.2，学生端岗位大厅“为你推荐”按此打分） -->
     <section class="acrylic-card p-20 flex-col gap-14">
       <div>
-        <h2 class="text-lg fw-600">智能推荐权重</h2>
+        <h2 class="text-lg fw-600">{{ $t('admin.config.recTitle') }}</h2>
         <div class="text-xs text-muted mt-4">
-          每个岗位按下列因子加权打分，自动按权重之和归一到 0–100 分；权重须为非负数。签证、国际生开放资格等硬性条件不过的岗位不参与推荐。
+          {{ $t('admin.config.recDesc') }}
         </div>
       </div>
       <div class="weights-grid">
         <div v-for="f in RECOMMEND_FACTORS" :key="f.key" class="f-field">
-          <label class="f-label">{{ f.label }}</label>
+          <label class="f-label">{{ factorLabel(f) }}</label>
           <input v-model.number="draftRules.recommendWeights[f.key]" type="number" min="0" step="1" class="f-input tabular-nums" />
-          <span class="text-xs text-muted">{{ f.hint }} · 占 {{ weightShare(f.key) }}%</span>
+          <span class="text-xs text-muted">{{ $t(`admin.config.factors.${f.key}.hint`) }} · {{ $t('admin.config.share', { n: weightShare(f.key) }) }}</span>
         </div>
       </div>
     </section>
@@ -219,8 +219,11 @@ import { useAppStore } from '@/stores/appStore'
 import { api } from '@/services/api'
 import { getJobTypeSchemas, FIELD_TYPE_OPTIONS, FUND_SOURCE_OPTIONS, DERIVED_FIELD_KEYS } from '@/services/jobSchema'
 import FluentIcon from '@/components/FluentIcon.vue'
+import { useI18n } from '@/i18n'
+import { roleLabel, stepLabel } from './adminI18n'
 
 const store = useAppStore()
+const { t, isEn } = useI18n()
 const wfType = ref('TA')
 const evalType = ref('TA')
 const fieldType = ref('TA')
@@ -228,13 +231,15 @@ const newNodeKey = ref('SCHOOL_REVIEW')
 const saving = ref(false)
 
 // 智能推荐因子（与后端 RecommendationService 一致；未配置时用默认权重）
+// 因子名称、说明见词条 admin.config.factors.<key>
 const RECOMMEND_FACTORS = [
-  { key: 'skill', label: '技能匹配', hint: '岗位技能与学生技能的重合度', default: 40 },
-  { key: 'hours', label: '剩余周工时', hint: '录用后是否仍在工时上限内', default: 25 },
-  { key: 'language', label: '语言要求', hint: '是否满足岗位语言成绩要求', default: 15 },
-  { key: 'dept', label: '同院系', hint: '岗位与学生同院系', default: 10 },
-  { key: 'deadline', label: '截止临近', hint: '7 天内截止得满分，越远越低', default: 10 }
+  { key: 'skill', default: 40 },
+  { key: 'hours', default: 25 },
+  { key: 'language', default: 15 },
+  { key: 'dept', default: 10 },
+  { key: 'deadline', default: 10 }
 ]
+const factorLabel = (f) => t(`admin.config.factors.${f.key}.label`)
 
 function cloneRules() {
   const rules = JSON.parse(JSON.stringify(store.db.configs.globalRules || {}))
@@ -262,10 +267,10 @@ function checkWeights() {
   for (const f of RECOMMEND_FACTORS) {
     const raw = draftRules.value.recommendWeights[f.key]
     if (raw === '' || raw === null || raw === undefined || !Number.isFinite(Number(raw)) || Number(raw) < 0) {
-      return `推荐权重「${f.label}」必须为非负数`
+      return t('admin.config.errors.weightInvalid', { f: factorLabel(f) })
     }
   }
-  if (weightSum.value <= 0) return '推荐权重不能全部为 0'
+  if (weightSum.value <= 0) return t('admin.config.errors.weightZero')
   return ''
 }
 
@@ -291,7 +296,7 @@ function reloadLocal() {
   draftEvals.value = JSON.parse(JSON.stringify(store.db.configs.evaluationTemplates))
   draftRules.value = cloneRules()
   draftSchemas.value = cloneSchemas()
-  store.notify('已还原当前配置', 'info')
+  store.notify(t('admin.config.restored'), 'info')
 }
 
 function moveNode(idx, dir) {
@@ -305,20 +310,21 @@ function removeNode(idx) { draftWorkflows.value[wfType.value].splice(idx, 1) }
 
 function addNode() {
   const catalog = {
-    DEPT_REVIEW: { key: 'DEPT_REVIEW', label: '院系名额与经费初审', role: 'DEPT_ADMIN' },
-    INTL_REVIEW: { key: 'INTL_REVIEW', label: '国际生办专项会签', role: 'INTL_OFFICER', conditional: 'allowInternational' },
-    SCHOOL_REVIEW: { key: 'SCHOOL_REVIEW', label: '校级专项经费终审', role: 'SCHOOL_ADMIN' }
+    // 节点 label 是写入配置的中文数据（与种子配置一致），界面按节点 key 翻译显示
+    DEPT_REVIEW: { key: 'DEPT_REVIEW', label: '院系名额与经费初审', role: 'DEPT_ADMIN' }, // i18n-ignore
+    INTL_REVIEW: { key: 'INTL_REVIEW', label: '国际生办专项会签', role: 'INTL_OFFICER', conditional: 'allowInternational' }, // i18n-ignore
+    SCHOOL_REVIEW: { key: 'SCHOOL_REVIEW', label: '校级专项经费终审', role: 'SCHOOL_ADMIN' } // i18n-ignore
   }
   const list = draftWorkflows.value[wfType.value]
   if (list.some((n) => n.key === newNodeKey.value)) {
-    store.notify('该审批节点已存在', 'caution')
+    store.notify(t('admin.config.nodeExists'), 'caution')
     return
   }
   list.splice(list.length - 1, 0, { ...catalog[newNodeKey.value] })
 }
 
 function addDimension() {
-  draftEvals.value[evalType.value].push({ key: 'custom_' + Date.now().toString().slice(-3), label: '新增评价维度', weight: 0 })
+  draftEvals.value[evalType.value].push({ key: 'custom_' + Date.now().toString().slice(-3), label: t('admin.config.newDim'), weight: 0 })
 }
 
 // ---------------------------------------------------------------- 岗位差异化字段
@@ -334,7 +340,7 @@ function addField() {
   const list = currentSchema.value.fields
   let n = list.length + 1
   while (list.some((f) => f.key === `custom${n}`)) n += 1
-  list.push({ key: `custom${n}`, label: '新增字段', type: 'text', required: false, placeholder: '', _new: true })
+  list.push({ key: `custom${n}`, label: t('admin.config.newField'), type: 'text', required: false, placeholder: '', _new: true })
 }
 
 const LINE_BREAK = /\r?\n/
@@ -369,14 +375,14 @@ function checkSchemas() {
   for (const [type, s] of Object.entries(draftSchemas.value)) {
     const keys = new Set()
     for (const f of s.fields) {
-      if (!/^[A-Za-z][A-Za-z0-9_]{0,31}$/.test(f.key || '')) return `${type} 字段标识「${f.key}」须以字母开头，只含字母、数字、下划线`
-      if (DERIVED_FIELD_KEYS.includes(f.key)) return `「${f.key}」由系统自动生成，不能作为表单字段`
-      if (keys.has(f.key)) return `${type} 字段标识「${f.key}」重复`
+      if (!/^[A-Za-z][A-Za-z0-9_]{0,31}$/.test(f.key || '')) return t('admin.config.errors.keyFormat', { type, key: f.key })
+      if (DERIVED_FIELD_KEYS.includes(f.key)) return t('admin.config.errors.derived', { key: f.key })
+      if (keys.has(f.key)) return t('admin.config.errors.duplicate', { type, key: f.key })
       keys.add(f.key)
-      if (!String(f.label || '').trim()) return `${type} 存在未命名的字段`
-      if (f.type === 'select' && !(f.options || []).length) return `${type} 下拉字段「${f.label}」至少需要一个选项`
+      if (!String(f.label || '').trim()) return t('admin.config.errors.unnamed', { type })
+      if (f.type === 'select' && !(f.options || []).length) return t('admin.config.errors.noOptions', { type, label: f.label })
     }
-    if (!s.allowedFundSources.length) return `${type} 岗位至少允许一种经费来源`
+    if (!s.allowedFundSources.length) return t('admin.config.errors.noFund', { type })
   }
   return ''
 }
@@ -435,5 +441,6 @@ async function handleSave() {
 
 @media (max-width: 800px) {
   .rules-grid { grid-template-columns: 1fr; }
+  .dim-edit-row { flex-wrap: wrap; }
 }
 </style>

@@ -1,23 +1,21 @@
 // 岗位类型差异化字段（configs.jobTypeSchemas）的前端辅助函数
 // 发布页、配置中心都从这里读取配置；快照里缺少该配置（旧版 mock 本地数据、旧版后端库）时退回种子配置
 import { createSeedData } from '@/mock/seedData'
+import { t, isEn } from '@/i18n'
 
 export const JOB_TYPES = ['TA', 'RA', 'GA']
 
-export const FIELD_TYPE_OPTIONS = [
-  { value: 'text', label: '单行文本' },
-  { value: 'textarea', label: '多行文本' },
-  { value: 'number', label: '数字' },
-  { value: 'select', label: '下拉选择' },
-  { value: 'lines', label: '多行列表（每行一条）' },
-  { value: 'date', label: '日期' }
-]
+// label 用 getter：模板渲染时读取，随语言切换自动刷新
+const withLabel = (prefix) => (value) => ({
+  value,
+  get label() {
+    return t(`${prefix}.${value}`)
+  }
+})
 
-export const FUND_SOURCE_OPTIONS = [
-  { value: 'TA_FUND', label: '助教经费' },
-  { value: 'RA_PROJECT', label: '科研项目经费' },
-  { value: 'GA_FUND', label: '助管专项经费' }
-]
+export const FIELD_TYPE_OPTIONS = ['text', 'textarea', 'number', 'select', 'lines', 'date'].map(withLabel('admin.fieldTypes'))
+
+export const FUND_SOURCE_OPTIONS = ['TA_FUND', 'RA_PROJECT', 'GA_FUND'].map(withLabel('admin.fundSources'))
 
 // 由后端生成的字段，配置中心不允许新增同名字段
 export const DERIVED_FIELD_KEYS = ['languageRequirement', 'milestones', 'scheduleSlots']
@@ -43,6 +41,38 @@ export function getJobTypeSchemas(db) {
 
 export function getJobTypeSchema(db, type) {
   return getJobTypeSchemas(db)[type] || { fields: [], allowedFundSources: [], defaults: {} }
+}
+
+// ---------------------------------------------------------------- 双语显示
+// 字段 label / placeholder 是配置中心里的中文配置数据：中文模式原样显示；
+// 英文模式按字段 key 查 admin.schema.fields.<key> 词条（种子字段），查不到（管理员自定义字段）时显示配置原文
+
+function lookupEn(key) {
+  if (!isEn.value) return null
+  const v = t(key)
+  return v === key ? null : v
+}
+
+export function fieldLabel(field) {
+  return lookupEn(`admin.schema.fields.${field?.key}.label`) || field?.label || field?.key || ''
+}
+
+export function fieldPlaceholder(field) {
+  if (!field?.placeholder) return ''
+  return lookupEn(`admin.schema.fields.${field.key}.placeholder`) || field.placeholder
+}
+
+// 下拉选项：语言分数选项按取值翻译（如 0 → 无特殊语言限制），其余显示配置原文
+export function optionLabel(field, opt) {
+  if (field?.key === 'minLangScore') return lookupEn(`admin.schema.langOptions.${String(opt?.value).replace('.', '_')}`) || opt?.label
+  return opt?.label
+}
+
+// 岗位类型配置里的名称、说明、国际生开关文案
+export function schemaText(type, schema, part) {
+  const map = { label: 'label', desc: 'desc', intlLabel: 'intlToggle.label', intlHint: 'intlToggle.hint' }
+  const raw = map[part].split('.').reduce((o, k) => (o ? o[k] : undefined), schema)
+  return lookupEn(`admin.schema.types.${type}.${part}`) || raw || (part === 'label' ? type : '')
 }
 
 // 按字段定义生成表单初始值：优先取 defaultValue；lines 类型用多行字符串编辑
@@ -83,9 +113,9 @@ export function validateExtraFields(schema, values) {
   for (const f of schema?.fields || []) {
     const v = values[f.key]
     const empty = v === undefined || v === null || String(v).trim() === ''
-    if (f.required && empty) errors.push(`请填写「${f.label}」`)
+    if (f.required && empty) errors.push(t('admin.schema.required', { label: fieldLabel(f) }))
     if (f.type === 'select' && !empty && !(f.options || []).some((o) => String(o.value) === String(v))) {
-      errors.push(`「${f.label}」的取值不在可选项内`)
+      errors.push(t('admin.schema.invalidOption', { label: fieldLabel(f) }))
     }
   }
   return errors
@@ -98,7 +128,8 @@ export function isFundAllowed(schema, budget) {
 }
 
 export function fundSourceLabel(value) {
-  return FUND_SOURCE_OPTIONS.find((o) => o.value === value)?.label || value
+  const v = t(`admin.fundSources.${value}`)
+  return v === `admin.fundSources.${value}` ? value : v
 }
 
 // 仅 mock 模式使用：模拟后端生成的派生字段（http 模式由后端统一生成）
@@ -106,7 +137,8 @@ export function deriveExtraFieldsForMock(type, extraFields, { weeks = 16, deadli
   const extra = { ...(extraFields || {}) }
   if (type === 'TA') {
     const score = Number(extra.minLangScore || 0)
-    extra.languageRequirement = score > 0 ? `IELTS ${score.toFixed(1)} 及以上` : '无特殊语言限制'
+    // mock 后端生成的数据文案，与 Java 版一致，保持中文
+    extra.languageRequirement = score > 0 ? `IELTS ${score.toFixed(1)} 及以上` : '无特殊语言限制' // i18n-ignore
   }
   if (type === 'RA' && 'milestonesText' in extra) {
     const lines = String(extra.milestonesText || '')

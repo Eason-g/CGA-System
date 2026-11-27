@@ -1,8 +1,8 @@
 <template>
   <div class="flex-col gap-20">
     <header class="page-header">
-      <h1 class="text-title">发布新岗位</h1>
-      <router-link to="/admin/jobs" class="f-btn">返回列表</router-link>
+      <h1 class="text-title">{{ $t('admin.publish.title') }}</h1>
+      <router-link to="/admin/jobs" class="f-btn">{{ $t('admin.publish.backToList') }}</router-link>
     </header>
 
     <div class="publish-layout">
@@ -12,14 +12,14 @@
         <div class="template-bar">
           <div class="flex items-center gap-8 flex-wrap">
             <FluentIcon name="layers" :size="16" class="text-blue" />
-            <span class="text-sm fw-600">从模板创建</span>
+            <span class="text-sm fw-600">{{ $t('admin.publish.fromTemplate') }}</span>
             <select v-model="selectedTemplateId" class="f-select template-select">
-              <option value="">选择岗位模板…</option>
-              <option v-for="t in templates" :key="t.id" :value="t.id">
-                [{{ t.type }}] {{ t.name }}（{{ t.deptId ? store.getDeptShortName(t.deptId) : '全校通用' }}）
+              <option value="">{{ $t('admin.publish.chooseTemplate') }}</option>
+              <option v-for="tpl in templates" :key="tpl.id" :value="tpl.id">
+                [{{ tpl.type }}] {{ tpl.name }} ({{ tpl.deptId ? deptShortName(store.db, tpl.deptId) : $t('admin.publish.schoolWide') }})
               </option>
             </select>
-            <button type="button" class="f-btn f-btn-sm" :disabled="!selectedTemplate" @click="applyTemplate(selectedTemplate)">应用</button>
+            <button type="button" class="f-btn f-btn-sm" :disabled="!selectedTemplate" @click="applyTemplate(selectedTemplate)">{{ $t('admin.publish.apply') }}</button>
             <button
               v-if="selectedTemplate && canDeleteTemplate(selectedTemplate)"
               type="button"
@@ -27,26 +27,26 @@
               :disabled="templateBusy"
               @click="removeTemplate(selectedTemplate)"
             >
-              删除
+              {{ $t('admin.common.delete') }}
             </button>
             <button type="button" class="f-btn f-btn-sm ml-auto" @click="showSaveTemplate = !showSaveTemplate">
               <FluentIcon name="plus" :size="13" />
-              <span>存为模板</span>
+              <span>{{ $t('admin.publish.saveAsTemplate') }}</span>
             </button>
           </div>
           <div v-if="showSaveTemplate" class="save-template-row">
-            <input v-model="templateForm.name" type="text" class="f-input flex-1" maxlength="64" placeholder="模板名称，如 计算机学院双语课程助教" />
+            <input v-model="templateForm.name" type="text" class="f-input flex-1" maxlength="64" :placeholder="$t('admin.publish.templateNamePh')" />
             <label v-if="user?.role === 'SCHOOL_ADMIN'" class="flex items-center gap-6 text-xs">
               <input v-model="templateForm.global" type="checkbox" class="f-checkbox" />
-              <span>全校通用</span>
+              <span>{{ $t('admin.publish.schoolWide') }}</span>
             </label>
-            <span v-else class="text-xs text-muted">保存到本院系</span>
-            <button type="button" class="f-btn f-btn-primary f-btn-sm" :disabled="!templateForm.name.trim() || templateBusy" @click="saveTemplate">保存</button>
+            <span v-else class="text-xs text-muted">{{ $t('admin.publish.saveToDept') }}</span>
+            <button type="button" class="f-btn f-btn-primary f-btn-sm" :disabled="!templateForm.name.trim() || templateBusy" @click="saveTemplate">{{ $t('admin.common.save') }}</button>
           </div>
         </div>
 
         <div>
-          <label class="f-label mb-8">1. 选择岗位类别（共用流程引擎，字段按配置中心动态渲染） <span class="req">*</span></label>
+          <label class="f-label mb-8">{{ $t('admin.publish.step1') }} <span class="req">*</span></label>
           <div class="type-selector-grid">
             <button
               v-for="item in jobTypes"
@@ -66,31 +66,31 @@
         </div>
 
         <div class="f-field">
-          <label class="f-label">岗位名称 <span class="req">*</span></label>
+          <label class="f-label">{{ $t('admin.publish.jobTitle') }} <span class="req">*</span></label>
           <input
             v-model="form.title"
             type="text"
             class="f-input"
             required
-            placeholder="例如：《计算机网络（双语）》实验助教 / 量子计算课题助研"
+            :placeholder="$t('admin.publish.jobTitlePh')"
           />
         </div>
 
         <div class="grid-2">
           <div class="f-field">
-            <label class="f-label">设岗院系 / 部门 <span class="req">*</span></label>
+            <label class="f-label">{{ $t('admin.publish.dept') }} <span class="req">*</span></label>
             <select v-model="form.deptId" class="f-select" :disabled="user?.role !== 'SCHOOL_ADMIN'">
               <option v-for="d in store.db.departments" :key="d.id" :value="d.id">
-                {{ d.name }}
+                {{ deptName(store.db, d.id) }}
               </option>
             </select>
           </div>
 
           <div class="f-field">
-            <label class="f-label">经费来源账号（实时联动余额） <span class="req">*</span></label>
+            <label class="f-label">{{ $t('admin.publish.budget') }} <span class="req">*</span></label>
             <select v-model="form.budgetId" class="f-select">
               <option v-for="b in selectableBudgets" :key="b.id" :value="b.id" :disabled="!isFundAllowed(schema, b)">
-                {{ b.name }}（可用 ¥{{ getBudgetAvailable(b).toLocaleString() }}）{{ isFundAllowed(schema, b) ? '' : `· 不适用于 ${form.type} 岗位` }}
+                {{ $t('admin.publish.budgetOption', { name: b.name, n: getBudgetAvailable(b).toLocaleString() }) }}{{ isFundAllowed(schema, b) ? '' : $t('admin.publish.notForType', { type: form.type }) }}
               </option>
             </select>
           </div>
@@ -98,19 +98,19 @@
 
         <div class="grid-4">
           <div class="f-field">
-            <label class="f-label">招聘人数 <span class="req">*</span></label>
+            <label class="f-label">{{ $t('admin.publish.quota') }} <span class="req">*</span></label>
             <input v-model.number="form.quota" type="number" min="1" max="20" class="f-input tabular-nums" required />
           </div>
           <div class="f-field">
-            <label class="f-label">时薪（元/h） <span class="req">*</span></label>
+            <label class="f-label">{{ $t('admin.publish.hourlyRate') }} <span class="req">*</span></label>
             <input v-model.number="form.hourlyRate" type="number" min="20" max="120" class="f-input tabular-nums" required />
           </div>
           <div class="f-field">
-            <label class="f-label">每周工时（h） <span class="req">*</span></label>
+            <label class="f-label">{{ $t('admin.publish.weeklyHours') }} <span class="req">*</span></label>
             <input v-model.number="form.weeklyHours" type="number" min="2" max="20" class="f-input tabular-nums" required />
           </div>
           <div class="f-field">
-            <label class="f-label">聘期周数 <span class="req">*</span></label>
+            <label class="f-label">{{ $t('admin.publish.weeks') }} <span class="req">*</span></label>
             <input v-model.number="form.weeks" type="number" min="1" max="36" class="f-input tabular-nums" required />
           </div>
         </div>
@@ -118,7 +118,7 @@
         <!-- Dynamic Differential Fields Block：按 configs.jobTypeSchemas 渲染 -->
         <div class="dynamic-section">
           <div class="text-xs fw-600 text-blue mb-12">
-            2. {{ form.type }} 岗位差异化专属字段
+            {{ $t('admin.publish.step2', { type: form.type }) }}
           </div>
 
           <div class="dyn-grid">
@@ -129,28 +129,28 @@
               :class="{ 'span-2': isWideField(field, idx) }"
             >
               <label class="f-label">
-                {{ field.label }} <span v-if="field.required" class="req">*</span>
+                {{ fieldLabel(field) }} <span v-if="field.required" class="req">*</span>
               </label>
               <select v-if="field.type === 'select'" v-model="extra[field.key]" class="f-select">
-                <option v-for="opt in field.options || []" :key="String(opt.value)" :value="opt.value">{{ opt.label }}</option>
+                <option v-for="opt in field.options || []" :key="String(opt.value)" :value="opt.value">{{ optionLabel(field, opt) }}</option>
               </select>
               <textarea
                 v-else-if="field.type === 'textarea' || field.type === 'lines'"
                 v-model="extra[field.key]"
                 class="f-textarea"
                 rows="3"
-                :placeholder="field.placeholder || (field.type === 'lines' ? '每行一条' : '')"
+                :placeholder="fieldPlaceholder(field) || (field.type === 'lines' ? $t('admin.publish.linesPh') : '')"
               />
               <input
                 v-else
                 v-model="extra[field.key]"
                 :type="field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'"
                 class="f-input"
-                :placeholder="field.placeholder || ''"
+                :placeholder="fieldPlaceholder(field)"
               />
             </div>
           </div>
-          <div v-if="form.type === 'RA'" class="text-xs text-muted mt-8">里程碑截止日期由系统按聘期自动均分生成。</div>
+          <div v-if="form.type === 'RA'" class="text-xs text-muted mt-8">{{ $t('admin.publish.milestoneHint') }}</div>
           <!-- P2 B.3：到科研系统（模拟）校验绑定的项目 -->
           <ResearchProjectCheck
             v-if="form.type === 'RA'"
@@ -163,31 +163,31 @@
           <label v-if="schema.intlToggle" class="intl-toggle mt-12">
             <input v-model="form.allowInternational" type="checkbox" class="f-checkbox" />
             <div>
-              <div class="fw-600 text-sm">{{ schema.intlToggle.label }}</div>
-              <div class="text-xs text-muted">{{ schema.intlToggle.hint }}</div>
+              <div class="fw-600 text-sm">{{ schemaText(form.type, schema, 'intlLabel') }}</div>
+              <div class="text-xs text-muted">{{ schemaText(form.type, schema, 'intlHint') }}</div>
             </div>
           </label>
         </div>
 
         <div class="grid-2">
           <div class="f-field">
-            <label class="f-label">技能匹配标签（逗号分隔，用于学生端智能推荐）</label>
-            <input v-model="skillsInput" type="text" class="f-input" placeholder="Python, 机器学习, 英语授课" />
+            <label class="f-label">{{ $t('admin.publish.skills') }}</label>
+            <input v-model="skillsInput" type="text" class="f-input" :placeholder="$t('admin.publish.skillsPh')" />
           </div>
           <div class="f-field">
-            <label class="f-label">申请截止日期</label>
+            <label class="f-label">{{ $t('admin.publish.deadline') }}</label>
             <input v-model="form.deadline" type="date" class="f-input" />
           </div>
         </div>
 
         <div class="f-field">
-          <label class="f-label">岗位职责描述</label>
-          <textarea v-model="form.description" class="f-textarea" rows="3" placeholder="简述核心工作内容、考核标准与能力要求..." />
+          <label class="f-label">{{ $t('admin.publish.description') }}</label>
+          <textarea v-model="form.description" class="f-textarea" rows="3" :placeholder="$t('admin.publish.descriptionPh')" />
         </div>
 
         <div class="flex items-center justify-between pt-12 border-t">
           <span class="text-xs text-muted">
-            {{ canSubmit ? '预算与名额双管控校验已通过，可提交审批流' : '存在硬拦截项或必填字段未填写，请检查右侧提示' }}
+            {{ canSubmit ? $t('admin.publish.canSubmit') : $t('admin.publish.cannotSubmit') }}
           </span>
           <button
             type="submit"
@@ -195,7 +195,7 @@
             :disabled="!canSubmit || submitting"
           >
             <FluentIcon name="check" :size="16" />
-            <span>提交岗位并启动审批流</span>
+            <span>{{ $t('admin.publish.submit') }}</span>
           </button>
         </div>
       </form>
@@ -209,17 +209,17 @@
           <div class="flex items-center justify-between">
             <span class="fw-600 flex items-center gap-8">
               <FluentIcon name="wallet" :size="17" :class="validation.ok ? 'text-blue' : 'text-error'" />
-              <span>经费与名额双管控测算</span>
+              <span>{{ $t('admin.publish.guardTitle') }}</span>
             </span>
             <span class="f-pill" :class="validation.ok && fundAllowed ? 'f-pill-success' : 'f-pill-error'">
-              {{ validation.ok && fundAllowed ? '测算通过' : '触发拦截' }}
+              {{ validation.ok && fundAllowed ? $t('admin.publish.guardPass') : $t('admin.publish.guardBlock') }}
             </span>
           </div>
 
           <div class="calc-formula mt-16">
-            <div class="text-xs text-muted">预计总支出 = 人数 × 时薪 × 周工时 × 周数</div>
+            <div class="text-xs text-muted">{{ $t('admin.publish.formula') }}</div>
             <div class="text-xs text-muted tabular-nums mt-4">
-              {{ form.quota }} 人 × ¥{{ form.hourlyRate }} × {{ form.weeklyHours }}h × {{ form.weeks }} 周
+              {{ $t('admin.publish.formulaVal', { q: form.quota, r: form.hourlyRate, h: form.weeklyHours, w: form.weeks }) }}
             </div>
             <div class="calc-total tabular-nums mt-6" :class="validation.budgetExceeded ? 'text-error' : 'text-blue'">
               ¥{{ validation.estimatedCost.toLocaleString() }}
@@ -229,11 +229,11 @@
           <!-- Budget Pool Comparison -->
           <div class="guard-block mt-16">
             <div class="flex justify-between text-xs">
-              <span class="text-muted">所选经费池当前可用余额</span>
+              <span class="text-muted">{{ $t('admin.publish.available') }}</span>
               <span class="fw-600 tabular-nums">¥{{ validation.availableBudget.toLocaleString() }}</span>
             </div>
             <div class="flex justify-between text-xs mt-6">
-              <span class="text-muted">本次冻结后预计结余</span>
+              <span class="text-muted">{{ $t('admin.publish.remainingAfter') }}</span>
               <span
                 class="fw-600 tabular-nums"
                 :class="validation.remainingAfter < 0 ? 'text-error' : 'text-success'"
@@ -249,7 +249,7 @@
               />
             </div>
             <div class="flex justify-between text-xs mt-6">
-              <span class="text-muted">{{ form.type }} 岗位允许的经费来源</span>
+              <span class="text-muted">{{ $t('admin.publish.allowedFunds', { type: form.type }) }}</span>
               <span class="fw-600" :class="fundAllowed ? '' : 'text-error'">{{ allowedFundText }}</span>
             </div>
           </div>
@@ -257,9 +257,9 @@
           <!-- Department Quota Check -->
           <div class="guard-block mt-12">
             <div class="flex justify-between text-xs">
-              <span class="text-muted">{{ validation.quotaInfo.deptName }} 剩余名额</span>
+              <span class="text-muted">{{ $t('admin.publish.deptQuota', { dept: deptShortName(store.db, form.deptId) }) }}</span>
               <span class="fw-600 tabular-nums" :class="validation.quotaExceeded ? 'text-error' : ''">
-                {{ validation.quotaInfo.remaining }} / {{ validation.quotaInfo.limit }} 人
+                {{ $t('admin.publish.quotaVal', { r: validation.quotaInfo.remaining, l: validation.quotaInfo.limit }) }}
               </span>
             </div>
           </div>
@@ -274,7 +274,7 @@
 
           <!-- Dynamic Approval Workflow Preview -->
           <div class="wf-preview mt-16 pt-12 border-t">
-            <div class="text-xs fw-600 mb-8">预计流转审批链（读取校级配置中心）</div>
+            <div class="text-xs fw-600 mb-8">{{ $t('admin.publish.wfPreview') }}</div>
             <div class="flex flex-col gap-6">
               <div v-for="(step, idx) in previewWorkflow" :key="step" class="wf-preview-item">
                 <span class="step-num">{{ idx + 1 }}</span>
@@ -284,7 +284,7 @@
           </div>
 
           <div class="mt-12 text-xs text-muted">
-            提示：可将经费账号切换为「青年探索微额科研基金（余额紧张）」或调高人数，立即体验前端预算超支红框硬拦截！
+            {{ $t('admin.publish.tip') }}
           </div>
         </div>
       </aside>
@@ -309,27 +309,35 @@ import {
   buildExtraFields,
   validateExtraFields,
   isFundAllowed,
-  fundSourceLabel
+  fundSourceLabel,
+  fieldLabel,
+  fieldPlaceholder,
+  optionLabel,
+  schemaText
 } from '@/services/jobSchema'
 import { api } from '@/services/api'
 import FluentIcon from '@/components/FluentIcon.vue'
 import ResearchProjectCheck from '@/components/ResearchProjectCheck.vue'
+import { useI18n } from '@/i18n'
+import { deptName, deptShortName, localizedList } from './adminI18n'
 
 const store = useAppStore()
+const { t } = useI18n()
 const router = useRouter()
 const user = computed(() => store.currentUser)
 
 // 岗位类型差异化字段配置（配置中心可编辑）
 const schemas = computed(() => getJobTypeSchemas(store.db))
 const jobTypes = computed(() =>
-  JOB_TYPES.map((t) => ({ value: t, title: schemas.value[t]?.label || t, desc: schemas.value[t]?.desc || '' }))
+  JOB_TYPES.map((type) => ({ value: type, title: schemaText(type, schemas.value[type], 'label'), desc: schemaText(type, schemas.value[type], 'desc') }))
 )
 
 const defaultDeptId = user.value?.deptId && user.value.deptId !== 'DEPT_OFFICE' ? user.value.deptId : 'DEPT_CS'
 
 const form = reactive({
   type: 'TA',
-  title: '《计算机体系结构（双语）》课程助教',
+  // 演示默认值（属于用户可改的数据）：按进入页面时的语言填入
+  title: t('admin.publish.defaults.title'),
   deptId: defaultDeptId,
   budgetId: 'B_CS_TA',
   quota: 2,
@@ -338,14 +346,14 @@ const form = reactive({
   weeks: 16,
   allowInternational: true,
   deadline: defaultJobDeadline(),
-  description: '协助主讲教师组织双语实验课、批改作业并维护课程评测环境。'
+  description: t('admin.publish.defaults.description')
 })
 
 const schema = computed(() => schemas.value[form.type] || { fields: [] })
 // 当前类型的差异化字段取值（键为配置里的 key）
 const extra = ref(initialExtraValues(schema.value))
 
-const skillsInput = ref('Python, 计算机系统, 英语授课')
+const skillsInput = ref(t('admin.publish.defaults.skills'))
 const submitting = ref(false)
 
 const selectableBudgets = computed(() => {
@@ -356,11 +364,13 @@ const selectableBudgets = computed(() => {
 const validation = computed(() => validateJobPublish(store.db, form))
 const selectedBudget = computed(() => store.getBudget(form.budgetId))
 const fundAllowed = computed(() => isFundAllowed(schema.value, selectedBudget.value))
-const allowedFundText = computed(() => (schema.value.allowedFundSources || []).map(fundSourceLabel).join('、') || '不限')
+const allowedFundText = computed(
+  () => (schema.value.allowedFundSources || []).map(fundSourceLabel).join(t('admin.common.listSep')) || t('admin.common.unlimited')
+)
 const extraErrors = computed(() => validateExtraFields(schema.value, extra.value))
 const blockingErrors = computed(() => [
-  ...(validation.value.ok ? [] : validation.value.errors),
-  ...(fundAllowed.value ? [] : [`${form.type} 岗位只能使用${allowedFundText.value}`]),
+  ...(validation.value.ok ? [] : localizedList(validation.value, 'errors')),
+  ...(fundAllowed.value ? [] : [t('admin.publish.fundOnly', { type: form.type, funds: allowedFundText.value })]),
   ...extraErrors.value
 ])
 const canSubmit = computed(() => validation.value.ok && fundAllowed.value && extraErrors.value.length === 0)
@@ -400,14 +410,9 @@ function isWideField(field, idx) {
 }
 
 function stepName(key) {
-  const map = {
-    MENTOR_SUBMIT: '导师/科室提交申请',
-    DEPT_REVIEW: '院系名额与经费初审',
-    INTL_REVIEW: '国际生办专项会签（面向国际生触发）',
-    SCHOOL_REVIEW: '校级专项经费终审',
-    PUBLISHED: '正式发布至学生招聘大厅'
-  }
-  return map[key] || key
+  const k = `admin.publish.stepsLong.${key}`
+  const v = t(k)
+  return v === k ? key : v
 }
 
 function parseSkills() {
@@ -422,7 +427,12 @@ function parseSkills() {
 function currentExtraFields() {
   const extraFields = buildExtraFields(schema.value, extra.value)
   if (form.type === 'TA' && extraFields.scheduleText) {
-    extraFields.scheduleSlots = [{ day: '每周固定', time: extraFields.scheduleText, room: '教务排定教室', task: '课程辅导与答疑' }]
+    extraFields.scheduleSlots = [{
+      day: t('admin.publish.defaults.slotDay'),
+      time: extraFields.scheduleText,
+      room: t('admin.publish.defaults.slotRoom'),
+      task: t('admin.publish.defaults.slotTask')
+    }]
   }
   return extraFields
 }
@@ -453,19 +463,19 @@ async function handleSubmit() {
 
 const templates = computed(() => store.db.jobTemplates || [])
 const selectedTemplateId = ref('')
-const selectedTemplate = computed(() => templates.value.find((t) => t.id === selectedTemplateId.value) || null)
+const selectedTemplate = computed(() => templates.value.find((tpl) => tpl.id === selectedTemplateId.value) || null)
 const showSaveTemplate = ref(false)
 const templateBusy = ref(false)
 const templateForm = reactive({ name: '', global: false })
 
-function canDeleteTemplate(t) {
-  return user.value?.role === 'SCHOOL_ADMIN' || t.createdBy === user.value?.id
+function canDeleteTemplate(tpl) {
+  return user.value?.role === 'SCHOOL_ADMIN' || tpl.createdBy === user.value?.id
 }
 
-function applyTemplate(t) {
-  if (!t) return
-  const p = t.payload || {}
-  switchJobType(t.type)
+function applyTemplate(tpl) {
+  if (!tpl) return
+  const p = tpl.payload || {}
+  switchJobType(tpl.type)
   for (const key of ['quota', 'hourlyRate', 'weeklyHours', 'weeks']) {
     if (p[key] !== undefined && p[key] !== null && p[key] !== '') form[key] = Number(p[key])
   }
@@ -482,7 +492,7 @@ function applyTemplate(t) {
     values[f.key] = f.type === 'lines' && Array.isArray(v) ? v.join('\n') : v
   }
   extra.value = values
-  store.notify(`已套用模板「${t.name}」，请补充岗位名称等信息`, 'info')
+  store.notify(t('admin.publish.templateApplied', { name: tpl.name }), 'info')
 }
 
 async function saveTemplate() {
@@ -506,11 +516,11 @@ async function saveTemplate() {
   }
 }
 
-async function removeTemplate(t) {
-  if (!window.confirm(`确定删除模板「${t.name}」吗？`)) return
+async function removeTemplate(tpl) {
+  if (!window.confirm(t('admin.publish.confirmDeleteTemplate', { name: tpl.name }))) return
   templateBusy.value = true
   try {
-    const res = await store.mutate(() => api.deleteJobTemplate({ templateId: t.id }))
+    const res = await store.mutate(() => api.deleteJobTemplate({ templateId: tpl.id }))
     if (res.code === 200) selectedTemplateId.value = ''
   } finally {
     templateBusy.value = false

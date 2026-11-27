@@ -3,17 +3,17 @@
     <!-- Greeting Header -->
     <header class="dash-header">
       <div>
-        <h1 class="dash-greeting">你好，{{ user?.name }}</h1>
+        <h1 class="dash-greeting">{{ $t('admin.dashboard.greeting', { name: user?.name }) }}</h1>
         <p class="text-xs text-muted mt-4">
-          {{ user?.roleLabel }} · {{ store.db.meta.currentMonth }} · 第 {{ store.db.meta.currentWeekNo }} 周
+          {{ $t('admin.dashboard.subline', { role: roleLabel(user?.role, user?.roleLabel), month: store.db.meta.currentMonth, week: store.db.meta.currentWeekNo }) }}
         </p>
       </div>
       <div class="flex items-center gap-8">
         <router-link v-if="canPublish" to="/admin/jobs/publish" class="f-btn f-btn-primary">
           <FluentIcon name="plus" :size="15" />
-          <span>发布新岗位</span>
+          <span>{{ $t('admin.dashboard.publish') }}</span>
         </router-link>
-        <router-link to="/admin/reports" class="f-btn">报表归档</router-link>
+        <router-link to="/admin/reports" class="f-btn">{{ $t('admin.dashboard.reports') }}</router-link>
       </div>
     </header>
 
@@ -21,7 +21,7 @@
     <section class="kpi-grid">
       <div class="acrylic-card kpi-card">
         <div class="flex items-center justify-between">
-          <span class="kpi-label">预算执行率</span>
+          <span class="kpi-label">{{ $t('admin.dashboard.budgetRate') }}</span>
           <span class="kpi-icon blue"><FluentIcon name="wallet" :size="16" /></span>
         </div>
         <div class="kpi-num tabular-nums mt-12">{{ budgetStats.rate }}<span class="kpi-unit">%</span></div>
@@ -36,7 +36,7 @@
 
       <div class="acrylic-card kpi-card">
         <div class="flex items-center justify-between">
-          <span class="kpi-label">异常预警</span>
+          <span class="kpi-label">{{ $t('admin.dashboard.anomalies') }}</span>
           <span class="kpi-icon" :class="anomalies.length ? 'error' : 'neutral'">
             <FluentIcon name="alert" :size="16" />
           </span>
@@ -45,27 +45,27 @@
           <span>{{ anomalies.length }}</span>
           <span v-if="anomalies.length" class="f-dot-error" />
         </div>
-        <div class="text-xs text-muted mt-10">其中涉及国际生 {{ intlWarningCount }} 条</div>
+        <div class="text-xs text-muted mt-10">{{ $t('admin.dashboard.intlCount', { n: intlWarningCount }) }}</div>
       </div>
 
       <div class="acrylic-card kpi-card">
         <div class="flex items-center justify-between">
-          <span class="kpi-label">待我处理</span>
+          <span class="kpi-label">{{ $t('admin.dashboard.pending') }}</span>
           <span class="kpi-icon blue"><FluentIcon name="briefcase" :size="16" /></span>
         </div>
         <div class="kpi-num tabular-nums mt-12">{{ pendingMyActions }}</div>
         <div class="text-xs text-muted mt-10">
-          岗位 {{ pendingJobs.length }} · 申请 {{ pendingApps.length }} · 工时 {{ pendingTsCount }}
+          {{ $t('admin.dashboard.pendingBreakdown', { jobs: pendingJobs.length, apps: pendingApps.length, ts: pendingTsCount }) }}
         </div>
       </div>
 
       <div class="acrylic-card kpi-card">
         <div class="flex items-center justify-between">
-          <span class="kpi-label">在岗聘用</span>
+          <span class="kpi-label">{{ $t('admin.dashboard.activeHires') }}</span>
           <span class="kpi-icon success"><FluentIcon name="users" :size="16" /></span>
         </div>
-        <div class="kpi-num tabular-nums mt-12">{{ activeContracts.length }}<span class="kpi-unit">人</span></div>
-        <div class="text-xs text-muted mt-10">待签电子协议 {{ pendingSignContracts.length }} 份</div>
+        <div class="kpi-num tabular-nums mt-12">{{ activeContracts.length }}<span class="kpi-unit">{{ $t('admin.dashboard.peopleUnit') }}</span></div>
+        <div class="text-xs text-muted mt-10">{{ $t('admin.dashboard.pendingSign', { n: pendingSignContracts.length }) }}</div>
       </div>
     </section>
 
@@ -74,8 +74,8 @@
       <!-- Left: Anomalies (Clean list with click-to-expand) -->
       <div class="acrylic-card p-20 flex-col gap-12">
         <div class="flex items-center justify-between">
-          <h2 class="text-sub">合规与工时预警</h2>
-          <router-link to="/admin/timesheets" class="f-btn-link text-xs">工时审核 →</router-link>
+          <h2 class="text-sub">{{ $t('admin.dashboard.warnTitle') }}</h2>
+          <router-link to="/admin/timesheets" class="f-btn-link text-xs">{{ $t('admin.dashboard.toTimesheets') }}</router-link>
         </div>
 
         <div v-if="anomalies.length" class="clean-list">
@@ -88,7 +88,7 @@
             <div class="flex items-center justify-between gap-10">
               <div class="flex items-center gap-10 min-w-0">
                 <span :class="w.severity === 'error' ? 'f-dot-error' : 'f-dot-caution'" />
-                <span class="fw-600 text-sm truncate">{{ w.title }}</span>
+                <span class="fw-600 text-sm truncate">{{ localized(w, 'title') }}</span>
               </div>
               <div class="flex items-center gap-6">
                 <span class="f-pill" :class="w.severity === 'error' ? 'f-pill-error' : 'f-pill-caution'">
@@ -98,18 +98,18 @@
               </div>
             </div>
             <div v-if="expandedWarns.has(w.id)" class="row-detail text-xs text-muted mt-8">
-              {{ w.detail }}
+              {{ localized(w, 'detail') }}
             </div>
           </div>
         </div>
-        <EmptyState v-else icon="check-circle" description="当前范围内一切正常，无异常预警" />
+        <EmptyState v-else icon="check-circle" :description="$t('admin.dashboard.noWarn')" />
       </div>
 
       <!-- Right: Budget Pools -->
       <div class="acrylic-card p-20 flex-col gap-12">
         <div class="flex items-center justify-between">
-          <h2 class="text-sub">经费池实时余额</h2>
-          <router-link to="/admin/payroll" class="f-btn-link text-xs">财务发放 →</router-link>
+          <h2 class="text-sub">{{ $t('admin.dashboard.budgetTitle') }}</h2>
+          <router-link to="/admin/payroll" class="f-btn-link text-xs">{{ $t('admin.dashboard.toPayroll') }}</router-link>
         </div>
 
         <div class="clean-list">
@@ -122,7 +122,7 @@
             <div class="flex items-center justify-between gap-10">
               <span class="fw-600 text-sm truncate">{{ b.name }}</span>
               <span class="text-xs fw-600 tabular-nums" :class="budgetUtil(b) >= 85 ? 'text-error' : 'text-blue'">
-                余 ¥{{ getBudgetAvailable(b).toLocaleString() }}
+                {{ $t('admin.dashboard.remaining', { n: getBudgetAvailable(b).toLocaleString() }) }}
               </span>
             </div>
             <div class="f-progress-track mt-8">
@@ -133,8 +133,8 @@
               />
             </div>
             <div v-if="expandedBudgets.has(b.id)" class="flex justify-between text-xs text-muted mt-8 tabular-nums">
-              <span>{{ b.code }} · {{ b.sourceLabel }}</span>
-              <span>已发 ¥{{ b.usedAmount.toLocaleString() }} / 冻结 ¥{{ b.frozenAmount.toLocaleString() }}</span>
+              <span>{{ b.code }} · {{ isEn ? fundSourceLabel(b.sourceType) : b.sourceLabel || fundSourceLabel(b.sourceType) }}</span>
+              <span>{{ $t('admin.dashboard.usedFrozen', { used: b.usedAmount.toLocaleString(), frozen: b.frozenAmount.toLocaleString() }) }}</span>
             </div>
           </div>
         </div>
@@ -144,30 +144,30 @@
     <!-- Recent Jobs Table -->
     <section class="acrylic-card table-card">
       <div class="flex items-center justify-between p-20 pb-12">
-        <h2 class="text-sub">近期岗位动态</h2>
-        <router-link to="/admin/jobs" class="f-btn f-btn-sm">查看全部</router-link>
+        <h2 class="text-sub">{{ $t('admin.dashboard.recentJobs') }}</h2>
+        <router-link to="/admin/jobs" class="f-btn f-btn-sm">{{ $t('admin.dashboard.viewAll') }}</router-link>
       </div>
 
       <div class="f-table-wrap">
         <table class="f-table">
           <thead>
             <tr>
-              <th>岗位名称</th>
-              <th>类型</th>
-              <th>院系</th>
-              <th>预计经费</th>
-              <th>状态</th>
+              <th>{{ $t('admin.dashboard.colTitle') }}</th>
+              <th>{{ $t('admin.common.type') }}</th>
+              <th>{{ $t('admin.common.dept') }}</th>
+              <th>{{ $t('admin.dashboard.colCost') }}</th>
+              <th>{{ $t('admin.common.status') }}</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="job in visibleJobs.slice(0, 5)" :key="job.id">
               <td class="fw-600">{{ job.title }}</td>
               <td><span class="f-type-tag" :class="job.type.toLowerCase()">{{ job.type }}</span></td>
-              <td class="text-muted">{{ store.getDeptShortName(job.deptId) }}</td>
+              <td class="text-muted">{{ deptShortName(store.db, job.deptId) }}</td>
               <td class="tabular-nums">¥{{ calcJobBudgetCost(job).toLocaleString() }}</td>
               <td>
                 <span class="f-pill" :class="`f-pill-${JOB_STATUS_MAP[job.status]?.tone || 'neutral'}`">
-                  {{ JOB_STATUS_MAP[job.status]?.label || job.status }}
+                  {{ statusLabel(JOB_STATUS_MAP, job.status) }}
                 </span>
               </td>
             </tr>
@@ -192,8 +192,12 @@ import {
 } from '@/services/ruleEngine'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import { useI18n } from '@/i18n'
+import { fundSourceLabel } from '@/services/jobSchema'
+import { roleLabel, deptShortName, statusLabel } from './adminI18n'
 
 const store = useAppStore()
+const { t, isEn, localized } = useI18n()
 const user = computed(() => store.currentUser)
 
 const expandedWarns = ref(new Set())
@@ -251,7 +255,9 @@ const pendingMyActions = computed(() => pendingJobs.value.length + pendingApps.v
 
 function budgetUtil(b) { return getBudgetUtilization(b) }
 function categoryLabel(cat) {
-  return { HOURS_LIMIT: '工时预警', MISSING_TIMESHEET: '未填报', EXPIRING_SOON: '临期', VISA_EXPIRING: '签证到期' }[cat] || '预警'
+  const key = `admin.dashboard.categories.${cat}`
+  const v = t(key)
+  return v === key ? t('admin.dashboard.categories.other') : v
 }
 </script>
 

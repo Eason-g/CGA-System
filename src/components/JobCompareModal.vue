@@ -1,12 +1,12 @@
 <template>
   <div class="f-overlay" @click.self="$emit('close')">
-    <div class="f-modal xl" role="dialog" aria-modal="true" aria-label="三助岗位横向对比">
+    <div class="f-modal xl" role="dialog" aria-modal="true" :aria-label="t('compare.dialogLabel')">
       <header class="f-modal-header">
         <div>
-          <h2 class="text-sub">岗位横向对比（{{ items.length }} 个）</h2>
-          <p class="text-xs text-muted mt-2">结合您的个人学籍与当前已占周工时实时试算，高亮最优项辅助决策</p>
+          <h2 class="text-sub">{{ t('compare.title', { n: items.length }) }}</h2>
+          <p class="text-xs text-muted mt-2">{{ t('compare.subtitle') }}</p>
         </div>
-        <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="$emit('close')" aria-label="关闭">
+        <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="$emit('close')" :aria-label="t('common.close')">
           <FluentIcon name="close" :size="18" />
         </button>
       </header>
@@ -16,14 +16,14 @@
           <table class="compare-table">
             <thead>
               <tr>
-                <th class="dim-col">对比维度</th>
+                <th class="dim-col">{{ t('compare.dimension') }}</th>
                 <th v-for="it in items" :key="it.job.id" class="job-col">
                   <div class="flex items-center justify-between gap-6">
                     <span class="f-type-tag" :class="it.job.type.toLowerCase()">{{ it.job.type }}</span>
                     <button
                       type="button"
                       class="remove-col-btn"
-                      title="移出对比"
+                      :title="t('compare.removeCol')"
                       @click="$emit('remove', it.job.id)"
                     >
                       <FluentIcon name="close" :size="13" />
@@ -36,48 +36,48 @@
             </thead>
             <tbody>
               <tr>
-                <td class="dim-label">岗位时薪</td>
+                <td class="dim-label">{{ t('detail.hourlyRate') }}</td>
                 <td v-for="it in items" :key="it.job.id" class="tabular-nums">
                   <span class="big-val" :class="{ best: it.job.hourlyRate === maxRate }">
                     ¥{{ it.job.hourlyRate }}/h
                   </span>
-                  <span v-if="it.job.hourlyRate === maxRate && items.length > 1" class="f-pill f-pill-success ml-6">最高</span>
+                  <span v-if="it.job.hourlyRate === maxRate && items.length > 1" class="f-pill f-pill-success ml-6">{{ t('compare.highest') }}</span>
                 </td>
               </tr>
 
               <tr>
-                <td class="dim-label">聘期总收入预估</td>
+                <td class="dim-label">{{ t('detail.estIncome') }}</td>
                 <td v-for="it in items" :key="it.job.id" class="tabular-nums">
                   <span class="fw-600" :class="{ best: it.totalIncome === maxIncome }">
                     ¥{{ it.totalIncome.toLocaleString() }}
                   </span>
-                  <span v-if="it.totalIncome === maxIncome && items.length > 1" class="f-pill f-pill-blue ml-6">总酬最高</span>
+                  <span v-if="it.totalIncome === maxIncome && items.length > 1" class="f-pill f-pill-blue ml-6">{{ t('compare.highestTotal') }}</span>
                 </td>
               </tr>
 
               <tr>
-                <td class="dim-label">每周工时 / 聘期</td>
+                <td class="dim-label">{{ t('compare.hoursAndWeeks') }}</td>
                 <td v-for="it in items" :key="it.job.id" class="tabular-nums">
-                  <strong>{{ it.job.weeklyHours }}h/周</strong> · 共 {{ it.job.weeks }} 周
+                  <strong>{{ t('unit.hoursPerWeek', { n: it.job.weeklyHours }) }}</strong> · {{ t('compare.totalWeeks', { n: it.job.weeks }) }}
                 </td>
               </tr>
 
               <tr>
-                <td class="dim-label">跨岗工时合规试算</td>
+                <td class="dim-label">{{ t('compare.hoursCheck') }}</td>
                 <td v-for="it in items" :key="it.job.id">
                   <div class="flex items-center gap-6 flex-wrap">
                     <span class="f-pill" :class="it.check.passed ? 'f-pill-success' : 'f-pill-error'">
-                      {{ it.check.passed ? '全部合规 ✓' : '触发拦截 ✕' }}
+                      {{ it.check.passed ? t('compare.compliant') : t('compare.blocked') }}
                     </span>
                   </div>
                   <div class="text-xs text-muted mt-4 tabular-nums">
-                    选此岗累计：{{ it.check.projectedHours }}h / {{ it.check.maxHours }}h
+                    {{ t('compare.projected', { total: it.check.projectedHours, max: it.check.maxHours }) }}
                   </div>
                 </td>
               </tr>
 
               <tr>
-                <td class="dim-label">专业技能匹配度</td>
+                <td class="dim-label">{{ t('compare.skillMatch') }}</td>
                 <td v-for="it in items" :key="it.job.id" class="tabular-nums">
                   <div class="flex items-center gap-8">
                     <span class="fw-600" :class="{ best: it.match.score === maxMatch }">{{ it.match.score }}%</span>
@@ -89,32 +89,32 @@
               </tr>
 
               <tr>
-                <td class="dim-label">国际生与语言门槛</td>
+                <td class="dim-label">{{ t('compare.intlLang') }}</td>
                 <td v-for="it in items" :key="it.job.id" class="text-xs">
-                  <div>{{ it.job.allowInternational ? '面向国际生开放' : '仅限中国籍学生' }}</div>
-                  <div class="text-muted mt-2">{{ it.job.extraFields?.languageRequirement || '无特殊语言限制' }}</div>
+                  <div>{{ it.job.allowInternational ? t('compare.intlOpen') : t('compare.domesticOnly') }}</div>
+                  <div class="text-muted mt-2">{{ it.job.extraFields?.languageRequirement || t('compare.noLangReq') }}</div>
                 </td>
               </tr>
 
               <tr>
-                <td class="dim-label">剩余名额 / 截止</td>
+                <td class="dim-label">{{ t('compare.quotaDeadline') }}</td>
                 <td v-for="it in items" :key="it.job.id" class="text-xs tabular-nums">
-                  <div>余 <strong>{{ Math.max(0, it.job.quota - it.job.hiredCount) }}</strong> / {{ it.job.quota }} 人</div>
-                  <div class="text-muted mt-2">{{ it.job.deadline }} 截止</div>
+                  <div>{{ t('compare.leftPre') }}<strong>{{ Math.max(0, it.job.quota - it.job.hiredCount) }}</strong> {{ t('compare.leftPost', { total: it.job.quota }) }}</div>
+                  <div class="text-muted mt-2">{{ t('jobs.deadlineOn', { date: it.job.deadline }) }}</div>
                 </td>
               </tr>
 
               <tr>
-                <td class="dim-label">核心工作安排</td>
+                <td class="dim-label">{{ t('compare.arrangement') }}</td>
                 <td v-for="it in items" :key="it.job.id" class="text-xs text-muted">
                   <template v-if="it.job.type === 'TA'">{{ it.job.extraFields?.scheduleText || '-' }}</template>
-                  <template v-else-if="it.job.type === 'RA'">{{ it.job.extraFields?.researchDirection }}（{{ it.job.extraFields?.milestones?.length || 0 }}项里程碑）</template>
+                  <template v-else-if="it.job.type === 'RA'">{{ it.job.extraFields?.researchDirection }} ({{ t('compare.milestoneCount', { n: it.job.extraFields?.milestones?.length || 0 }) }})</template>
                   <template v-else>{{ it.job.extraFields?.officeDept }} · {{ it.job.extraFields?.dutyShift }}</template>
                 </td>
               </tr>
 
               <tr>
-                <td class="dim-label">快速操作</td>
+                <td class="dim-label">{{ t('compare.quickAction') }}</td>
                 <td v-for="it in items" :key="it.job.id">
                   <button
                     type="button"
@@ -123,7 +123,7 @@
                     :disabled="it.check.alreadyApplied || it.check.quotaFull"
                     @click="$emit('apply', it.job)"
                   >
-                    {{ it.check.alreadyApplied ? '已投递' : it.check.quotaFull ? '已招满' : '申请此岗位' }}
+                    {{ it.check.alreadyApplied ? t('jobs.applied') : it.check.quotaFull ? t('jobs.full') : t('compare.apply') }}
                   </button>
                 </td>
               </tr>
@@ -133,8 +133,8 @@
       </div>
 
       <footer class="f-modal-footer justify-between">
-        <button type="button" class="f-btn f-btn-sm" @click="$emit('clear')">清空对比栏</button>
-        <button type="button" class="f-btn f-btn-sm" @click="$emit('close')">关闭</button>
+        <button type="button" class="f-btn f-btn-sm" @click="$emit('clear')">{{ t('compare.clear') }}</button>
+        <button type="button" class="f-btn f-btn-sm" @click="$emit('close')">{{ t('common.close') }}</button>
       </footer>
     </div>
   </div>
@@ -144,6 +144,7 @@
 import { computed } from 'vue'
 import { useAppStore } from '@/stores/appStore'
 import { validateStudentApplication, calcSkillMatch } from '@/services/ruleEngine'
+import { useI18n } from '@/i18n'
 import FluentIcon from './FluentIcon.vue'
 
 const props = defineProps({
@@ -152,6 +153,7 @@ const props = defineProps({
 
 defineEmits(['close', 'remove', 'clear', 'apply'])
 const store = useAppStore()
+const { t } = useI18n()
 
 const items = computed(() =>
   props.jobs.map((job) => ({

@@ -6,7 +6,7 @@
           <div v-if="subtitle" class="text-xs text-muted">{{ subtitle }}</div>
           <h2 class="text-sub mt-4">{{ title }}</h2>
         </div>
-        <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="$emit('close')" aria-label="关闭抽屉">
+        <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="$emit('close')" :aria-label="$t('admin.drawer.close')">
           <FluentIcon name="close" :size="18" />
         </button>
       </header>
@@ -17,7 +17,7 @@
         <section v-if="auditLogs && auditLogs.length" class="drawer-audit-section">
           <div class="section-heading">
             <FluentIcon name="history" :size="16" />
-            <span>全流程审计留痕时间轴（{{ auditLogs.length }}）</span>
+            <span>{{ $t('admin.drawer.timeline', { n: auditLogs.length }) }}</span>
           </div>
           <div class="f-timeline mt-12">
             <div v-for="log in auditLogs" :key="log.id" class="f-timeline-item">
@@ -33,7 +33,7 @@
                 {{ log.opinion }}
               </div>
               <div v-if="log.beforeValue || log.afterValue" class="text-xs text-muted mt-4">
-                变更：<span>{{ log.beforeValue || '-' }}</span> → <span class="text-blue fw-600">{{ log.afterValue || '-' }}</span>
+                {{ $t('admin.drawer.change') }}<span>{{ log.beforeValue || '-' }}</span> → <span class="text-blue fw-600">{{ log.afterValue || '-' }}</span>
               </div>
             </div>
           </div>
@@ -58,10 +58,11 @@ defineProps({
 
 defineEmits(['close'])
 
+// 审计日志的操作名是中文留痕记录，这里按原文关键字决定圆点颜色
 function dotTone(action = '') {
-  if (action.includes('驳回') || action.includes('未录用') || action.includes('拦截')) return 'error'
-  if (action.includes('特批')) return 'caution'
-  if (action.includes('通过') || action.includes('录用') || action.includes('发放') || action.includes('签署')) return 'success'
+  if (action.includes('驳回') || action.includes('未录用') || action.includes('拦截')) return 'error' // i18n-ignore
+  if (action.includes('特批')) return 'caution' // i18n-ignore
+  if (action.includes('通过') || action.includes('录用') || action.includes('发放') || action.includes('签署')) return 'success' // i18n-ignore
   return ''
 }
 </script>

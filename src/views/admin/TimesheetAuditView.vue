@@ -1,11 +1,11 @@
 <template>
   <div class="flex-col gap-20">
     <header class="page-header">
-      <h1 class="text-title">工时审核与预警</h1>
+      <h1 class="text-title">{{ $t('admin.timesheets.title') }}</h1>
       <div class="f-segmented">
-        <button type="button" :class="{ active: statusTab === 'ALL' }" @click="statusTab = 'ALL'">全部</button>
-        <button type="button" :class="{ active: statusTab === 'PENDING' }" @click="statusTab = 'PENDING'">待审（{{ pendingCount }}）</button>
-        <button type="button" :class="{ active: statusTab === 'APPROVED' }" @click="statusTab = 'APPROVED'">已通过</button>
+        <button type="button" :class="{ active: statusTab === 'ALL' }" @click="statusTab = 'ALL'">{{ $t('admin.common.all') }}</button>
+        <button type="button" :class="{ active: statusTab === 'PENDING' }" @click="statusTab = 'PENDING'">{{ $t('admin.timesheets.tabPending', { n: pendingCount }) }}</button>
+        <button type="button" :class="{ active: statusTab === 'APPROVED' }" @click="statusTab = 'APPROVED'">{{ $t('admin.timesheets.tabApproved') }}</button>
       </div>
     </header>
 
@@ -14,17 +14,17 @@
       <div class="flex items-center justify-between cursor-pointer" @click="showAnomalies = !showAnomalies">
         <div class="flex items-center gap-8">
           <span class="f-dot-error" />
-          <span class="fw-600 text-sm">当前存在 {{ anomalies.length }} 条工时 / 聘期预警</span>
+          <span class="fw-600 text-sm">{{ $t('admin.timesheets.anomalyCount', { n: anomalies.length }) }}</span>
         </div>
         <button type="button" class="f-expand-trigger">
-          <span>{{ showAnomalies ? '收起' : '展开查看' }}</span>
+          <span>{{ showAnomalies ? $t('admin.common.collapse') : $t('admin.timesheets.showAll') }}</span>
           <FluentIcon :name="showAnomalies ? 'chevron-up' : 'chevron-down'" :size="14" />
         </button>
       </div>
       <div v-if="showAnomalies" class="anomaly-grid mt-12">
         <div v-for="w in anomalies" :key="w.id" class="anomaly-pill" :class="w.severity">
-          <div class="fw-600 text-xs">{{ w.title }}</div>
-          <div class="text-xs text-muted mt-4">{{ w.detail }}</div>
+          <div class="fw-600 text-xs">{{ localized(w, 'title') }}</div>
+          <div class="text-xs text-muted mt-4">{{ localized(w, 'detail') }}</div>
         </div>
       </div>
     </section>
@@ -34,12 +34,12 @@
         <table class="f-table f-table-sticky-action">
           <thead>
             <tr>
-              <th>学生</th>
-              <th>在岗岗位</th>
-              <th>周次 / 工时</th>
-              <th>当周跨岗负荷</th>
-              <th>状态</th>
-              <th>操作</th>
+              <th>{{ $t('admin.common.student') }}</th>
+              <th>{{ $t('admin.timesheets.colJob') }}</th>
+              <th>{{ $t('admin.timesheets.colWeek') }}</th>
+              <th>{{ $t('admin.timesheets.colLoad') }}</th>
+              <th>{{ $t('admin.common.status') }}</th>
+              <th>{{ $t('admin.common.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -47,11 +47,11 @@
               <td>
                 <div class="flex items-center gap-6">
                   <span class="fw-600">{{ store.getUser(ts.studentId)?.name }}</span>
-                  <span v-if="store.getUser(ts.studentId)?.isInternational" class="f-pill f-pill-blue">国际生</span>
+                  <span v-if="store.getUser(ts.studentId)?.isInternational" class="f-pill f-pill-blue">{{ $t('admin.common.intl') }}</span>
                 </div>
               </td>
               <td>{{ store.getJob(ts.jobId)?.title }}</td>
-              <td class="tabular-nums fw-600">第 {{ ts.weekNo }} 周 · {{ ts.hours }}h</td>
+              <td class="tabular-nums fw-600">{{ $t('admin.timesheets.weekVal', { w: ts.weekNo, h: ts.hours }) }}</td>
               <td style="min-width: 140px;">
                 <div class="text-xs text-muted tabular-nums">{{ weekTotal(ts.studentId, ts.weekNo) }}/{{ maxCap(ts.studentId) }}h</div>
                 <div class="f-progress-track mt-4">
@@ -67,7 +67,7 @@
                   class="f-pill"
                   :class="ts.status === 'APPROVED' ? 'f-pill-success' : ts.status === 'REJECTED' ? 'f-pill-error' : 'f-pill-caution'"
                 >
-                  {{ ts.status === 'APPROVED' ? '已通过' : ts.status === 'REJECTED' ? '已驳回' : '待审核' }}
+                  {{ $t(`admin.tsStatus.${['APPROVED', 'REJECTED'].includes(ts.status) ? ts.status : 'PENDING'}`) }}
                 </span>
               </td>
               <td>
@@ -77,19 +77,19 @@
                   :class="ts.status === 'PENDING' && canAudit ? 'f-btn-primary' : ''"
                   @click="openAuditDrawer(ts)"
                 >
-                  {{ ts.status === 'PENDING' && canAudit ? '审核' : '详情' }}
+                  {{ ts.status === 'PENDING' && canAudit ? $t('admin.timesheets.review') : $t('admin.common.details') }}
                 </button>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
-      <EmptyState v-else icon="clock" description="暂无工时记录" />
+      <EmptyState v-else icon="clock" :description="$t('admin.timesheets.empty')" />
     </section>
 
     <AuditDrawer
       v-if="selectedTs"
-      :title="`第 ${selectedTs.weekNo} 周工时 · ${selectedTs.hours}h`"
+      :title="$t('admin.timesheets.drawerTitle', { w: selectedTs.weekNo, h: selectedTs.hours })"
       :subtitle="`${selectedTs.id} · ${store.getUser(selectedTs.studentId)?.name}`"
       :audit-logs="selectedTsLogs"
       @close="selectedTsId = null"
@@ -97,18 +97,18 @@
       <div class="drawer-card">
         <div class="fw-600 text-sm">{{ store.getJob(selectedTs.jobId)?.title }}</div>
         <div class="text-xs text-muted mt-6 tabular-nums">
-          当周跨岗累计：{{ weekTotal(selectedTs.studentId, selectedTs.weekNo) }}/{{ maxCap(selectedTs.studentId) }}h
+          {{ $t('admin.timesheets.weekTotal', { t: weekTotal(selectedTs.studentId, selectedTs.weekNo), m: maxCap(selectedTs.studentId) }) }}
         </div>
         <div class="quote-box mt-10 text-xs">{{ selectedTs.workLog }}</div>
-        <div v-if="selectedTs.milestoneRef" class="text-xs text-blue mt-8">关联：{{ selectedTs.milestoneRef }}</div>
-        <div v-if="selectedTs.mentorComment" class="text-xs text-muted mt-6">评语：{{ selectedTs.mentorComment }}</div>
+        <div v-if="selectedTs.milestoneRef" class="text-xs text-blue mt-8">{{ $t('admin.timesheets.milestone', { m: selectedTs.milestoneRef }) }}</div>
+        <div v-if="selectedTs.mentorComment" class="text-xs text-muted mt-6">{{ $t('admin.timesheets.comment', { c: selectedTs.mentorComment }) }}</div>
       </div>
 
       <template v-if="selectedTs.status === 'PENDING' && canAudit" #footer>
-        <input v-model="auditComment" type="text" class="f-input" placeholder="审核意见（选填）..." />
+        <input v-model="auditComment" type="text" class="f-input" :placeholder="$t('admin.timesheets.commentPh')" />
         <div class="flex gap-8 justify-end">
-          <button type="button" class="f-btn f-btn-danger-outline" :disabled="busy" @click="handleReview('REJECT')">驳回</button>
-          <button type="button" class="f-btn f-btn-primary" :disabled="busy" @click="handleReview('APPROVE')">通过</button>
+          <button type="button" class="f-btn f-btn-danger-outline" :disabled="busy" @click="handleReview('REJECT')">{{ $t('admin.common.reject') }}</button>
+          <button type="button" class="f-btn f-btn-primary" :disabled="busy" @click="handleReview('APPROVE')">{{ $t('admin.timesheets.approve') }}</button>
         </div>
       </template>
     </AuditDrawer>
@@ -123,8 +123,10 @@ import { api } from '@/services/api'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import AuditDrawer from '@/components/AuditDrawer.vue'
+import { useI18n } from '@/i18n'
 
 const store = useAppStore()
+const { localized } = useI18n()
 const user = computed(() => store.currentUser)
 
 const statusTab = ref('ALL')

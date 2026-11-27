@@ -1,15 +1,15 @@
 <template>
   <div class="portal-page flex-col gap-20">
     <header class="flex items-center justify-between flex-wrap gap-12">
-      <h1 class="text-title">工时与合同</h1>
+      <h1 class="text-title">{{ t('nav.contracts') }}</h1>
       <span class="f-pill f-pill-blue tabular-nums">
-        第 {{ currentWeek }} 周已报 {{ currentWeekLogged }}/{{ maxHours }}h
+        {{ t('contracts.weekLogged', { week: currentWeek, used: currentWeekLogged, max: maxHours }) }}
       </span>
     </header>
 
     <!-- Section 1: Electronic Contracts (Clean cards with expandable Schedule/Milestones) -->
     <section class="flex-col gap-10">
-      <h2 class="text-sm fw-600 text-muted">电子聘用协议（{{ myContracts.length }}）</h2>
+      <h2 class="text-sm fw-600 text-muted">{{ t('contracts.title', { n: myContracts.length }) }}</h2>
 
       <div v-if="myContracts.length" class="flex-col gap-10">
         <div
@@ -26,19 +26,19 @@
                 </span>
                 <span class="fw-600 text-lg">{{ store.getJob(c.jobId)?.title }}</span>
                 <span class="f-pill" :class="c.status === 'ACTIVE' ? 'f-pill-success' : 'f-pill-caution'">
-                  {{ c.status === 'ACTIVE' ? '履约中' : '待签署' }}
+                  {{ c.status === 'ACTIVE' ? t('contractStatus.ACTIVE') : t('contractStatus.PENDING_SIGN') }}
                 </span>
                 <span v-if="daysLeft(c.endDate) <= 15 && c.status === 'ACTIVE'" class="f-pill f-pill-error">
-                  剩 {{ Math.max(0, daysLeft(c.endDate)) }} 天到期
+                  {{ t('contracts.daysLeft', { n: Math.max(0, daysLeft(c.endDate)) }) }}
                 </span>
               </div>
               <div class="f-meta-line mt-6 tabular-nums">
                 <span>{{ c.startDate }} ~ {{ c.endDate }}</span>
                 <span class="f-meta-sep">·</span>
-                <span>{{ c.weeklyHours }}h/周 · ¥{{ c.hourlyRate }}/h</span>
+                <span>{{ t('unit.hoursPerWeek', { n: c.weeklyHours }) }} · ¥{{ c.hourlyRate }}/h</span>
                 <template v-if="feedbackSummaries[c.id]?.count">
                   <span class="f-meta-sep">·</span>
-                  <span>服务对象评价 {{ feedbackSummaries[c.id].avgRating }} 星（{{ feedbackSummaries[c.id].count }} 条）</span>
+                  <span>{{ t('contracts.feedback', { avg: feedbackSummaries[c.id].avgRating, n: feedbackSummaries[c.id].count }) }}</span>
                 </template>
               </div>
             </div>
@@ -50,14 +50,14 @@
                 class="f-expand-trigger"
                 @click="toggleContract(c.id)"
               >
-                <span>{{ store.getJob(c.jobId)?.type === 'TA' ? '课程表' : '里程碑' }}</span>
+                <span>{{ store.getJob(c.jobId)?.type === 'TA' ? t('contracts.schedule') : t('contracts.milestones') }}</span>
                 <FluentIcon :name="expandedContracts.has(c.id) ? 'chevron-up' : 'chevron-down'" :size="14" />
               </button>
               <button v-if="c.status === 'PENDING_SIGN'" type="button" class="f-btn f-btn-primary f-btn-sm" @click="signingContract = c">
                 <FluentIcon name="pen" :size="14" />
-                <span>手写签署</span>
+                <span>{{ t('contracts.sign') }}</span>
               </button>
-              <button v-else type="button" class="f-btn f-btn-sm" @click="store.openArchive(c.id)">电子档案</button>
+              <button v-else type="button" class="f-btn f-btn-sm" @click="store.openArchive(c.id)">{{ t('contracts.archive') }}</button>
             </div>
           </div>
 
@@ -80,19 +80,19 @@
         </div>
       </div>
       <div v-else class="acrylic-card">
-        <EmptyState icon="file" description="暂无电子聘用协议" />
+        <EmptyState icon="file" :description="t('contracts.empty')" />
       </div>
     </section>
 
     <!-- Section 2: Timesheet Submission + History -->
     <section class="ts-layout">
       <form class="acrylic-card p-20 flex-col gap-12" @submit.prevent="handleTimesheetSubmit">
-        <h2 class="text-lg fw-600">填报本周工时</h2>
+        <h2 class="text-lg fw-600">{{ t('contracts.tsFormTitle') }}</h2>
 
         <div class="f-field">
-          <label class="f-label">在岗职位 <span class="req">*</span></label>
+          <label class="f-label">{{ t('contracts.tsPosition') }} <span class="req">*</span></label>
           <select v-model="tsForm.contractId" class="f-select" required>
-            <option value="" disabled>选择已生效协议</option>
+            <option value="" disabled>{{ t('contracts.tsPickContract') }}</option>
             <option v-for="c in activeSignedContracts" :key="c.id" :value="c.id">
               [{{ store.getJob(c.jobId)?.type }}] {{ store.getJob(c.jobId)?.title }}
             </option>
@@ -101,73 +101,73 @@
 
         <div class="grid-2">
           <div class="f-field">
-            <label class="f-label">周次</label>
+            <label class="f-label">{{ t('contracts.tsWeek') }}</label>
             <input v-model.number="tsForm.weekNo" type="number" min="1" :max="currentWeek" class="f-input tabular-nums" required />
           </div>
           <div class="f-field">
-            <label class="f-label">实际工时（h）</label>
+            <label class="f-label">{{ t('contracts.tsHours') }}</label>
             <input v-model.number="tsForm.hours" type="number" min="0.1" :max="remainingWeekHours" step="0.1" class="f-input tabular-nums" required />
           </div>
         </div>
 
         <div class="f-banner" :class="tsCheck.ok ? 'info' : 'error'">
           <FluentIcon :name="tsCheck.ok ? 'check-circle' : 'x-circle'" :size="15" />
-          <span class="text-xs fw-600">{{ tsCheck.message }}</span>
+          <span class="text-xs fw-600">{{ tsCheckMessage }}</span>
         </div>
 
         <div class="f-field">
-          <label class="f-label">工作日志 <span class="req">*</span></label>
-          <textarea v-model="tsForm.workLog" class="f-textarea" rows="3" required placeholder="简述本周工作内容..." />
+          <label class="f-label">{{ t('contracts.tsLog') }} <span class="req">*</span></label>
+          <textarea v-model="tsForm.workLog" class="f-textarea" rows="3" required :placeholder="t('contracts.tsLogPlaceholder')" />
         </div>
 
         <button type="submit" class="f-btn f-btn-primary" :disabled="!tsForm.contractId || !tsCheck.ok || submitting">
-          提交工时
+          {{ t('contracts.tsSubmit') }}
         </button>
       </form>
 
       <div class="acrylic-card table-card">
         <div class="p-16 border-b">
-          <h2 class="text-lg fw-600">工时记录（{{ myTimesheets.length }}）</h2>
+          <h2 class="text-lg fw-600">{{ t('contracts.tsHistory', { n: myTimesheets.length }) }}</h2>
         </div>
         <div v-if="myTimesheets.length" class="f-table-wrap">
           <table class="f-table">
             <thead>
               <tr>
-                <th>周次</th>
-                <th>岗位</th>
-                <th>工时</th>
-                <th>状态</th>
-                <th>日志</th>
+                <th>{{ t('contracts.tsWeek') }}</th>
+                <th>{{ t('contracts.colJob') }}</th>
+                <th>{{ t('contracts.colHours') }}</th>
+                <th>{{ t('common.status') }}</th>
+                <th>{{ t('contracts.colLog') }}</th>
               </tr>
             </thead>
             <tbody>
-              <template v-for="t in myTimesheets" :key="t.id">
+              <template v-for="ts in myTimesheets" :key="ts.id">
                 <tr>
-                  <td class="tabular-nums fw-600">第{{ t.weekNo }}周</td>
-                  <td class="text-xs fw-600">{{ store.getJob(t.jobId)?.title }}</td>
-                  <td class="tabular-nums fw-600 text-blue">{{ t.hours }}h</td>
+                  <td class="tabular-nums fw-600">{{ t('unit.weekNo', { n: ts.weekNo }) }}</td>
+                  <td class="text-xs fw-600">{{ store.getJob(ts.jobId)?.title }}</td>
+                  <td class="tabular-nums fw-600 text-blue">{{ ts.hours }}h</td>
                   <td>
-                    <span class="f-pill" :class="t.status === 'APPROVED' ? 'f-pill-success' : t.status === 'REJECTED' ? 'f-pill-error' : 'f-pill-caution'">
-                      {{ t.status === 'APPROVED' ? '通过' : t.status === 'REJECTED' ? '驳回' : '待审' }}
+                    <span class="f-pill" :class="ts.status === 'APPROVED' ? 'f-pill-success' : ts.status === 'REJECTED' ? 'f-pill-error' : 'f-pill-caution'">
+                      {{ ts.status === 'APPROVED' ? t('tsStatus.APPROVED') : ts.status === 'REJECTED' ? t('tsStatus.REJECTED') : t('tsStatus.PENDING') }}
                     </span>
                   </td>
                   <td>
-                    <button type="button" class="f-expand-trigger" @click="toggleTs(t.id)">
-                      <span>{{ expandedTs.has(t.id) ? '收起' : '查看' }}</span>
+                    <button type="button" class="f-expand-trigger" @click="toggleTs(ts.id)">
+                      <span>{{ expandedTs.has(ts.id) ? t('common.collapse') : t('common.view') }}</span>
                     </button>
                   </td>
                 </tr>
-                <tr v-if="expandedTs.has(t.id)" class="expand-row">
+                <tr v-if="expandedTs.has(ts.id)" class="expand-row">
                   <td colspan="5" class="text-xs">
-                    <div>{{ t.workLog }}</div>
-                    <div v-if="t.mentorComment" class="text-muted mt-4">导师反馈：{{ t.mentorComment }}</div>
+                    <div>{{ ts.workLog }}</div>
+                    <div v-if="ts.mentorComment" class="text-muted mt-4">{{ t('contracts.mentorFeedback') }}{{ ts.mentorComment }}</div>
                   </td>
                 </tr>
               </template>
             </tbody>
           </table>
         </div>
-        <EmptyState v-else icon="clock" description="暂无工时记录" />
+        <EmptyState v-else icon="clock" :description="t('contracts.tsEmpty')" />
       </div>
     </section>
 
@@ -181,11 +181,13 @@ import { useAppStore } from '@/stores/appStore'
 import { getStudentWeekLoggedHours, validateTimesheetSubmission, daysUntil, getMaxWeeklyHours } from '@/services/ruleEngine'
 import { api } from '@/services/api'
 import { isHttpMode } from '@/services/http'
+import { useI18n } from '@/i18n'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import ContractSignModal from '@/components/ContractSignModal.vue'
 
 const store = useAppStore()
+const { t } = useI18n()
 const student = computed(() => store.currentUser)
 const currentWeek = computed(() => store.db.meta.currentWeekNo || 1)
 const maxHours = computed(() => getMaxWeeklyHours(store.db, student.value))
@@ -231,6 +233,15 @@ watchEffect(() => {
 const tsCheck = computed(() =>
   validateTimesheetSubmission(store.db, student.value || { id: '', maxWeeklyHours: 20 }, tsForm.weekNo, tsForm.hours)
 )
+
+// 工时校验提示：用校验结果里的数字按当前语言拼文案（规则判断仍由 validateTimesheetSubmission 完成）
+const tsCheckMessage = computed(() => {
+  const c = tsCheck.value
+  const hours = Number(tsForm.hours || 0)
+  if (hours <= 0) return t('contracts.tsCheckZero')
+  const params = { week: tsForm.weekNo, total: c.projectedHours, existing: c.existingHours, n: hours, max: c.maxHours }
+  return c.ok ? t('contracts.tsCheckOk', params) : t('contracts.tsCheckOver', params)
+})
 
 function hasLinkage(jobId) {
   const j = store.getJob(jobId)

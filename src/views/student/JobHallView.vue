@@ -3,8 +3,8 @@
     <!-- Airy Editorial Hero with Unified Elevated Search Capsule -->
     <section class="hero-section">
       <div class="hero-inner">
-        <div class="hero-eyebrow">{{ store.schoolName }} · 三助招募</div>
-        <h1 class="hero-title mt-8">探索适合你的助教、助研与助管岗位</h1>
+        <div class="hero-eyebrow">{{ store.schoolName }} · {{ t('jobs.eyebrow') }}</div>
+        <h1 class="hero-title mt-8">{{ t('jobs.heroTitle') }}</h1>
 
         <div class="unified-search mt-20">
           <FluentIcon name="search" :size="17" class="u-search-ic" />
@@ -12,10 +12,10 @@
             v-model="keyword"
             type="text"
             class="u-search-input"
-            placeholder="输入岗位名称、课程代码或技能关键词..."
+            :placeholder="t('jobs.searchPlaceholder')"
           />
           <button type="button" class="f-btn f-btn-primary u-search-btn" @click="keyword = keyword.trim()">
-            搜索岗位
+            {{ t('jobs.searchBtn') }}
           </button>
         </div>
 
@@ -37,7 +37,7 @@
             @click="sortByMatch = !sortByMatch"
           >
             <FluentIcon name="sparkles" :size="13" />
-            <span>技能推荐</span>
+            <span>{{ t('jobs.skillSort') }}</span>
           </button>
         </div>
       </div>
@@ -46,8 +46,8 @@
     <!-- Mobile Compact Pinned Hours Strip -->
     <div class="mobile-hours-strip">
       <div class="flex items-center justify-between text-xs">
-        <span class="fw-600">已占周工时 {{ allocatedHours }}/{{ maxHours }}h</span>
-        <span :class="remainingHours <= 4 ? 'text-error fw-600' : 'text-blue fw-600'">可报余量 {{ remainingHours }}h</span>
+        <span class="fw-600">{{ t('jobs.allocatedHours', { used: allocatedHours, max: maxHours }) }}</span>
+        <span :class="remainingHours <= 4 ? 'text-error fw-600' : 'text-blue fw-600'">{{ t('jobs.remainingHours', { n: remainingHours }) }}</span>
       </div>
       <div class="f-progress-track mt-6">
         <div
@@ -63,14 +63,14 @@
       <!-- Left 8 Columns: Clean Uniform Job Cards -->
       <section class="jobs-column">
         <!-- 为你推荐（P2 C.2）：http 模式取后端推荐前 3 个；mock 模式按技能匹配在前端估算 -->
-        <section v-if="recommendCards.length" class="rec-section" aria-label="为你推荐">
+        <section v-if="recommendCards.length" class="rec-section" :aria-label="t('jobs.recommended')">
           <div class="rec-head">
             <h2 class="rec-heading">
               <FluentIcon name="sparkles" :size="15" />
-              <span>为你推荐</span>
+              <span>{{ t('jobs.recommended') }}</span>
             </h2>
             <span class="text-xs text-muted">
-              {{ isHttpMode ? '综合技能匹配、剩余周工时、语言要求、院系与截止日打分' : '演示模式：按技能匹配估算' }}
+              {{ isHttpMode ? t('jobs.recHintHttp') : t('jobs.recHintMock') }}
             </span>
           </div>
           <div class="rec-grid">
@@ -82,18 +82,18 @@
             >
               <div class="flex items-center justify-between gap-8">
                 <span class="f-type-tag" :class="r.job.type.toLowerCase()">{{ r.job.type }}</span>
-                <span class="rec-score tabular-nums" :title="isHttpMode ? '推荐度（0–100）' : '技能匹配度'">
-                  {{ r.score }}<small>{{ isHttpMode ? '分' : '%' }}</small>
+                <span class="rec-score tabular-nums" :title="isHttpMode ? t('jobs.recScoreTitle') : t('jobs.matchScoreTitle')">
+                  {{ r.score }}<small>{{ isHttpMode ? t('jobs.scoreUnit') : '%' }}</small>
                 </span>
               </div>
               <h3 class="rec-title">{{ r.job.title }}</h3>
               <ul class="rec-reasons">
-                <li v-for="(t, i) in r.reasons.slice(0, 3)" :key="i">{{ t }}</li>
+                <li v-for="(reason, i) in r.reasons.slice(0, 3)" :key="i">{{ reason }}</li>
               </ul>
               <div v-if="r.blockers.length" class="rec-blocker">{{ r.blockers[0] }}</div>
               <div class="rec-actions">
-                <button type="button" class="f-btn f-btn-sm" @click.stop="detailJob = r.job">详情</button>
-                <button type="button" class="f-btn f-btn-primary f-btn-sm" @click.stop="applyModalJob = r.job">一键申请</button>
+                <button type="button" class="f-btn f-btn-sm" @click.stop="detailJob = r.job">{{ t('common.details') }}</button>
+                <button type="button" class="f-btn f-btn-primary f-btn-sm" @click.stop="applyModalJob = r.job">{{ t('jobs.applyNow') }}</button>
               </div>
             </article>
           </div>
@@ -101,9 +101,9 @@
 
         <div class="flex items-center justify-between mb-14 flex-wrap gap-8">
           <span class="text-xs text-muted">
-            在招岗位 <strong class="text-text tabular-nums">{{ displayedJobs.length }}</strong> 个 · 点击岗位可打开右侧详情，或勾选最多 3 个横向对比
+            {{ t('jobs.openCountPre') }} <strong class="text-text tabular-nums">{{ displayedJobs.length }}</strong> {{ t('jobs.openCountPost') }}
           </span>
-          <span v-if="sortByMatch" class="f-pill f-pill-blue">{{ isHttpMode && recData ? '已按智能推荐排序' : '已按技能匹配排序' }}</span>
+          <span v-if="sortByMatch" class="f-pill f-pill-blue">{{ isHttpMode && recData ? t('jobs.sortedByRec') : t('jobs.sortedByMatch') }}</span>
         </div>
 
         <div v-if="displayedJobs.length" class="job-stream">
@@ -122,21 +122,21 @@
                 <div class="f-meta-line mt-8">
                   <span>{{ store.getDeptShortName(item.job.deptId) }}</span>
                   <span class="f-meta-sep">·</span>
-                  <span class="tabular-nums">{{ item.job.weeklyHours }}h/周 · {{ item.job.weeks }}周</span>
+                  <span class="tabular-nums">{{ t('unit.hoursPerWeek', { n: item.job.weeklyHours }) }} · {{ t('unit.weeks', { n: item.job.weeks }) }}</span>
                   <span class="f-meta-sep">·</span>
-                  <span class="tabular-nums">余 {{ Math.max(0, item.job.quota - item.job.hiredCount) }}/{{ item.job.quota }} 名额</span>
+                  <span class="tabular-nums">{{ t('jobs.openings', { left: Math.max(0, item.job.quota - item.job.hiredCount), total: item.job.quota }) }}</span>
                   <template v-if="item.job.allowInternational">
                     <span class="f-meta-sep">·</span>
-                    <span class="text-blue fw-600">国际生可报</span>
+                    <span class="text-blue fw-600">{{ t('jobs.intlEligible') }}</span>
                   </template>
                   <template v-if="sortByMatch && item.rec">
                     <span class="f-meta-sep">·</span>
-                    <span v-if="item.rec.applicable" class="text-success fw-600">推荐度 {{ item.rec.score }}</span>
-                    <span v-else class="text-error fw-600">不可申请</span>
+                    <span v-if="item.rec.applicable" class="text-success fw-600">{{ t('jobs.recScore', { n: item.rec.score }) }}</span>
+                    <span v-else class="text-error fw-600">{{ t('jobs.notEligible') }}</span>
                   </template>
                   <template v-else-if="sortByMatch && !useBackendSort && item.match.matched.length">
                     <span class="f-meta-sep">·</span>
-                    <span class="text-success fw-600">匹配 {{ item.match.score }}%</span>
+                    <span class="text-success fw-600">{{ t('jobs.matchPct', { n: item.match.score }) }}</span>
                   </template>
                 </div>
               </div>
@@ -149,12 +149,12 @@
             <div class="job-bottom mt-14">
               <div class="flex items-center gap-10">
                 <span class="text-xs text-subtle">
-                  {{ store.getUser(item.job.mentorId)?.name || '-' }} · {{ item.job.deadline }} 截止
+                  {{ store.getUser(item.job.mentorId)?.name || '-' }} · {{ t('jobs.deadlineOn', { date: item.job.deadline }) }}
                 </span>
               </div>
 
               <div class="flex items-center gap-8">
-                <span v-if="!item.check.alreadyApplied && !item.check.passed" class="f-pill f-pill-caution">需合规/特批</span>
+                <span v-if="!item.check.alreadyApplied && !item.check.passed" class="f-pill f-pill-caution">{{ t('jobs.needsApproval') }}</span>
                 <button
                   type="button"
                   class="compare-toggle-btn"
@@ -162,10 +162,10 @@
                   @click.stop="toggleCompare(item.job.id)"
                 >
                   <FluentIcon :name="compareIds.includes(item.job.id) ? 'check' : 'compare'" :size="13" />
-                  <span>{{ compareIds.includes(item.job.id) ? '已加对比' : '对比' }}</span>
+                  <span>{{ compareIds.includes(item.job.id) ? t('jobs.compared') : t('jobs.compare') }}</span>
                 </button>
                 <button type="button" class="f-btn f-btn-sm" @click.stop="detailJob = item.job">
-                  详情
+                  {{ t('common.details') }}
                 </button>
                 <button
                   type="button"
@@ -173,7 +173,7 @@
                   :disabled="item.check.alreadyApplied || item.check.quotaFull"
                   @click.stop="applyModalJob = item.job"
                 >
-                  {{ item.check.alreadyApplied ? '已投递' : item.check.quotaFull ? '已招满' : '一键申请' }}
+                  {{ item.check.alreadyApplied ? t('jobs.applied') : item.check.quotaFull ? t('jobs.full') : t('jobs.applyNow') }}
                 </button>
               </div>
             </div>
@@ -183,8 +183,8 @@
         <EmptyState
           v-else
           icon="search"
-          description="未找到符合条件的岗位"
-          action-text="查看全部岗位"
+          :description="t('jobs.emptyDesc')"
+          :action-text="t('jobs.emptyAction')"
           @action="resetFilters"
         />
       </section>
@@ -194,14 +194,14 @@
         <!-- Card 1: Weekly Hours Gauge -->
         <div class="acrylic-card p-20">
           <div class="flex items-center justify-between">
-            <h3 class="text-sm fw-600">跨岗周工时</h3>
+            <h3 class="text-sm fw-600">{{ t('jobs.weeklyHoursTitle') }}</h3>
             <span class="f-pill" :class="hoursRatio >= 100 ? 'f-pill-error' : hoursRatio >= 80 ? 'f-pill-caution' : 'f-pill-blue'">
               {{ allocatedHours }}/{{ maxHours }}h
             </span>
           </div>
 
           <div class="gauge-row mt-14">
-            <svg viewBox="0 0 100 100" class="ring-svg" aria-label="周工时占比">
+            <svg viewBox="0 0 100 100" class="ring-svg" :aria-label="t('jobs.ringLabel')">
               <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(15,23,42,0.07)" stroke-width="9" />
               <circle
                 cx="50"
@@ -215,7 +215,7 @@
                 transform="rotate(-90 50 50)"
               />
               <text x="50" y="48" text-anchor="middle" font-size="18" font-weight="600" fill="#181c22">{{ allocatedHours }}h</text>
-              <text x="50" y="63" text-anchor="middle" font-size="9.5" fill="#5c6573">余 {{ remainingHours }}h</text>
+              <text x="50" y="63" text-anchor="middle" font-size="9.5" fill="#5c6573">{{ t('jobs.ringLeft', { n: remainingHours }) }}</text>
             </svg>
 
             <div class="flex-1 flex-col gap-8 min-w-0">
@@ -226,7 +226,7 @@
                 <span class="text-xs truncate flex-1">{{ store.getJob(c.jobId)?.title }}</span>
                 <strong class="text-xs tabular-nums">{{ c.weeklyHours }}h</strong>
               </div>
-              <div v-if="!myActiveContracts.length" class="text-xs text-muted">当前无已占工时</div>
+              <div v-if="!myActiveContracts.length" class="text-xs text-muted">{{ t('jobs.noAllocated') }}</div>
             </div>
           </div>
         </div>
@@ -234,35 +234,35 @@
         <!-- Card 2: Personal Compliance -->
         <div class="acrylic-card p-20">
           <div class="flex items-center justify-between">
-            <h3 class="text-sm fw-600">合规资质</h3>
-            <router-link to="/student/profile" class="f-btn-link text-xs">个人主页 →</router-link>
+            <h3 class="text-sm fw-600">{{ t('jobs.complianceTitle') }}</h3>
+            <router-link to="/student/profile" class="f-btn-link text-xs">{{ t('jobs.profileLink') }}</router-link>
           </div>
 
           <div class="qual-summary mt-12">
             <div v-if="student?.isInternational" class="qual-item">
               <FluentIcon :name="student.visaValid ? 'check-circle' : 'x-circle'" :size="15" :class="student.visaValid ? 'ic-ok' : 'ic-err'" />
-              <span>签证：{{ student.visaValid ? 'X1 有效' : '失效' }}</span>
+              <span>{{ t('jobs.visaLabel') }}{{ student.visaValid ? t('jobs.visaValid') : t('jobs.visaInvalid') }}</span>
             </div>
             <div class="qual-item">
               <FluentIcon name="check-circle" :size="15" class="ic-ok" />
-              <span>语言：{{ student?.languageCert }}</span>
+              <span>{{ t('jobs.langLabel') }}{{ student?.languageCert }}</span>
             </div>
             <div class="qual-item">
               <FluentIcon :name="pendingSignContracts.length ? 'alert' : 'check-circle'" :size="15" :class="pendingSignContracts.length ? 'ic-warn' : 'ic-ok'" />
-              <span>电子协议：{{ pendingSignContracts.length ? '有待签署' : '已生效' }}</span>
+              <span>{{ t('jobs.contractLabel') }}{{ pendingSignContracts.length ? t('jobs.contractPending') : t('jobs.contractActive') }}</span>
             </div>
           </div>
         </div>
 
         <!-- Card 3: Contextual To-Dos -->
         <div v-if="pendingSignContracts.length || missingWeek12Contracts.length" class="acrylic-card p-20">
-          <h3 class="text-sm fw-600 mb-10">待办提醒</h3>
+          <h3 class="text-sm fw-600 mb-10">{{ t('jobs.todoTitle') }}</h3>
           <div class="flex-col gap-8">
             <router-link v-for="c in pendingSignContracts" :key="c.id" to="/student/contracts" class="todo-item caution">
-              <span>待签合同 · {{ store.getJob(c.jobId)?.title }}</span>
+              <span>{{ t('jobs.todoSign') }} · {{ store.getJob(c.jobId)?.title }}</span>
             </router-link>
             <router-link v-if="missingWeek12Contracts.length" to="/student/contracts" class="todo-item info">
-              <span>第 {{ store.db.meta.currentWeekNo }} 周工时待填报 →</span>
+              <span>{{ t('jobs.todoTimesheet', { n: store.db.meta.currentWeekNo }) }}</span>
             </router-link>
           </div>
         </div>
@@ -275,13 +275,13 @@
         <div v-for="j in comparedJobs" :key="j.id" class="dock-chip">
           <span class="f-type-tag" :class="j.type.toLowerCase()">{{ j.type }}</span>
           <span class="dock-chip-title truncate">{{ j.title }}</span>
-          <button type="button" class="dock-remove" @click="toggleCompare(j.id)" aria-label="移除">
+          <button type="button" class="dock-remove" @click="toggleCompare(j.id)" :aria-label="t('common.remove')">
             <FluentIcon name="close" :size="12" />
           </button>
         </div>
       </div>
       <div class="dock-actions">
-        <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="compareIds = []">清空</button>
+        <button type="button" class="f-btn f-btn-subtle f-btn-sm" @click="compareIds = []">{{ t('common.clear') }}</button>
         <button
           type="button"
           class="f-btn f-btn-primary f-btn-sm"
@@ -289,7 +289,7 @@
           @click="showCompareModal = true"
         >
           <FluentIcon name="compare" :size="14" />
-          <span>开始对比 ({{ comparedJobs.length }}/3)</span>
+          <span>{{ t('jobs.startCompare', { n: comparedJobs.length }) }}</span>
         </button>
       </div>
     </div>
@@ -334,6 +334,7 @@ import {
   validateStudentApplication,
   calcSkillMatch
 } from '@/services/ruleEngine'
+import { useI18n } from '@/i18n'
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import ApplyJobModal from '@/components/ApplyJobModal.vue'
@@ -341,6 +342,7 @@ import JobDetailDrawer from '@/components/JobDetailDrawer.vue'
 import JobCompareModal from '@/components/JobCompareModal.vue'
 
 const store = useAppStore()
+const { t, isEn } = useI18n()
 const student = computed(() => store.currentUser)
 
 const keyword = ref('')
@@ -351,13 +353,13 @@ const detailJob = ref(null)
 const compareIds = ref([])
 const showCompareModal = ref(false)
 
-const filterPills = [
-  { key: 'ALL', label: '全部岗位' },
-  { key: 'TA', label: '助教 TA' },
-  { key: 'RA', label: '助研 RA' },
-  { key: 'GA', label: '助管 GA' },
-  { key: 'INTL', label: '国际生可报' }
-]
+const filterPills = computed(() => [
+  { key: 'ALL', label: t('jobs.filterAll') },
+  { key: 'TA', label: t('jobs.filterTA') },
+  { key: 'RA', label: t('jobs.filterRA') },
+  { key: 'GA', label: t('jobs.filterGA') },
+  { key: 'INTL', label: t('jobs.intlEligible') }
+])
 
 // 优先使用快照里的 hoursSummary（后端跨院累计），没有时按可见合同计算
 const hoursSummary = computed(() => getStudentHoursSummary(store.db, student.value))
@@ -443,7 +445,10 @@ const recommendCards = computed(() => {
       .map((id) => {
         const item = recIndex.value.get(id)?.item
         const job = store.getJob(id)
-        return item && job ? { job, score: item.score, reasons: item.reasons || [], blockers: item.blockers || [] } : null
+        // 推荐理由由后端生成；英文模式下若后端提供 reasonsEn / blockersEn 则优先使用
+        const reasons = (isEn.value && item?.reasonsEn?.length ? item.reasonsEn : item?.reasons) || []
+        const blockers = (isEn.value && item?.blockersEn?.length ? item.blockersEn : item?.blockers) || []
+        return item && job ? { job, score: item.score, reasons, blockers } : null
       })
       .filter(Boolean)
   }
@@ -457,8 +462,8 @@ const recommendCards = computed(() => {
     .map((x) => ({
       job: x.job,
       score: x.match.score,
-      reasons: x.match.matched.length ? [`技能匹配：${x.match.matched.join('、')}`] : ['满足申请条件'],
-      blockers: x.check.passed ? [] : ['部分条件未满足，需特批']
+      reasons: x.match.matched.length ? [t('jobs.reasonSkills', { skills: x.match.matched.join(t('common.listSep')) })] : [t('jobs.reasonEligible')],
+      blockers: x.check.passed ? [] : [t('jobs.blockerSpecial')]
     }))
 })
 
@@ -472,7 +477,7 @@ function toggleCompare(jobId) {
     compareIds.value.splice(idx, 1)
   } else {
     if (compareIds.value.length >= 3) {
-      store.notify('最多同时对比 3 个岗位，请先移除一个再添加', 'caution')
+      store.notify(t('jobs.compareLimit'), 'caution')
       return
     }
     compareIds.value.push(jobId)

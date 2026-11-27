@@ -2,14 +2,14 @@
   <div class="flex-col gap-20">
     <header class="page-header">
       <div>
-        <h1 class="text-title">合规材料核验</h1>
+        <h1 class="text-title">{{ $t('admin.compliance.title') }}</h1>
         <div class="text-xs text-muted mt-4">
-          学生上传的语言证明、签证/居留许可材料在此核验；语言证明核验通过后才计入岗位申请的语言校验。
+          {{ $t('admin.compliance.desc') }}
         </div>
       </div>
       <div class="f-segmented">
-        <button type="button" :class="{ active: statusFilter === 'PENDING' }" @click="setFilter('PENDING')">待核验</button>
-        <button type="button" :class="{ active: statusFilter === '' }" @click="setFilter('')">全部</button>
+        <button type="button" :class="{ active: statusFilter === 'PENDING' }" @click="setFilter('PENDING')">{{ $t('admin.compliance.pending') }}</button>
+        <button type="button" :class="{ active: statusFilter === '' }" @click="setFilter('')">{{ $t('admin.common.all') }}</button>
       </div>
     </header>
 
@@ -18,28 +18,28 @@
 
     <div v-if="!isHttpMode" class="f-banner caution">
       <FluentIcon name="alert" :size="16" />
-      <span>该功能需要连接后端</span>
+      <span>{{ $t('admin.common.needBackend') }}</span>
     </div>
 
     <section v-else class="acrylic-card table-card">
-      <div v-if="loading" class="p-16 text-xs text-muted">加载中…</div>
+      <div v-if="loading" class="p-16 text-xs text-muted">{{ $t('admin.common.loading') }}</div>
       <div v-else-if="items.length" class="f-table-wrap">
         <table class="f-table f-table-sticky-action">
           <thead>
             <tr>
-              <th>学生</th>
-              <th>材料</th>
-              <th>学籍当前登记</th>
-              <th>上传时间</th>
-              <th>状态</th>
-              <th>操作</th>
+              <th>{{ $t('admin.common.student') }}</th>
+              <th>{{ $t('admin.compliance.colMaterial') }}</th>
+              <th>{{ $t('admin.compliance.colRecord') }}</th>
+              <th>{{ $t('admin.compliance.colUploaded') }}</th>
+              <th>{{ $t('admin.common.status') }}</th>
+              <th>{{ $t('admin.common.actions') }}</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="it in items" :key="it.attachment.id">
               <td>
                 <div class="fw-600">{{ it.student.name }}</div>
-                <div class="text-xs text-muted tabular-nums">{{ it.student.studentNo }} · {{ store.getDeptShortName(it.student.deptId) }}</div>
+                <div class="text-xs text-muted tabular-nums">{{ it.student.studentNo }} · {{ deptShortName(store.db, it.student.deptId) }}</div>
               </td>
               <td>
                 <div class="flex items-center gap-6">
@@ -51,16 +51,16 @@
               </td>
               <td class="text-xs">
                 <template v-if="it.attachment.kind === 'LANG_CERT'">
-                  {{ it.student.languageCert || '未登记' }}（等效 {{ it.student.languageLevel ?? '-' }}）
+                  {{ it.student.languageCert || $t('admin.common.notSet') }}{{ $t('admin.compliance.equiv', { n: it.student.languageLevel ?? '-' }) }}
                 </template>
                 <template v-else>
-                  {{ it.student.visaType || '未登记' }} · 有效期至 {{ it.student.visaExpiry || '未登记' }}
+                  {{ it.student.visaType || $t('admin.common.notSet') }} · {{ $t('admin.compliance.validUntil', { d: it.student.visaExpiry || $t('admin.common.notSet') }) }}
                 </template>
               </td>
               <td class="text-xs text-muted tabular-nums">{{ it.attachment.uploadedAt }}</td>
               <td>
                 <span class="f-pill" :class="`f-pill-${LANG_CERT_STATUS_MAP[it.attachment.verifyStatus]?.tone || 'neutral'}`">
-                  {{ LANG_CERT_STATUS_MAP[it.attachment.verifyStatus]?.label || '-' }}
+                  {{ statusLabel(LANG_CERT_STATUS_MAP, it.attachment.verifyStatus, '-') }}
                 </span>
                 <div v-if="it.attachment.verifyOpinion" class="text-xs text-muted mt-4 opinion">{{ it.attachment.verifyOpinion }}</div>
               </td>
@@ -71,42 +71,42 @@
                   class="f-btn f-btn-primary f-btn-sm"
                   @click="openVerify(it)"
                 >
-                  核验
+                  {{ $t('admin.compliance.verify') }}
                 </button>
-                <span v-else class="text-xs text-subtle">已处理</span>
+                <span v-else class="text-xs text-subtle">{{ $t('admin.compliance.handled') }}</span>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
-      <EmptyState v-else icon="shield" :description="statusFilter === 'PENDING' ? '暂无待核验材料' : '暂无材料'" />
+      <EmptyState v-else icon="shield" :description="statusFilter === 'PENDING' ? $t('admin.compliance.emptyPending') : $t('admin.compliance.empty')" />
     </section>
 
     <!-- 核验弹窗 -->
     <div v-if="current" class="f-overlay" @click.self="current = null">
-      <div class="f-modal" role="dialog" aria-modal="true" aria-label="核验合规材料">
+      <div class="f-modal" role="dialog" aria-modal="true" :aria-label="$t('admin.compliance.dialogLabel')">
         <header class="f-modal-header">
           <div>
             <div class="text-xs text-muted">{{ ATTACHMENT_KIND_MAP[current.attachment.kind] }} · {{ current.attachment.id }}</div>
             <h2 class="text-sub mt-4">{{ current.student.name }}</h2>
           </div>
-          <button type="button" class="f-btn f-btn-subtle f-btn-sm" aria-label="关闭" @click="current = null">
+          <button type="button" class="f-btn f-btn-subtle f-btn-sm" :aria-label="$t('admin.common.close')" @click="current = null">
             <FluentIcon name="close" :size="18" />
           </button>
         </header>
         <div class="f-modal-body flex-col gap-12">
           <div class="flex items-center gap-8 text-sm">
             <span class="truncate">{{ current.attachment.originalName }}</span>
-            <button type="button" class="f-btn f-btn-sm" @click="download(current.attachment)">下载查看原件</button>
+            <button type="button" class="f-btn f-btn-sm" @click="download(current.attachment)">{{ $t('admin.compliance.downloadOriginal') }}</button>
           </div>
           <template v-if="current.attachment.kind === 'LANG_CERT'">
             <div class="grid-2">
               <div class="f-field">
-                <label class="f-label">证书名称（可修正）</label>
-                <input v-model="form.languageCert" type="text" class="f-input" placeholder="如 IELTS 7.0" />
+                <label class="f-label">{{ $t('admin.compliance.certName') }}</label>
+                <input v-model="form.languageCert" type="text" class="f-input" :placeholder="$t('admin.compliance.certPh')" />
               </div>
               <div class="f-field">
-                <label class="f-label">等效分（雅思口径，可修正）</label>
+                <label class="f-label">{{ $t('admin.compliance.level') }}</label>
                 <input v-model="form.languageLevel" type="number" min="0" max="9" step="0.5" class="f-input tabular-nums" />
               </div>
             </div>
@@ -114,24 +114,24 @@
           <template v-else>
             <div class="grid-2">
               <div class="f-field">
-                <label class="f-label">签证类型（可修正）</label>
+                <label class="f-label">{{ $t('admin.compliance.visaType') }}</label>
                 <input v-model="form.visaType" type="text" class="f-input" />
               </div>
               <div class="f-field">
-                <label class="f-label">有效期至（可修正）</label>
+                <label class="f-label">{{ $t('admin.compliance.visaExpiry') }}</label>
                 <input v-model="form.visaExpiry" type="date" class="f-input" />
               </div>
             </div>
           </template>
           <div class="f-field">
-            <label class="f-label">核验意见（写入审计留痕）</label>
-            <input v-model="form.opinion" type="text" class="f-input" placeholder="如：原件核对一致 / 证书编号查询不到" />
+            <label class="f-label">{{ $t('admin.compliance.opinion') }}</label>
+            <input v-model="form.opinion" type="text" class="f-input" :placeholder="$t('admin.compliance.opinionPh')" />
           </div>
         </div>
         <footer class="f-modal-footer">
-          <button type="button" class="f-btn" @click="current = null">取消</button>
-          <button type="button" class="f-btn f-btn-danger-outline" :disabled="busy" @click="submitVerify('REJECT')">不通过</button>
-          <button type="button" class="f-btn f-btn-primary" :disabled="busy" @click="submitVerify('APPROVE')">核验通过</button>
+          <button type="button" class="f-btn" @click="current = null">{{ $t('admin.common.cancel') }}</button>
+          <button type="button" class="f-btn f-btn-danger-outline" :disabled="busy" @click="submitVerify('REJECT')">{{ $t('admin.compliance.rejectBtn') }}</button>
+          <button type="button" class="f-btn f-btn-primary" :disabled="busy" @click="submitVerify('APPROVE')">{{ $t('admin.compliance.approveBtn') }}</button>
         </footer>
       </div>
     </div>
@@ -147,8 +147,11 @@ import { materialFinanceApi, ATTACHMENT_KIND_MAP } from '@/services/materialFina
 import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import SisSyncPanel from '@/components/SisSyncPanel.vue'
+import { useI18n } from '@/i18n'
+import { deptShortName, statusLabel } from './adminI18n'
 
 const store = useAppStore()
+const { t, localized } = useI18n()
 const statusFilter = ref('PENDING')
 const items = ref([])
 const loading = ref(false)
@@ -162,7 +165,7 @@ async function load() {
   try {
     const res = await materialFinanceApi.listComplianceMaterials(statusFilter.value)
     if (res.code === 200) items.value = res.data || []
-    else store.notify(res.message || '加载失败', 'error')
+    else store.notify(localized(res, 'message') || t('admin.common.loadFailed'), 'error')
   } finally {
     loading.value = false
   }
@@ -209,7 +212,7 @@ async function submitVerify(decision) {
 
 async function download(a) {
   const res = await materialFinanceApi.downloadAttachment(a)
-  if (res.code !== 200) store.notify(res.message || '下载失败', 'error')
+  if (res.code !== 200) store.notify(localized(res, 'message') || t('admin.common.downloadFailed'), 'error')
 }
 
 onMounted(load)

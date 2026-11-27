@@ -5,7 +5,7 @@ import router from './router'
 import { setUnauthorizedHandler, setToken } from './services/http'
 import { takeSsoTicketFromUrl, setPendingSsoTicket } from './services/integrationApi'
 import { useAppStore } from './stores/appStore'
-import i18n from './i18n'
+import i18n, { t } from './i18n'
 import './styles/tokens.css'
 import './styles/fluent.css'
 
@@ -31,7 +31,7 @@ setUnauthorizedHandler(() => {
   const store = useAppStore()
   store.clearSession()
   if (router.currentRoute.value.name !== 'Login') {
-    store.notify('登录已失效，请重新登录', 'caution')
+    store.notify(t('toast.sessionExpired'), 'caution')
     router.push('/login')
   }
 })

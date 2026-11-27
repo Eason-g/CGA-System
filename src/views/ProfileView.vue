@@ -9,9 +9,9 @@
         <div class="min-w-0">
           <div class="flex items-center gap-8 flex-wrap">
             <h1 class="text-title">{{ user?.name }}</h1>
-            <span class="f-pill f-pill-blue">{{ user?.roleLabel }}</span>
+            <span class="f-pill f-pill-blue">{{ roleText }}</span>
             <span v-if="user?.isInternational" class="f-pill f-pill-success">
-              国际生 · {{ user.visaType?.slice(0, 2) || 'X1' }}有效
+              {{ t('profile.intlValid', { visa: user.visaType?.slice(0, 2) || 'X1' }) }}
             </span>
           </div>
           <div class="f-meta-line mt-6">
@@ -20,7 +20,7 @@
             <span>{{ store.getDeptName(user?.deptId) }}</span>
             <template v-if="user?.studentNo">
               <span class="f-meta-sep">·</span>
-              <span class="tabular-nums">学号 {{ user.studentNo }}</span>
+              <span class="tabular-nums">{{ t('profile.studentNo', { no: user.studentNo }) }}</span>
             </template>
             <template v-else-if="user?.title">
               <span class="f-meta-sep">·</span>
@@ -32,7 +32,7 @@
 
       <button type="button" class="f-btn" @click="toggleEdit">
         <FluentIcon name="pen" :size="14" />
-        <span>{{ editing ? '取消编辑' : '编辑资料' }}</span>
+        <span>{{ editing ? t('profile.cancelEdit') : t('profile.edit') }}</span>
       </button>
     </section>
 
@@ -40,7 +40,7 @@
     <section class="stats-grid">
       <template v-if="isStudent">
         <div class="acrylic-card stat-card">
-          <div class="text-xs text-muted">跨岗周工时</div>
+          <div class="text-xs text-muted">{{ t('jobs.weeklyHoursTitle') }}</div>
           <div class="stat-val tabular-nums mt-6">
             {{ allocatedHours }}<span class="stat-sub">/{{ maxHours }}h</span>
           </div>
@@ -53,38 +53,38 @@
           </div>
         </div>
         <div class="acrylic-card stat-card">
-          <div class="text-xs text-muted">在岗 / 待签协议</div>
-          <div class="stat-val tabular-nums mt-6">{{ myContracts.length }}<span class="stat-sub"> 份</span></div>
+          <div class="text-xs text-muted">{{ t('profile.contracts') }}</div>
+          <div class="stat-val tabular-nums mt-6">{{ myContracts.length }}<span class="stat-sub"> {{ t('profile.unitContracts') }}</span></div>
         </div>
         <div class="acrylic-card stat-card">
-          <div class="text-xs text-muted">累计已发薪酬</div>
+          <div class="text-xs text-muted">{{ t('profile.totalPaid') }}</div>
           <div class="stat-val text-blue tabular-nums mt-6">¥{{ totalPaid.toFixed(0) }}</div>
         </div>
         <div class="acrylic-card stat-card">
-          <div class="text-xs text-muted">最新考核结果</div>
+          <div class="text-xs text-muted">{{ t('profile.latestEval') }}</div>
           <div class="stat-val mt-6">
             <span v-if="latestEval">{{ latestEval.grade }}</span>
-            <span v-else class="text-muted text-lg">暂无</span>
+            <span v-else class="text-muted text-lg">{{ t('common.none') }}</span>
           </div>
         </div>
       </template>
 
       <template v-else>
         <div class="acrylic-card stat-card">
-          <div class="text-xs text-muted">数据隔离视野</div>
+          <div class="text-xs text-muted">{{ t('profile.scope') }}</div>
           <div class="stat-val-sm mt-8">{{ scopeLabel }}</div>
         </div>
         <div class="acrylic-card stat-card">
-          <div class="text-xs text-muted">可见三助岗位</div>
-          <div class="stat-val tabular-nums mt-6">{{ visibleJobsCount }}<span class="stat-sub"> 个</span></div>
+          <div class="text-xs text-muted">{{ t('profile.visibleJobs') }}</div>
+          <div class="stat-val tabular-nums mt-6">{{ visibleJobsCount }}<span class="stat-sub"> {{ t('profile.unitJobs') }}</span></div>
         </div>
         <div class="acrylic-card stat-card">
-          <div class="text-xs text-muted">个人审计操作记录</div>
-          <div class="stat-val tabular-nums mt-6">{{ myAuditLogs.length }}<span class="stat-sub"> 条</span></div>
+          <div class="text-xs text-muted">{{ t('profile.myAudit') }}</div>
+          <div class="stat-val tabular-nums mt-6">{{ myAuditLogs.length }}<span class="stat-sub"> {{ t('profile.unitRecords') }}</span></div>
         </div>
         <div class="acrylic-card stat-card">
-          <div class="text-xs text-muted">统一认证状态</div>
-          <div class="stat-val-sm text-success mt-8">CAS 已认证 ✓</div>
+          <div class="text-xs text-muted">{{ t('profile.ssoStatus') }}</div>
+          <div class="stat-val-sm text-success mt-8">{{ t('profile.ssoVerified') }}</div>
         </div>
       </template>
     </section>
@@ -95,81 +95,81 @@
       <div class="flex-col gap-16">
         <!-- Edit Drawer Inline Card when editing -->
         <form v-if="editing" class="acrylic-card p-20 flex-col gap-14" @submit.prevent="saveProfile">
-          <h2 class="text-sub">编辑个人资料</h2>
+          <h2 class="text-sub">{{ t('profile.editTitle') }}</h2>
           <div class="grid-2">
             <div class="f-field">
-              <label class="f-label">校园邮箱</label>
+              <label class="f-label">{{ t('profile.email') }}</label>
               <input v-model="editForm.email" type="email" class="f-input" />
             </div>
             <div class="f-field">
-              <label class="f-label">联系电话</label>
+              <label class="f-label">{{ t('profile.phone') }}</label>
               <input v-model="editForm.phone" type="text" class="f-input" />
             </div>
           </div>
           <div v-if="isStudent" class="f-field">
-            <label class="f-label">个人技能标签（逗号分隔，实时影响岗位大厅推荐排序）</label>
-            <input v-model="editForm.skillsText" type="text" class="f-input" placeholder="Python, 机器学习, 英语授课" />
+            <label class="f-label">{{ t('profile.skillsLabel') }}</label>
+            <input v-model="editForm.skillsText" type="text" class="f-input" :placeholder="t('profile.skillsPlaceholder')" />
           </div>
           <div class="f-field">
-            <label class="f-label">个人简介</label>
-            <textarea v-model="editForm.bio" class="f-textarea" rows="2" placeholder="简述研究兴趣、教学专长或负责业务..." />
+            <label class="f-label">{{ t('profile.bio') }}</label>
+            <textarea v-model="editForm.bio" class="f-textarea" rows="2" :placeholder="t('profile.bioPlaceholder')" />
           </div>
           <div class="flex justify-end gap-8">
-            <button type="button" class="f-btn f-btn-sm" @click="editing = false">取消</button>
-            <button type="submit" class="f-btn f-btn-primary f-btn-sm" :disabled="saving">保存修改</button>
+            <button type="button" class="f-btn f-btn-sm" @click="editing = false">{{ t('common.cancel') }}</button>
+            <button type="submit" class="f-btn f-btn-primary f-btn-sm" :disabled="saving">{{ t('profile.saveChanges') }}</button>
           </div>
         </form>
 
         <!-- Student Academic & Compliance Profile -->
         <div v-if="isStudent" class="acrylic-card p-20 flex-col gap-14">
-          <h2 class="text-sub">学籍档案与合规资质</h2>
+          <h2 class="text-sub">{{ t('profile.academicTitle') }}</h2>
           <div class="kv-list">
             <div class="kv-item">
-              <span class="kv-k">培养层次 / 专业</span>
+              <span class="kv-k">{{ t('profile.degreeMajor') }}</span>
               <span class="kv-v">{{ user.degree }} · {{ user.major }}</span>
             </div>
             <div class="kv-item">
-              <span class="kv-k">学籍状态</span>
-              <span class="kv-v fw-600" :class="enrollmentStatusOf(user) === '在读' ? 'text-success' : 'text-error'">
-                {{ enrollmentStatusOf(user) }}（以学籍系统同步为准，非在读不可申请三助岗位）
+              <span class="kv-k">{{ t('profile.enrollment') }}</span>
+              <span class="kv-v fw-600" :class="enrollmentStatusOf(user) === ENROLLMENT_ACTIVE ? 'text-success' : 'text-error'">
+                {{ enrollmentText(enrollmentStatusOf(user)) }}{{ t('profile.enrollmentNote') }}
               </span>
             </div>
             <div class="kv-item">
-              <span class="kv-k">学业 GPA</span>
+              <span class="kv-k">{{ t('profile.gpa') }}</span>
               <span class="kv-v tabular-nums">{{ user.gpa || '-' }}</span>
             </div>
             <div class="kv-item">
-              <span class="kv-k">语言能力认证</span>
+              <span class="kv-k">{{ t('profile.langCert') }}</span>
               <span v-if="user.languageCertStatus === 'PENDING'" class="kv-v text-caution fw-600">
-                新语言证明待国际生办核验（核验前申请校验视为未通过）
+                {{ t('profile.langPending') }}
               </span>
               <span v-else-if="user.languageCertStatus === 'REJECTED'" class="kv-v text-error fw-600">
-                {{ user.languageCert || '-' }}（最新语言证明核验未通过）
+                {{ user.languageCert || '-' }}{{ t('profile.langRejected') }}
               </span>
               <span v-else-if="user.languageCertStatus === 'VERIFIED'" class="kv-v text-success fw-600">
-                {{ user.languageCert }}（国际生办已核验）
+                {{ user.languageCert }}{{ t('profile.langVerified') }}
               </span>
-              <span v-else class="kv-v text-success fw-600">{{ user.languageCert }}（已同步教务）</span>
+              <span v-else class="kv-v text-success fw-600">{{ user.languageCert }}{{ t('profile.langSynced') }}</span>
             </div>
             <div v-if="user.isInternational" class="kv-item">
-              <span class="kv-k">签证与居留许可</span>
-              <span class="kv-v text-blue fw-600">{{ user.visaType }}（有效至 {{ user.visaExpiry }}）</span>
+              <span class="kv-k">{{ t('profile.visa') }}</span>
+              <span class="kv-v text-blue fw-600">{{ user.visaType }}{{ t('profile.validUntil', { date: user.visaExpiry }) }}</span>
             </div>
             <div class="kv-item">
-              <span class="kv-k">校园邮箱</span>
+              <span class="kv-k">{{ t('profile.email') }}</span>
               <span class="kv-v">{{ user.email || '-' }}</span>
             </div>
             <div class="kv-item">
-              <span class="kv-k">联系电话</span>
+              <span class="kv-k">{{ t('profile.phone') }}</span>
               <span class="kv-v tabular-nums">{{ user.phone || '-' }}</span>
             </div>
           </div>
 
           <div class="pt-12 border-t">
-            <div class="text-xs text-muted mb-8">我的技能标签（用于岗位匹配推荐）</div>
+            <div class="text-xs text-muted mb-8">{{ t('profile.mySkills') }}</div>
             <div class="flex items-center gap-6 flex-wrap">
               <span v-for="sk in user.skills || []" :key="sk" class="skill-chip">{{ sk }}</span>
-              <span v-if="!(user.skills && user.skills.length)" class="text-xs text-subtle">暂未设置技能标签</span>
+              <span v-if="!(user.skills && user.skills.length)" class="text-xs text-subtle">{{ t('profile.noSkills') }}</span>
             </div>
           </div>
         </div>
@@ -177,61 +177,61 @@
         <!-- P1 第三批：语言证明与签证材料上传（http 模式） -->
         <div v-if="isStudent && isHttpMode" class="acrylic-card p-20 flex-col gap-12">
           <div class="flex items-center justify-between flex-wrap gap-8">
-            <h2 class="text-sub">合规材料</h2>
+            <h2 class="text-sub">{{ t('profile.materials') }}</h2>
             <div class="flex gap-8">
               <label class="f-btn f-btn-sm upload-btn" :class="{ disabled: uploading }">
                 <FluentIcon name="plus" :size="14" />
-                <span>上传语言证明</span>
+                <span>{{ t('profile.uploadLang') }}</span>
                 <input type="file" :accept="ACCEPT_TYPES" hidden :disabled="uploading" @change="onPick($event, 'LANG_CERT')" />
               </label>
               <label v-if="user.isInternational" class="f-btn f-btn-sm upload-btn" :class="{ disabled: uploading }">
                 <FluentIcon name="plus" :size="14" />
-                <span>上传签证/居留许可</span>
+                <span>{{ t('profile.uploadVisa') }}</span>
                 <input type="file" :accept="ACCEPT_TYPES" hidden :disabled="uploading" @change="onPick($event, 'VISA')" />
               </label>
             </div>
           </div>
           <div class="text-xs text-muted">
-            支持 PDF / JPG / PNG，单个不超过 10MB。新上传的语言证明需国际生办核验后才生效，核验前岗位申请的语言项视为未通过（可申请特批）。
+            {{ t('profile.materialsHint') }}
           </div>
           <ul v-if="myMaterials.length" class="att-list">
             <li v-for="a in myMaterials" :key="a.id" class="att-row">
-              <span class="f-pill f-pill-neutral">{{ ATTACHMENT_KIND_MAP[a.kind] }}</span>
+              <span class="f-pill f-pill-neutral">{{ kindLabel(a.kind) }}</span>
               <span class="text-sm truncate att-name">{{ a.originalName }}</span>
               <span v-if="a.verifyStatus" class="f-pill" :class="`f-pill-${LANG_CERT_STATUS_MAP[a.verifyStatus]?.tone}`">
-                {{ LANG_CERT_STATUS_MAP[a.verifyStatus]?.label }}
+                {{ localized(LANG_CERT_STATUS_MAP[a.verifyStatus], 'label') }}
               </span>
               <span class="text-xs text-muted tabular-nums">{{ a.uploadedAt }}</span>
-              <button type="button" class="f-btn-link text-xs" @click="downloadAtt(a)">下载</button>
+              <button type="button" class="f-btn-link text-xs" @click="downloadAtt(a)">{{ t('common.download') }}</button>
             </li>
           </ul>
-          <div v-else class="text-xs text-subtle">暂未上传材料</div>
+          <div v-else class="text-xs text-subtle">{{ t('profile.noMaterials') }}</div>
         </div>
 
         <!-- Admin Staff Profile & RBAC Permissions -->
         <div v-else class="acrylic-card p-20 flex-col gap-14">
-          <h2 class="text-sub">教职工信息与权限边界</h2>
+          <h2 class="text-sub">{{ t('profile.staffTitle') }}</h2>
           <div class="kv-list">
             <div class="kv-item">
-              <span class="kv-k">所属院校</span>
+              <span class="kv-k">{{ t('profile.school') }}</span>
               <span class="kv-v">{{ store.schoolName }}</span>
             </div>
             <div class="kv-item">
-              <span class="kv-k">所属院系 / 部门</span>
+              <span class="kv-k">{{ t('profile.dept') }}</span>
               <span class="kv-v">{{ store.getDeptName(user?.deptId) }}</span>
             </div>
             <div class="kv-item">
-              <span class="kv-k">系统账号</span>
+              <span class="kv-k">{{ t('profile.username') }}</span>
               <span class="kv-v tabular-nums">{{ user?.username }}</span>
             </div>
             <div class="kv-item">
-              <span class="kv-k">校园邮箱</span>
+              <span class="kv-k">{{ t('profile.email') }}</span>
               <span class="kv-v">{{ user?.email || '-' }}</span>
             </div>
           </div>
 
           <div class="pt-12 border-t">
-            <div class="text-xs text-muted mb-8">当前角色已授权能力</div>
+            <div class="text-xs text-muted mb-8">{{ t('profile.permissions') }}</div>
             <div class="flex items-center gap-6 flex-wrap">
               <span v-for="perm in rolePermissions" :key="perm" class="f-pill f-pill-blue">{{ perm }}</span>
             </div>
@@ -243,8 +243,8 @@
       <div class="acrylic-card p-20 flex-col gap-14">
         <template v-if="isStudent">
           <div class="flex items-center justify-between">
-            <h2 class="text-sub">在岗履历与考核</h2>
-            <router-link to="/student/contracts" class="f-btn-link text-xs">管理合同 →</router-link>
+            <h2 class="text-sub">{{ t('profile.history') }}</h2>
+            <router-link to="/student/contracts" class="f-btn-link text-xs">{{ t('profile.manageContracts') }}</router-link>
           </div>
 
           <div v-if="myContracts.length" class="clean-list">
@@ -257,23 +257,23 @@
                   <span class="fw-600 text-sm truncate">{{ store.getJob(c.jobId)?.title }}</span>
                 </div>
                 <span class="f-pill" :class="c.status === 'ACTIVE' ? 'f-pill-success' : 'f-pill-caution'">
-                  {{ c.status === 'ACTIVE' ? '履约中' : '待签署' }}
+                  {{ c.status === 'ACTIVE' ? t('contractStatus.ACTIVE') : t('contractStatus.PENDING_SIGN') }}
                 </span>
               </div>
               <div class="f-meta-line mt-6 tabular-nums">
                 <span>{{ c.startDate }} ~ {{ c.endDate }}</span>
                 <span class="f-meta-sep">·</span>
-                <span>{{ c.weeklyHours }}h/周 · ¥{{ c.hourlyRate }}/h</span>
+                <span>{{ t('unit.hoursPerWeek', { n: c.weeklyHours }) }} · ¥{{ c.hourlyRate }}/h</span>
               </div>
             </div>
           </div>
-          <EmptyState v-else icon="briefcase" description="暂无在岗聘用履历" />
+          <EmptyState v-else icon="briefcase" :description="t('profile.noHistory')" />
         </template>
 
         <template v-else>
           <div class="flex items-center justify-between">
-            <h2 class="text-sub">我最近的操作留痕</h2>
-            <router-link to="/admin/audit" class="f-btn-link text-xs">全部日志 →</router-link>
+            <h2 class="text-sub">{{ t('profile.recentOps') }}</h2>
+            <router-link to="/admin/audit" class="f-btn-link text-xs">{{ t('profile.allLogs') }}</router-link>
           </div>
 
           <div v-if="myAuditLogs.length" class="f-timeline">
@@ -286,7 +286,7 @@
               <div class="text-xs text-muted mt-4">{{ log.opinion || log.targetId }}</div>
             </div>
           </div>
-          <EmptyState v-else icon="history" description="暂无个人操作记录" />
+          <EmptyState v-else icon="history" :description="t('profile.noOps')" />
         </template>
       </div>
     </section>
@@ -296,7 +296,8 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores/appStore'
-import { getStudentHoursSummary, filterJobsByRole, LANG_CERT_STATUS_MAP, enrollmentStatusOf } from '@/services/ruleEngine'
+import { getStudentHoursSummary, filterJobsByRole, LANG_CERT_STATUS_MAP, enrollmentStatusOf, ENROLLMENT_ACTIVE, ENROLLMENT_STATUSES } from '@/services/ruleEngine'
+import { useI18n } from '@/i18n'
 import { api } from '@/services/api'
 import { isHttpMode } from '@/services/http'
 import { materialFinanceApi, ACCEPT_TYPES, ATTACHMENT_KIND_MAP } from '@/services/materialFinanceApi'
@@ -304,8 +305,26 @@ import FluentIcon from '@/components/FluentIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
 
 const store = useAppStore()
+const { t, localized } = useI18n()
 const user = computed(() => store.currentUser)
 const isStudent = computed(() => user.value?.portal === 'student')
+
+// 角色名按角色代码翻译（不显示后端的中文 roleLabel）
+const roleText = computed(() => (user.value?.role ? t(`role.${user.value.role}`) : ''))
+
+// 学籍状态：规则引擎的取值为中文（在读 / 休学 / 毕业），按其在 ENROLLMENT_STATUSES 中的位置翻译
+const ENROLLMENT_CODES = ['ACTIVE', 'SUSPENDED', 'GRADUATED']
+function enrollmentText(status) {
+  const idx = ENROLLMENT_STATUSES.indexOf(status)
+  return idx >= 0 ? t(`enrollment.${ENROLLMENT_CODES[idx]}`) : status
+}
+
+// 附件类型按代码翻译
+function kindLabel(kind) {
+  const key = `attachmentKind.${kind}`
+  const text = t(key)
+  return text === key ? ATTACHMENT_KIND_MAP[kind] || kind : text
+}
 
 const editing = ref(false)
 const saving = ref(false)
@@ -336,20 +355,16 @@ const myAuditLogs = computed(() =>
 
 const scopeLabel = computed(() => {
   const r = user.value?.role
-  if (r === 'SCHOOL_ADMIN') return '全校跨院系'
-  if (r === 'DEPT_ADMIN') return `${store.getDeptShortName(user.value.deptId)}隔离`
-  if (r === 'INTL_OFFICER') return '国际生专项'
-  return `${store.getDeptShortName(user.value?.deptId)} · 导师`
+  if (r === 'SCHOOL_ADMIN') return t('profile.scopeSchool')
+  if (r === 'DEPT_ADMIN') return t('profile.scopeDept', { dept: store.getDeptShortName(user.value.deptId) })
+  if (r === 'INTL_OFFICER') return t('profile.scopeIntl')
+  return t('profile.scopeMentor', { dept: store.getDeptShortName(user.value?.deptId) })
 })
 
 const rolePermissions = computed(() => {
-  const map = {
-    MENTOR: ['发布 TA/RA 岗位', '筛选简历与面试', '评分录用', '在岗工时审核', '周期考核评价'],
-    DEPT_ADMIN: ['本院系数据隔离视图', '岗位名额与经费初审', '院系聘用报表', '异常预警监控'],
-    INTL_OFFICER: ['国际生 TA 岗位会签', '签证/语言/工时特批留痕', '国际生合规监控'],
-    SCHOOL_ADMIN: ['全校跨院系视图', '审批流与考核模板配置', '预算余额监控', '财务发放回写', '全流程审计追溯']
-  }
-  return map[user.value?.role] || []
+  const list = t(`profile.perms.${user.value?.role}`)
+  // 词条为 '|' 分隔的能力列表；没有对应角色时为空
+  return typeof list === 'string' && !list.startsWith('profile.perms.') ? list.split('|') : []
 })
 
 function toggleEdit() {
@@ -414,7 +429,7 @@ async function onPick(event, kind) {
 
 async function downloadAtt(a) {
   const res = await materialFinanceApi.downloadAttachment(a)
-  if (res.code !== 200) store.notify(res.message || '下载失败', 'error')
+  if (res.code !== 200) store.notify(localized(res, 'message') || t('profile.downloadFailed'), 'error')
 }
 
 onMounted(loadMaterials)
