@@ -180,6 +180,38 @@ class BilingualMessageIntegrationTest extends WriteApiTestBase {
         assertThat(cs.path("name").asString()).isEqualTo("计算机科学与技术学院");
     }
 
+    /** 推荐条目的 reasonsEn、blockersEn 与 reasons、blockers 一一对应；因子带 labelEn、detailEn */
+    @Test
+    void recommendationsHaveEnglishReasonsAndBlockers() throws Exception {
+        var resp = mvc.perform(MockMvcRequestBuilders.get("/api/recommendations")
+                        .header("Authorization", bearer(tokenOf("alex.chen"))))
+                .andReturn().getResponse();
+        assertThat(resp.getStatus()).isEqualTo(200);
+        JsonNode items = json.readTree(resp.getContentAsString(StandardCharsets.UTF_8)).path("data").path("items");
+        assertThat(items.size()).isPositive();
+        Map<String, JsonNode> byId = new java.util.HashMap<>();
+        for (JsonNode it : items) {
+            byId.put(it.path("jobId").asString(), it);
+            assertThat(it.path("reasonsEn").size()).as(it.path("jobId").asString()).isEqualTo(it.path("reasons").size());
+            assertThat(it.path("blockersEn").size()).as(it.path("jobId").asString()).isEqualTo(it.path("blockers").size());
+            for (JsonNode f : it.path("factors")) {
+                assertThat(f.path("labelEn").asString()).isNotBlank();
+                assertThat(f.path("detailEn").asString()).isNotBlank();
+            }
+        }
+        JsonNode job04 = byId.get("JOB_04");
+        assertThat(job04.path("blockers").get(0).asString()).startsWith("岗位国际生开放资格校验未通过：");
+        assertThat(job04.path("blockersEn").get(0).asString()).isEqualTo(
+                "Position open to international students not passed: "
+                        + "This position is not open to international students (Chinese students only)");
+        JsonNode job02 = byId.get("JOB_02");
+        assertThat(job02.path("blockersEn").get(0).asString()).isEqualTo(
+                "Cross-job weekly hours would exceed the limit (24h > 20h); International Office special approval required");
+        assertThat(byId.get("JOB_03").path("blockersEn").toString())
+                .contains("Language requirement not met; special approval required: ");
+        assertThat(byId.get("JOB_01").path("reasonsEn").toString()).contains("Skill match 3/3: ");
+    }
+
     /** 老库（无 name_en、short_name_en 列）启动时自动补列并按种子回填英文名 */
     @Test
     void legacyDatabaseGetsDepartmentEnglishColumns() throws Exception {
