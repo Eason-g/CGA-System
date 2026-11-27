@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.Map;
 
 import edu.cga.common.ApiResponse;
+import edu.cga.common.Lang;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -54,6 +55,8 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             jsonMapper.writeValue(response.getOutputStream(),
                     ApiResponse.fail(429, "登录请求过于频繁，请 " + retryAfter + " 秒后再试",
+                            Lang.isEnglish(request)
+                                    ? "Too many login requests; please try again in " + retryAfter + " second(s)" : null,
                             Map.of("retryAfterSeconds", retryAfter)));
             return;
         }

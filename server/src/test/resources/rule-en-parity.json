@@ -1,0 +1,1400 @@
+{
+  "comment": "由 scripts/gen-rule-en-parity.mjs 从 src/services/ruleEngine.js 生成，请勿手改；RuleEngineEnParityTest 用它核对 Java 版文案",
+  "today": "2026-11-20",
+  "globalRules": {
+    "maxWeeklyHoursDefault": 20,
+    "maxWeeklyHoursIntl": 20
+  },
+  "cases": [
+    {
+      "name": "国际生跨岗工时超限（可特批）",
+      "fn": "application",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": true,
+          "visaType": "X1 student residence permit",
+          "visaValid": true,
+          "visaExpiry": "2027-07-31",
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "job": {
+          "id": "J1",
+          "deptId": "DEPT_CS",
+          "quota": 2,
+          "hiredCount": 0,
+          "weeklyHours": 14,
+          "weeks": 16,
+          "allowInternational": true,
+          "workflowSteps": [
+            "MENTOR_SUBMIT",
+            "DEPT_REVIEW",
+            "INTL_REVIEW",
+            "PUBLISHED"
+          ],
+          "currentStepIndex": 3,
+          "deadline": "2026-12-31",
+          "extraFields": {}
+        },
+        "contracts": [
+          {
+            "studentId": "S1",
+            "status": "ACTIVE",
+            "startDate": "2026-11-02",
+            "endDate": "2027-02-22",
+            "weeklyHours": 12
+          }
+        ],
+        "applications": []
+      },
+      "expected": {
+        "passed": false,
+        "canSpecialApprove": true,
+        "checks": [
+          {
+            "key": "visa",
+            "label": "签证类型校验（有效学习居留许可）",
+            "labelEn": "Visa type check (valid study residence permit)",
+            "passed": true,
+            "detail": "X1 student residence permit有效（有效期至 2027-07-31）",
+            "detailEn": "X1 student residence permit valid (expiry date: 2027-07-31)"
+          },
+          {
+            "key": "allowIntl",
+            "label": "岗位国际生开放资格校验",
+            "labelEn": "Position open to international students",
+            "passed": true,
+            "detail": "该岗位已通过国际生办会签，面向国际学生开放",
+            "detailEn": "This position has been co-signed by the International Office and is open to international students"
+          },
+          {
+            "key": "hours",
+            "label": "跨岗累计周工时校验",
+            "labelEn": "Cross-job weekly hours check",
+            "passed": false,
+            "detail": "当前已占 12h + 本岗 14h = 26h > 上限 20h/周（超出 6h）",
+            "detailEn": "Currently allocated 12h + this position 14h = 26h > limit 20h/week (over by 6h)"
+          }
+        ],
+        "hints": [
+          {
+            "key": "visaPeriod",
+            "label": "签证有效期覆盖聘期（提示）",
+            "labelEn": "Visa validity covers employment period (notice)",
+            "passed": true,
+            "detail": "签证有效期至 2027-07-31，覆盖预计聘期（至 2027-03-15）",
+            "detailEn": "Visa valid until 2027-07-31, covering the expected employment period (until 2027-03-15)"
+          }
+        ],
+        "specialBlockedReason": "",
+        "specialBlockedReasonEn": ""
+      }
+    },
+    {
+      "name": "国际生签证无效且岗位未开放（硬性条件）",
+      "fn": "application",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": true,
+          "visaType": "X1 student residence permit",
+          "visaValid": false,
+          "visaExpiry": "2027-07-31",
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "job": {
+          "id": "J1",
+          "deptId": "DEPT_CS",
+          "quota": 2,
+          "hiredCount": 0,
+          "weeklyHours": 8,
+          "weeks": 16,
+          "allowInternational": false,
+          "workflowSteps": [
+            "MENTOR_SUBMIT",
+            "DEPT_REVIEW",
+            "PUBLISHED"
+          ],
+          "currentStepIndex": 2,
+          "deadline": "2026-12-31",
+          "extraFields": {}
+        },
+        "contracts": [],
+        "applications": []
+      },
+      "expected": {
+        "passed": false,
+        "canSpecialApprove": false,
+        "checks": [
+          {
+            "key": "visa",
+            "label": "签证类型校验（有效学习居留许可）",
+            "labelEn": "Visa type check (valid study residence permit)",
+            "passed": false,
+            "detail": "未检测到有效学习类居留许可，禁止从事校内助教/助研活动",
+            "detailEn": "No valid study residence permit found; on-campus teaching/research assistant work is not permitted"
+          },
+          {
+            "key": "allowIntl",
+            "label": "岗位国际生开放资格校验",
+            "labelEn": "Position open to international students",
+            "passed": false,
+            "detail": "该岗位未面向国际学生开放（仅限中国籍学生申请）",
+            "detailEn": "This position is not open to international students (Chinese students only)"
+          },
+          {
+            "key": "hours",
+            "label": "跨岗累计周工时校验",
+            "labelEn": "Cross-job weekly hours check",
+            "passed": true,
+            "detail": "当前已占 0h + 本岗 8h = 8h ≤ 上限 20h/周",
+            "detailEn": "Currently allocated 0h + this position 8h = 8h ≤ limit 20h/week"
+          }
+        ],
+        "hints": [],
+        "specialBlockedReason": "签证类型校验（有效学习居留许可）、岗位国际生开放资格校验未通过，属于硬性条件，不可特批",
+        "specialBlockedReasonEn": "Not passed: Visa type check (valid study residence permit), Position open to international students (mandatory requirement, special approval not allowed)"
+      }
+    },
+    {
+      "name": "签证早于聘期结束、语言不达标",
+      "fn": "application",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": true,
+          "visaType": "X1 student residence permit",
+          "visaValid": true,
+          "visaExpiry": "2027-01-15",
+          "languageCert": "IELTS 6.0",
+          "languageLevel": 6,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "job": {
+          "id": "J1",
+          "deptId": "DEPT_CS",
+          "quota": 2,
+          "hiredCount": 0,
+          "weeklyHours": 8,
+          "weeks": 16,
+          "allowInternational": true,
+          "workflowSteps": [
+            "MENTOR_SUBMIT",
+            "DEPT_REVIEW",
+            "INTL_REVIEW",
+            "PUBLISHED"
+          ],
+          "currentStepIndex": 3,
+          "deadline": "2026-12-31",
+          "extraFields": {
+            "minLangScore": 7,
+            "languageRequirement": "IELTS ≥ 7.0"
+          }
+        },
+        "contracts": [],
+        "applications": []
+      },
+      "expected": {
+        "passed": false,
+        "canSpecialApprove": true,
+        "checks": [
+          {
+            "key": "visa",
+            "label": "签证类型校验（有效学习居留许可）",
+            "labelEn": "Visa type check (valid study residence permit)",
+            "passed": true,
+            "detail": "X1 student residence permit有效（有效期至 2027-01-15）",
+            "detailEn": "X1 student residence permit valid (expiry date: 2027-01-15)"
+          },
+          {
+            "key": "allowIntl",
+            "label": "岗位国际生开放资格校验",
+            "labelEn": "Position open to international students",
+            "passed": true,
+            "detail": "该岗位已通过国际生办会签，面向国际学生开放",
+            "detailEn": "This position has been co-signed by the International Office and is open to international students"
+          },
+          {
+            "key": "lang",
+            "label": "语言能力证明校验",
+            "labelEn": "Language certificate check",
+            "passed": false,
+            "detail": "当前认证 IELTS 6.0（等效 6），低于岗位最低要求 IELTS ≥ 7.0",
+            "detailEn": "Current certificate IELTS 6.0 (equivalent 6), below the position minimum IELTS ≥ 7.0"
+          },
+          {
+            "key": "hours",
+            "label": "跨岗累计周工时校验",
+            "labelEn": "Cross-job weekly hours check",
+            "passed": true,
+            "detail": "当前已占 0h + 本岗 8h = 8h ≤ 上限 20h/周",
+            "detailEn": "Currently allocated 0h + this position 8h = 8h ≤ limit 20h/week"
+          }
+        ],
+        "hints": [
+          {
+            "key": "visaPeriod",
+            "label": "签证有效期覆盖聘期（提示）",
+            "labelEn": "Visa validity covers employment period (notice)",
+            "passed": false,
+            "detail": "签证有效期至 2027-01-15，早于预计聘期结束日 2027-03-15，录用时将被系统拦截，请尽快办理续签并上传新的签证材料",
+            "detailEn": "Visa valid until 2027-01-15, before the expected employment end date 2027-03-15; hiring will be blocked by the system. Please renew your visa and upload the new visa documents as soon as possible"
+          }
+        ],
+        "specialBlockedReason": "",
+        "specialBlockedReasonEn": ""
+      }
+    },
+    {
+      "name": "语言证明待核验",
+      "fn": "application",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": true,
+          "visaType": "X1 student residence permit",
+          "visaValid": true,
+          "visaExpiry": "2027-07-31",
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": false,
+          "languageCertStatus": "PENDING",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "job": {
+          "id": "J1",
+          "deptId": "DEPT_CS",
+          "quota": 2,
+          "hiredCount": 0,
+          "weeklyHours": 8,
+          "weeks": 16,
+          "allowInternational": true,
+          "workflowSteps": [
+            "MENTOR_SUBMIT",
+            "DEPT_REVIEW",
+            "INTL_REVIEW",
+            "PUBLISHED"
+          ],
+          "currentStepIndex": 3,
+          "deadline": "2026-12-31",
+          "extraFields": {
+            "minLangScore": 7,
+            "languageRequirement": "IELTS ≥ 7.0"
+          }
+        },
+        "contracts": [],
+        "applications": []
+      },
+      "expected": {
+        "passed": false,
+        "canSpecialApprove": true,
+        "checks": [
+          {
+            "key": "visa",
+            "label": "签证类型校验（有效学习居留许可）",
+            "labelEn": "Visa type check (valid study residence permit)",
+            "passed": true,
+            "detail": "X1 student residence permit有效（有效期至 2027-07-31）",
+            "detailEn": "X1 student residence permit valid (expiry date: 2027-07-31)"
+          },
+          {
+            "key": "allowIntl",
+            "label": "岗位国际生开放资格校验",
+            "labelEn": "Position open to international students",
+            "passed": true,
+            "detail": "该岗位已通过国际生办会签，面向国际学生开放",
+            "detailEn": "This position has been co-signed by the International Office and is open to international students"
+          },
+          {
+            "key": "lang",
+            "label": "语言能力证明校验",
+            "labelEn": "Language certificate check",
+            "passed": false,
+            "detail": "语言证明已提交，待国际生办核验（核验前视为未通过），岗位要求 IELTS ≥ 7.0",
+            "detailEn": "Language certificate submitted, awaiting International Office verification (treated as not passed until verified); position requires IELTS ≥ 7.0"
+          },
+          {
+            "key": "hours",
+            "label": "跨岗累计周工时校验",
+            "labelEn": "Cross-job weekly hours check",
+            "passed": true,
+            "detail": "当前已占 0h + 本岗 8h = 8h ≤ 上限 20h/周",
+            "detailEn": "Currently allocated 0h + this position 8h = 8h ≤ limit 20h/week"
+          }
+        ],
+        "hints": [
+          {
+            "key": "visaPeriod",
+            "label": "签证有效期覆盖聘期（提示）",
+            "labelEn": "Visa validity covers employment period (notice)",
+            "passed": true,
+            "detail": "签证有效期至 2027-07-31，覆盖预计聘期（至 2027-03-15）",
+            "detailEn": "Visa valid until 2027-07-31, covering the expected employment period (until 2027-03-15)"
+          }
+        ],
+        "specialBlockedReason": "",
+        "specialBlockedReasonEn": ""
+      }
+    },
+    {
+      "name": "语言未提交",
+      "fn": "application",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": true,
+          "visaType": "X1 student residence permit",
+          "visaValid": true,
+          "visaExpiry": "2027-07-31",
+          "languageCert": "",
+          "languageLevel": 0,
+          "languageValid": false,
+          "languageCertStatus": null,
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "job": {
+          "id": "J1",
+          "deptId": "DEPT_CS",
+          "quota": 2,
+          "hiredCount": 0,
+          "weeklyHours": 8,
+          "weeks": 16,
+          "allowInternational": true,
+          "workflowSteps": [
+            "MENTOR_SUBMIT",
+            "DEPT_REVIEW",
+            "INTL_REVIEW",
+            "PUBLISHED"
+          ],
+          "currentStepIndex": 3,
+          "deadline": "2026-12-31",
+          "extraFields": {
+            "minLangScore": 7,
+            "languageRequirement": "IELTS ≥ 7.0"
+          }
+        },
+        "contracts": [],
+        "applications": []
+      },
+      "expected": {
+        "passed": false,
+        "canSpecialApprove": true,
+        "checks": [
+          {
+            "key": "visa",
+            "label": "签证类型校验（有效学习居留许可）",
+            "labelEn": "Visa type check (valid study residence permit)",
+            "passed": true,
+            "detail": "X1 student residence permit有效（有效期至 2027-07-31）",
+            "detailEn": "X1 student residence permit valid (expiry date: 2027-07-31)"
+          },
+          {
+            "key": "allowIntl",
+            "label": "岗位国际生开放资格校验",
+            "labelEn": "Position open to international students",
+            "passed": true,
+            "detail": "该岗位已通过国际生办会签，面向国际学生开放",
+            "detailEn": "This position has been co-signed by the International Office and is open to international students"
+          },
+          {
+            "key": "lang",
+            "label": "语言能力证明校验",
+            "labelEn": "Language certificate check",
+            "passed": false,
+            "detail": "当前认证 未提交（等效 0），低于岗位最低要求 IELTS ≥ 7.0",
+            "detailEn": "Current certificate not submitted (equivalent 0), below the position minimum IELTS ≥ 7.0"
+          },
+          {
+            "key": "hours",
+            "label": "跨岗累计周工时校验",
+            "labelEn": "Cross-job weekly hours check",
+            "passed": true,
+            "detail": "当前已占 0h + 本岗 8h = 8h ≤ 上限 20h/周",
+            "detailEn": "Currently allocated 0h + this position 8h = 8h ≤ limit 20h/week"
+          }
+        ],
+        "hints": [
+          {
+            "key": "visaPeriod",
+            "label": "签证有效期覆盖聘期（提示）",
+            "labelEn": "Visa validity covers employment period (notice)",
+            "passed": true,
+            "detail": "签证有效期至 2027-07-31，覆盖预计聘期（至 2027-03-15）",
+            "detailEn": "Visa valid until 2027-07-31, covering the expected employment period (until 2027-03-15)"
+          }
+        ],
+        "specialBlockedReason": "",
+        "specialBlockedReasonEn": ""
+      }
+    },
+    {
+      "name": "签证有效期未登记",
+      "fn": "application",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": true,
+          "visaType": "X1 student residence permit",
+          "visaValid": true,
+          "visaExpiry": null,
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "job": {
+          "id": "J1",
+          "deptId": "DEPT_CS",
+          "quota": 2,
+          "hiredCount": 0,
+          "weeklyHours": 8,
+          "weeks": 16,
+          "allowInternational": true,
+          "workflowSteps": [
+            "MENTOR_SUBMIT",
+            "DEPT_REVIEW",
+            "INTL_REVIEW",
+            "PUBLISHED"
+          ],
+          "currentStepIndex": 3,
+          "deadline": "2026-12-31",
+          "extraFields": {
+            "minLangScore": 7,
+            "languageRequirement": "IELTS ≥ 7.0"
+          }
+        },
+        "contracts": [],
+        "applications": []
+      },
+      "expected": {
+        "passed": true,
+        "canSpecialApprove": false,
+        "checks": [
+          {
+            "key": "visa",
+            "label": "签证类型校验（有效学习居留许可）",
+            "labelEn": "Visa type check (valid study residence permit)",
+            "passed": true,
+            "detail": "X1 student residence permit有效（有效期至 未登记）",
+            "detailEn": "X1 student residence permit valid (expiry date: not registered)"
+          },
+          {
+            "key": "allowIntl",
+            "label": "岗位国际生开放资格校验",
+            "labelEn": "Position open to international students",
+            "passed": true,
+            "detail": "该岗位已通过国际生办会签，面向国际学生开放",
+            "detailEn": "This position has been co-signed by the International Office and is open to international students"
+          },
+          {
+            "key": "lang",
+            "label": "语言能力证明校验",
+            "labelEn": "Language certificate check",
+            "passed": true,
+            "detail": "已认证 IELTS 7.0，满足岗位要求（IELTS ≥ 7.0）",
+            "detailEn": "Verified IELTS 7.0, meets the position requirement (IELTS ≥ 7.0)"
+          },
+          {
+            "key": "hours",
+            "label": "跨岗累计周工时校验",
+            "labelEn": "Cross-job weekly hours check",
+            "passed": true,
+            "detail": "当前已占 0h + 本岗 8h = 8h ≤ 上限 20h/周",
+            "detailEn": "Currently allocated 0h + this position 8h = 8h ≤ limit 20h/week"
+          }
+        ],
+        "hints": [
+          {
+            "key": "visaPeriod",
+            "label": "签证有效期覆盖聘期（提示）",
+            "labelEn": "Visa validity covers employment period (notice)",
+            "passed": false,
+            "detail": "签证有效期至 未登记，早于预计聘期结束日 2027-03-15，录用时将被系统拦截，请尽快办理续签并上传新的签证材料",
+            "detailEn": "Visa valid until not registered, before the expected employment end date 2027-03-15; hiring will be blocked by the system. Please renew your visa and upload the new visa documents as soon as possible"
+          }
+        ],
+        "specialBlockedReason": "合规校验已通过，无需特批",
+        "specialBlockedReasonEn": "All compliance checks passed; no special approval is needed"
+      }
+    },
+    {
+      "name": "休学学生且已过截止日",
+      "fn": "application",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": false,
+          "visaType": "",
+          "visaValid": true,
+          "visaExpiry": null,
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "休学"
+        },
+        "job": {
+          "id": "J1",
+          "deptId": "DEPT_CS",
+          "quota": 2,
+          "hiredCount": 0,
+          "weeklyHours": 8,
+          "weeks": 16,
+          "allowInternational": true,
+          "workflowSteps": [
+            "MENTOR_SUBMIT",
+            "DEPT_REVIEW",
+            "INTL_REVIEW",
+            "PUBLISHED"
+          ],
+          "currentStepIndex": 3,
+          "deadline": "2026-11-01",
+          "extraFields": {}
+        },
+        "contracts": [],
+        "applications": []
+      },
+      "expected": {
+        "passed": false,
+        "canSpecialApprove": false,
+        "checks": [
+          {
+            "key": "deadline",
+            "label": "申请截止日期",
+            "labelEn": "Application deadline",
+            "passed": false,
+            "detail": "已过申请截止日期（2026-11-01）",
+            "detailEn": "The application deadline has passed (2026-11-01)"
+          },
+          {
+            "key": "enrollment",
+            "label": "学籍状态校验（在读）",
+            "labelEn": "Enrollment status check (enrolled)",
+            "passed": false,
+            "detail": "当前学籍状态为「休学」，仅在读学生可申请三助岗位（硬性条件，不可特批）",
+            "detailEn": "Current enrollment status is \"On leave\"; only enrolled students can apply for assistantship positions (mandatory requirement, special approval not allowed)"
+          },
+          {
+            "key": "hours",
+            "label": "跨岗累计周工时校验",
+            "labelEn": "Cross-job weekly hours check",
+            "passed": true,
+            "detail": "当前已占 0h + 本岗 8h = 8h ≤ 上限 20h/周",
+            "detailEn": "Currently allocated 0h + this position 8h = 8h ≤ limit 20h/week"
+          }
+        ],
+        "hints": [],
+        "specialBlockedReason": "申请截止日期、学籍状态校验（在读）未通过，属于硬性条件，不可特批",
+        "specialBlockedReasonEn": "Not passed: Application deadline, Enrollment status check (enrolled) (mandatory requirement, special approval not allowed)"
+      }
+    },
+    {
+      "name": "已申请过",
+      "fn": "application",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": false,
+          "visaType": "",
+          "visaValid": true,
+          "visaExpiry": null,
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "job": {
+          "id": "J1",
+          "deptId": "DEPT_CS",
+          "quota": 2,
+          "hiredCount": 0,
+          "weeklyHours": 8,
+          "weeks": 16,
+          "allowInternational": true,
+          "workflowSteps": [
+            "MENTOR_SUBMIT",
+            "DEPT_REVIEW",
+            "INTL_REVIEW",
+            "PUBLISHED"
+          ],
+          "currentStepIndex": 3,
+          "deadline": "2026-12-31",
+          "extraFields": {}
+        },
+        "contracts": [],
+        "applications": [
+          {
+            "studentId": "S1",
+            "jobId": "J1",
+            "status": "SUBMITTED"
+          }
+        ]
+      },
+      "expected": {
+        "passed": false,
+        "canSpecialApprove": false,
+        "checks": [
+          {
+            "key": "hours",
+            "label": "跨岗累计周工时校验",
+            "labelEn": "Cross-job weekly hours check",
+            "passed": true,
+            "detail": "当前已占 0h + 本岗 8h = 8h ≤ 上限 20h/周",
+            "detailEn": "Currently allocated 0h + this position 8h = 8h ≤ limit 20h/week"
+          }
+        ],
+        "hints": [],
+        "specialBlockedReason": "已申请过该岗位",
+        "specialBlockedReasonEn": "You have already applied for this position"
+      }
+    },
+    {
+      "name": "名额已满",
+      "fn": "application",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": false,
+          "visaType": "",
+          "visaValid": true,
+          "visaExpiry": null,
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "job": {
+          "id": "J1",
+          "deptId": "DEPT_CS",
+          "quota": 2,
+          "hiredCount": 2,
+          "weeklyHours": 8,
+          "weeks": 16,
+          "allowInternational": true,
+          "workflowSteps": [
+            "MENTOR_SUBMIT",
+            "DEPT_REVIEW",
+            "INTL_REVIEW",
+            "PUBLISHED"
+          ],
+          "currentStepIndex": 3,
+          "deadline": "2026-12-31",
+          "extraFields": {}
+        },
+        "contracts": [],
+        "applications": []
+      },
+      "expected": {
+        "passed": false,
+        "canSpecialApprove": false,
+        "checks": [
+          {
+            "key": "hours",
+            "label": "跨岗累计周工时校验",
+            "labelEn": "Cross-job weekly hours check",
+            "passed": true,
+            "detail": "当前已占 0h + 本岗 8h = 8h ≤ 上限 20h/周",
+            "detailEn": "Currently allocated 0h + this position 8h = 8h ≤ limit 20h/week"
+          }
+        ],
+        "hints": [],
+        "specialBlockedReason": "该岗位名额已招满",
+        "specialBlockedReasonEn": "This position's quota is full"
+      }
+    },
+    {
+      "name": "全部通过",
+      "fn": "application",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": true,
+          "visaType": "X1 student residence permit",
+          "visaValid": true,
+          "visaExpiry": "2027-07-31",
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "job": {
+          "id": "J1",
+          "deptId": "DEPT_CS",
+          "quota": 2,
+          "hiredCount": 0,
+          "weeklyHours": 8,
+          "weeks": 16,
+          "allowInternational": true,
+          "workflowSteps": [
+            "MENTOR_SUBMIT",
+            "DEPT_REVIEW",
+            "INTL_REVIEW",
+            "PUBLISHED"
+          ],
+          "currentStepIndex": 3,
+          "deadline": "2026-12-31",
+          "extraFields": {
+            "minLangScore": 7,
+            "languageRequirement": "IELTS ≥ 7.0"
+          }
+        },
+        "contracts": [
+          {
+            "studentId": "S1",
+            "status": "ACTIVE",
+            "startDate": "2026-11-02",
+            "endDate": "2027-02-22",
+            "weeklyHours": 8
+          }
+        ],
+        "applications": []
+      },
+      "expected": {
+        "passed": true,
+        "canSpecialApprove": false,
+        "checks": [
+          {
+            "key": "visa",
+            "label": "签证类型校验（有效学习居留许可）",
+            "labelEn": "Visa type check (valid study residence permit)",
+            "passed": true,
+            "detail": "X1 student residence permit有效（有效期至 2027-07-31）",
+            "detailEn": "X1 student residence permit valid (expiry date: 2027-07-31)"
+          },
+          {
+            "key": "allowIntl",
+            "label": "岗位国际生开放资格校验",
+            "labelEn": "Position open to international students",
+            "passed": true,
+            "detail": "该岗位已通过国际生办会签，面向国际学生开放",
+            "detailEn": "This position has been co-signed by the International Office and is open to international students"
+          },
+          {
+            "key": "lang",
+            "label": "语言能力证明校验",
+            "labelEn": "Language certificate check",
+            "passed": true,
+            "detail": "已认证 IELTS 7.0，满足岗位要求（IELTS ≥ 7.0）",
+            "detailEn": "Verified IELTS 7.0, meets the position requirement (IELTS ≥ 7.0)"
+          },
+          {
+            "key": "hours",
+            "label": "跨岗累计周工时校验",
+            "labelEn": "Cross-job weekly hours check",
+            "passed": true,
+            "detail": "当前已占 8h + 本岗 8h = 16h ≤ 上限 20h/周",
+            "detailEn": "Currently allocated 8h + this position 8h = 16h ≤ limit 20h/week"
+          }
+        ],
+        "hints": [
+          {
+            "key": "visaPeriod",
+            "label": "签证有效期覆盖聘期（提示）",
+            "labelEn": "Visa validity covers employment period (notice)",
+            "passed": true,
+            "detail": "签证有效期至 2027-07-31，覆盖预计聘期（至 2027-03-15）",
+            "detailEn": "Visa valid until 2027-07-31, covering the expected employment period (until 2027-03-15)"
+          }
+        ],
+        "specialBlockedReason": "合规校验已通过，无需特批",
+        "specialBlockedReasonEn": "All compliance checks passed; no special approval is needed"
+      }
+    },
+    {
+      "name": "录用：状态、名额、学籍、签证、开放资格",
+      "fn": "hire",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": true,
+          "visaType": "X1 student residence permit",
+          "visaValid": false,
+          "visaExpiry": "2027-07-31",
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "毕业"
+        },
+        "job": {
+          "id": "J1",
+          "deptId": "DEPT_CS",
+          "quota": 2,
+          "hiredCount": 2,
+          "weeklyHours": 8,
+          "weeks": 16,
+          "allowInternational": false,
+          "workflowSteps": [
+            "MENTOR_SUBMIT",
+            "DEPT_REVIEW",
+            "INTL_REVIEW",
+            "PUBLISHED"
+          ],
+          "currentStepIndex": 3,
+          "deadline": "2026-12-31",
+          "extraFields": {}
+        },
+        "contracts": [],
+        "app": {
+          "studentId": "S1",
+          "jobId": "J1",
+          "status": "HIRED"
+        }
+      },
+      "expected": {
+        "ok": false,
+        "hoursOverridden": false,
+        "errors": [
+          "申请当前状态为「已录用」，不能录用",
+          "该岗位招聘名额已满，无法继续录用",
+          "该学生当前学籍状态为「毕业」，仅在读学生可录用（不可特批）",
+          "该国际生无有效学习类居留许可，不能录用",
+          "该岗位未面向国际学生开放，不能录用国际生"
+        ],
+        "errorsEn": [
+          "The application status is \"Hired\"; cannot hire",
+          "This position's hiring quota is full; no further hires are allowed",
+          "This student's current enrollment status is \"Graduated\"; only enrolled students can be hired (special approval not allowed)",
+          "This international student has no valid study residence permit; cannot hire",
+          "This position is not open to international students; international students cannot be hired"
+        ]
+      }
+    },
+    {
+      "name": "录用：签证未覆盖聘期",
+      "fn": "hire",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": true,
+          "visaType": "X1 student residence permit",
+          "visaValid": true,
+          "visaExpiry": "2027-01-15",
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "job": {
+          "id": "J1",
+          "deptId": "DEPT_CS",
+          "quota": 2,
+          "hiredCount": 0,
+          "weeklyHours": 8,
+          "weeks": 16,
+          "allowInternational": true,
+          "workflowSteps": [
+            "MENTOR_SUBMIT",
+            "DEPT_REVIEW",
+            "INTL_REVIEW",
+            "PUBLISHED"
+          ],
+          "currentStepIndex": 3,
+          "deadline": "2026-12-31",
+          "extraFields": {}
+        },
+        "contracts": [],
+        "app": {
+          "studentId": "S1",
+          "jobId": "J1",
+          "status": "SUBMITTED"
+        }
+      },
+      "expected": {
+        "ok": false,
+        "hoursOverridden": false,
+        "errors": [
+          "该国际生签证有效期至 2027-01-15，早于聘期结束日 2027-03-15，签证须覆盖整个聘期，不能录用（不可特批）"
+        ],
+        "errorsEn": [
+          "This international student's visa is valid until 2027-01-15, before the employment end date 2027-03-15; the visa must cover the entire employment period; cannot hire (special approval not allowed)"
+        ]
+      }
+    },
+    {
+      "name": "录用：签证有效期未登记",
+      "fn": "hire",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": true,
+          "visaType": "X1 student residence permit",
+          "visaValid": true,
+          "visaExpiry": null,
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "job": {
+          "id": "J1",
+          "deptId": "DEPT_CS",
+          "quota": 2,
+          "hiredCount": 0,
+          "weeklyHours": 8,
+          "weeks": 16,
+          "allowInternational": true,
+          "workflowSteps": [
+            "MENTOR_SUBMIT",
+            "DEPT_REVIEW",
+            "INTL_REVIEW",
+            "PUBLISHED"
+          ],
+          "currentStepIndex": 3,
+          "deadline": "2026-12-31",
+          "extraFields": {}
+        },
+        "contracts": [],
+        "app": {
+          "studentId": "S1",
+          "jobId": "J1",
+          "status": "INTERVIEW_SCHEDULED"
+        }
+      },
+      "expected": {
+        "ok": false,
+        "hoursOverridden": false,
+        "errors": [
+          "该国际生未登记签证有效期，无法确认覆盖聘期结束日 2027-03-15，不能录用（不可特批）"
+        ],
+        "errorsEn": [
+          "This international student has no registered visa expiry date, so coverage through the employment end date 2027-03-15 cannot be confirmed; cannot hire (special approval not allowed)"
+        ]
+      }
+    },
+    {
+      "name": "录用：跨岗工时超限",
+      "fn": "hire",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": false,
+          "visaType": "",
+          "visaValid": true,
+          "visaExpiry": null,
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "job": {
+          "id": "J1",
+          "deptId": "DEPT_CS",
+          "quota": 2,
+          "hiredCount": 0,
+          "weeklyHours": 10,
+          "weeks": 16,
+          "allowInternational": true,
+          "workflowSteps": [
+            "MENTOR_SUBMIT",
+            "DEPT_REVIEW",
+            "INTL_REVIEW",
+            "PUBLISHED"
+          ],
+          "currentStepIndex": 3,
+          "deadline": "2026-12-31",
+          "extraFields": {}
+        },
+        "contracts": [
+          {
+            "studentId": "S1",
+            "status": "ACTIVE",
+            "startDate": "2026-11-02",
+            "endDate": "2027-02-22",
+            "weeklyHours": 12
+          }
+        ],
+        "app": {
+          "studentId": "S1",
+          "jobId": "J1",
+          "status": "SUBMITTED"
+        }
+      },
+      "expected": {
+        "ok": false,
+        "hoursOverridden": false,
+        "errors": [
+          "录用后跨岗累计周工时将达 22h（已占 12h + 本岗 10h），超出上限 20h/周，系统已拦截录用"
+        ],
+        "errorsEn": [
+          "After hiring, cross-job weekly hours would reach 22h (allocated 12h + this position 10h), exceeding the limit of 20h/week; hiring has been blocked"
+        ]
+      }
+    },
+    {
+      "name": "录用：特批覆盖超限",
+      "fn": "hire",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": false,
+          "visaType": "",
+          "visaValid": true,
+          "visaExpiry": null,
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "job": {
+          "id": "J1",
+          "deptId": "DEPT_CS",
+          "quota": 2,
+          "hiredCount": 0,
+          "weeklyHours": 10,
+          "weeks": 16,
+          "allowInternational": true,
+          "workflowSteps": [
+            "MENTOR_SUBMIT",
+            "DEPT_REVIEW",
+            "INTL_REVIEW",
+            "PUBLISHED"
+          ],
+          "currentStepIndex": 3,
+          "deadline": "2026-12-31",
+          "extraFields": {}
+        },
+        "contracts": [
+          {
+            "studentId": "S1",
+            "status": "ACTIVE",
+            "startDate": "2026-11-02",
+            "endDate": "2027-02-22",
+            "weeklyHours": 12
+          }
+        ],
+        "app": {
+          "studentId": "S1",
+          "jobId": "J1",
+          "status": "SPECIAL_APPROVED",
+          "specialStatus": "APPROVED",
+          "complianceCheckResult": {
+            "projectedHours": 22
+          }
+        }
+      },
+      "expected": {
+        "ok": true,
+        "hoursOverridden": true,
+        "errors": [],
+        "errorsEn": []
+      }
+    },
+    {
+      "name": "工时填报：为 0",
+      "fn": "timesheet",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": false,
+          "visaType": "",
+          "visaValid": true,
+          "visaExpiry": null,
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "weekNo": 12,
+        "hours": 0,
+        "timesheets": []
+      },
+      "expected": {
+        "ok": false,
+        "message": "填报工时必须大于 0 小时",
+        "messageEn": "Reported hours must be greater than 0"
+      }
+    },
+    {
+      "name": "工时填报：超限",
+      "fn": "timesheet",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": true,
+          "visaType": "X1 student residence permit",
+          "visaValid": true,
+          "visaExpiry": "2027-07-31",
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "weekNo": 12,
+        "hours": 10,
+        "timesheets": [
+          {
+            "studentId": "S1",
+            "weekNo": 12,
+            "hours": 10.5,
+            "status": "APPROVED"
+          },
+          {
+            "studentId": "S1",
+            "weekNo": 12,
+            "hours": 4,
+            "status": "REJECTED"
+          }
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "message": "第 12 周跨岗累计工时将达 20.5h（已报 10.5h + 本次 10h），超出学校红线 20h/周，系统已拦截提交！",
+        "messageEn": "Cross-job hours for week 12 would reach 20.5h (already reported 10.5h + this entry 10h), exceeding the university limit of 20h/week; submission has been blocked!"
+      }
+    },
+    {
+      "name": "工时填报：通过",
+      "fn": "timesheet",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": false,
+          "visaType": "",
+          "visaValid": true,
+          "visaExpiry": null,
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "weekNo": 3,
+        "hours": 7.5,
+        "timesheets": [
+          {
+            "studentId": "S1",
+            "weekNo": 3,
+            "hours": 6,
+            "status": "PENDING"
+          }
+        ]
+      },
+      "expected": {
+        "ok": true,
+        "message": "校验通过：第 3 周跨岗累计 13.5h / 20h",
+        "messageEn": "Check passed: week 3 cross-job total 13.5h / 20h"
+      }
+    },
+    {
+      "name": "建岗：超预算且超名额",
+      "fn": "jobPublish",
+      "input": {
+        "form": {
+          "deptId": "DEPT_CS",
+          "budgetId": "B1",
+          "quota": 3,
+          "hourlyRate": 45,
+          "weeklyHours": 8,
+          "weeks": 16
+        },
+        "budget": {
+          "id": "B1",
+          "totalAmount": 18000,
+          "usedAmount": 2000,
+          "frozenAmount": 1000
+        },
+        "dept": {
+          "id": "DEPT_CS",
+          "name": "计算机科学与技术学院",
+          "quotaLimit": 4
+        },
+        "jobs": [
+          {
+            "deptId": "DEPT_CS",
+            "quota": 2,
+            "status": "PUBLISHED"
+          },
+          {
+            "deptId": "DEPT_CS",
+            "quota": 5,
+            "status": "REJECTED"
+          }
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "errors": [
+          "预计总支出 ¥17,280 超出可用预算 ¥2,280，系统已拦截发布",
+          "招聘人数 3 人超出院系剩余名额 2 人，系统已拦截发布"
+        ],
+        "errorsEn": [
+          "Estimated total cost ¥17,280 exceeds the available budget by ¥2,280; publishing has been blocked",
+          "Headcount of 3 exceeds the department's remaining quota of 2; publishing has been blocked"
+        ]
+      }
+    },
+    {
+      "name": "建岗：未选经费",
+      "fn": "jobPublish",
+      "input": {
+        "form": {
+          "deptId": "DEPT_CS",
+          "budgetId": "NONE",
+          "quota": 1,
+          "hourlyRate": 40,
+          "weeklyHours": 8,
+          "weeks": 10
+        },
+        "budget": null,
+        "dept": {
+          "id": "DEPT_CS",
+          "name": "计算机科学与技术学院",
+          "quotaLimit": 10
+        },
+        "jobs": []
+      },
+      "expected": {
+        "ok": false,
+        "errors": [
+          "请选择有效的经费来源账号"
+        ],
+        "errorsEn": [
+          "Please select a valid funding account"
+        ]
+      }
+    },
+    {
+      "name": "履约资格：休学",
+      "fn": "eligibility",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": false,
+          "visaType": "",
+          "visaValid": true,
+          "visaExpiry": null,
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "休学"
+        },
+        "through": "2026-11-30"
+      },
+      "expected": {
+        "zh": "当前学籍状态为「休学」，仅在读学生可办理聘用或工时",
+        "en": "Current enrollment status is \"On leave\"; only enrolled students can be employed or log working hours",
+        "enrollment": "当前学籍状态为「休学」，仅在读学生可申请三助岗位（硬性条件，不可特批）",
+        "enrollmentEn": "Current enrollment status is \"On leave\"; only enrolled students can apply for assistantship positions (mandatory requirement, special approval not allowed)"
+      }
+    },
+    {
+      "name": "履约资格：无有效签证",
+      "fn": "eligibility",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": true,
+          "visaType": "X1 student residence permit",
+          "visaValid": false,
+          "visaExpiry": "2027-07-31",
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "through": "2026-11-30"
+      },
+      "expected": {
+        "zh": "该国际生无有效学习类居留许可",
+        "en": "This international student has no valid study residence permit",
+        "enrollment": null,
+        "enrollmentEn": null
+      }
+    },
+    {
+      "name": "履约资格：签证未覆盖",
+      "fn": "eligibility",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": true,
+          "visaType": "X1 student residence permit",
+          "visaValid": true,
+          "visaExpiry": "2026-11-25",
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "through": "2026-11-30"
+      },
+      "expected": {
+        "zh": "签证（居留许可）未覆盖办理日期或聘期",
+        "en": "The visa (residence permit) does not cover the processing date or the employment period",
+        "enrollment": null,
+        "enrollmentEn": null
+      }
+    },
+    {
+      "name": "履约资格：通过",
+      "fn": "eligibility",
+      "input": {
+        "student": {
+          "id": "S1",
+          "isInternational": true,
+          "visaType": "X1 student residence permit",
+          "visaValid": true,
+          "visaExpiry": "2027-07-31",
+          "languageCert": "IELTS 7.0",
+          "languageLevel": 7,
+          "languageValid": true,
+          "languageCertStatus": "VERIFIED",
+          "maxWeeklyHours": 20,
+          "enrollmentStatus": "在读"
+        },
+        "through": "2026-11-30"
+      },
+      "expected": {
+        "zh": null,
+        "en": null,
+        "enrollment": null,
+        "enrollmentEn": null
+      }
+    }
+  ]
+}

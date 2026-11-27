@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import edu.cga.common.BiText;
 import edu.cga.common.BizException;
 import edu.cga.common.IdGenerator;
 import edu.cga.common.Num;
@@ -84,7 +85,8 @@ public class ApplicationService {
             throw BizException.forbidden("仅学生本人可提交岗位申请");
         }
         if (!"PUBLISHED".equals(job.getStatus())) {
-            throw BizException.badRequest("该岗位未发布或已关闭，不能申请");
+            throw BizException.badRequest("该岗位未发布或已关闭，不能申请",
+                    "This position is not published or has been closed; applications are not accepted");
         }
 
         List<JobApplication> myApps = applicationMapper.selectByStudent(student.getId());
@@ -92,19 +94,23 @@ public class ApplicationService {
         RuleEngine.ApplicationCheck check = RuleEngine.validateStudentApplication(student, job, myApps, myContracts,
                 configService.globalRulesForWrite(), time.today());
         if (check.alreadyApplied()) {
-            throw new BizException(400, "您已申请过该岗位，请勿重复投递", check);
+            throw new BizException(400, "您已申请过该岗位，请勿重复投递",
+                    "You have already applied for this position; please do not apply again", check);
         }
         if (check.quotaFull()) {
-            throw new BizException(400, "该岗位名额已招满", check);
+            throw new BizException(400, "该岗位名额已招满", "This position's quota is full", check);
         }
         if (!check.passed() && !isSpecialApproval) {
-            throw new BizException(403, "合规前置校验未通过，系统已拦截提交", check);
+            throw new BizException(403, "合规前置校验未通过，系统已拦截提交",
+                    "Pre-application compliance checks failed; the submission has been blocked", check);
         }
         if (isSpecialApproval && !check.canSpecialApprove()) {
-            throw new BizException(403, "不能发起特批：" + check.specialBlockedReason(), check);
+            throw new BizException(403, "不能发起特批：" + check.specialBlockedReason(),
+                    "Cannot request special approval: " + check.specialBlockedReasonEn(), check);
         }
         if (isSpecialApproval && (specialReason == null || specialReason.trim().length() < 6)) {
-            throw new BizException(400, "发起特批申请必须填写不少于 6 个字的特批理由", check);
+            throw new BizException(400, "发起特批申请必须填写不少于 6 个字的特批理由",
+                    "A special approval request must include a reason of at least 6 characters", check);
         }
         List<Attachment> attachments = attachmentService.requireOwned(attachmentIds, student.getId());
         if (resumeFileName == null || resumeFileName.isBlank()) {
@@ -159,17 +165,20 @@ public class ApplicationService {
         Job job = jobMapper.lockById(visible.getJobId());
         JobApplication app = applicationMapper.lockById(applicationId);
         if (!"PENDING_SPECIAL_APPROVAL".equals(app.getStatus())) {
-            throw BizException.badRequest("该申请不处于待特批状态");
+            throw BizException.badRequest("该申请不处于待特批状态",
+                    "This application is not awaiting special approval");
         }
         boolean approve = "APPROVE".equals(decision);
-        if (approve && RuleEngine.checkEnrollment(student) != null) {
-            throw BizException.forbidden(RuleEngine.checkEnrollment(student));
+        BiText enrollment = RuleEngine.enrollmentText(student);
+        if (approve && enrollment != null) {
+            throw BizException.forbidden(enrollment);
         }
         if (approve && Boolean.TRUE.equals(student.getIsInternational())) {
             if (!RuleEngine.allowsInternationalEmployment(job)) {
-                throw BizException.forbidden("该岗位未完成国际生会签，不可特批");
+                throw BizException.forbidden("该岗位未完成国际生会签，不可特批",
+                        "This position has not completed International Office co-signing; special approval is not allowed");
             }
-            String eligibility = RuleEngine.checkWorkingEligibility(student, time.today());
+            BiText eligibility = RuleEngine.workingEligibilityText(student, time.today());
             if (eligibility != null) {
                 throw BizException.forbidden(eligibility);
             }
@@ -255,7 +264,8 @@ public class ApplicationService {
             List<Contract> contracts = contractMapper.selectAllocatingByStudent(student.getId());
             hireCheck = RuleEngine.validateHire(app, job, student, contracts, configService.globalRulesForWrite(), endDate);
             if (!hireCheck.ok()) {
-                throw new BizException(403, String.join("；", hireCheck.errors()), hireCheck);
+                throw new BizException(403, String.join("；", hireCheck.errors()),
+                        String.join("; ", hireCheck.errorsEn()), hireCheck);
             }
         } else if (!RuleEngine.HIREABLE_APP_STATUSES.contains(app.getStatus())) {
             throw BizException.badRequest("申请当前状态为「" + statusLabel(app.getStatus()) + "」，不能更改选拔结果");

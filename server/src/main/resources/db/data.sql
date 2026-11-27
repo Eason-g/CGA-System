@@ -6,11 +6,11 @@
 
 SET NAMES utf8mb4;
 
-INSERT INTO departments (id, name, short_name, quota_limit) VALUES
-  ('DEPT_CS', '计算机科学与技术学院', '计算机学院', 22),
-  ('DEPT_MATH', '数学科学学院', '数学学院', 14),
-  ('DEPT_ECON', '经济管理学院', '经管学院', 12),
-  ('DEPT_OFFICE', '校级行政与教学保障部', '校级机关', 12);
+INSERT INTO departments (id, name, short_name, name_en, short_name_en, quota_limit) VALUES
+  ('DEPT_CS', '计算机科学与技术学院', '计算机学院', 'School of Computer Science and Technology', 'Computer Science', 22),
+  ('DEPT_MATH', '数学科学学院', '数学学院', 'School of Mathematical Sciences', 'Mathematics', 14),
+  ('DEPT_ECON', '经济管理学院', '经管学院', 'School of Economics and Management', 'Economics & Management', 12),
+  ('DEPT_OFFICE', '校级行政与教学保障部', '校级机关', 'University Administration and Teaching Support', 'University Office', 12);
 
 INSERT INTO users (id, username, password_hash, name, role, role_label, portal, preset, preset_desc, dept_id, is_international, visa_type, visa_valid, visa_expiry, language_cert, language_level, language_valid, max_weekly_hours, student_no, enrollment_status, degree, major, gpa, skills, email, phone, title, bio) VALUES
   ('U_INTL_STU', 'alex.chen', NULL, 'Alex Chen（陈亚历）', 'STUDENT', '国际生申请人', 'student', 1, '外籍硕士生 · X1签证 · 上限20h/周 · IELTS 7.0', 'DEPT_CS', 1, 'X1学习居留许可', 1, '2027-07-31', 'IELTS 7.0', 7, 1, 20, '2025210891', '在读', '硕士研究生', '人工智能', '3.82 / 4.0', '["Python","机器学习","英语授课","算法","PyTorch"]', 'alex.chen@univ.edu.cn', '138-0010-2091', NULL, NULL),

@@ -120,7 +120,7 @@ public class JobService {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Job createJob(JobDraft d, CurrentUser operator) {
         if (!operator.is(CurrentUser.SCHOOL_ADMIN) && !d.deptId().equals(operator.deptId())) {
-            throw BizException.forbidden("只能为本院系发布岗位");
+            throw BizException.forbidden("只能为本院系发布岗位", "You can only publish positions for your own department");
         }
         // 经费不在可见范围内按不存在处理（404）
         scope.requireVisible(budgetMapper, scope.budgets(operator), d.budgetId(), "经费来源账号不存在");
@@ -138,7 +138,7 @@ public class JobService {
         BigDecimal unpaidExcess = payrollMapper.sumUnpaidExcessByBudget(d.budgetId(), null);
         RuleEngine.JobPublishCheck check = RuleEngine.validateJobPublish(form, budget, dept, deptJobs, unpaidExcess);
         if (!check.ok()) {
-            throw new BizException(400, String.join("；", check.errors()), check);
+            throw new BizException(400, String.join("；", check.errors()), String.join("; ", check.errorsEn()), check);
         }
         // P1：按岗位类型配置校验差异化字段与经费来源，并生成派生字段（languageRequirement、milestones）
         LocalDate deadline = d.deadline() != null ? d.deadline() : time.today().plusDays(DEFAULT_DEADLINE_DAYS);

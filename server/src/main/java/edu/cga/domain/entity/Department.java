@@ -13,5 +13,9 @@ public class Department {
     private String id;
     private String name;
     private String shortName;
+    /** 英文全称（双语界面用，前端 localized(dept, 'name')） */
+    private String nameEn;
+    /** 英文简称 */
+    private String shortNameEn;
     private Integer quotaLimit;
 }

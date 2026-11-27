@@ -2,6 +2,7 @@ package edu.cga.service;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 import javax.sql.DataSource;
 
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Component;
  *   <li>app.db.init=if-empty：users 表不存在（或缺少后续版本新增的表）时执行 schema.sql + data.sql；</li>
  *   <li>always：每次启动都重建；never：不做任何处理；</li>
  *   <li>之后无论哪种模式，都把 password_hash 为空的用户设为演示密码的 BCrypt 哈希；</li>
+ *   <li>老库缺少院系英文名列（name_en、short_name_en）时补列，并按种子数据回填英文名；</li>
  *   <li>把明文手机号/邮箱加密并补 email_hash（P2 D.1，幂等，老库自动补列）；</li>
  *   <li>并为尚未入链的审计日志（种子数据、P0 老库）补算哈希链，老库缺列时自动补列。</li>
  * </ul>
@@ -73,6 +75,7 @@ public class DatabaseInitializer implements SmartInitializingSingleton {
                     rebuild();
                 } else {
                     ensureEnrollmentStatusColumn();
+                    ensureDepartmentEnglishColumns();
                     initDemoPasswords();
                     sensitiveData.migrate();
                     auditChain.initialize();
@@ -81,6 +84,7 @@ public class DatabaseInitializer implements SmartInitializingSingleton {
             case NEVER -> {
                 if (usersTableExists()) {
                     ensureEnrollmentStatusColumn();
+                    ensureDepartmentEnglishColumns();
                     initDemoPasswords();
                     sensitiveData.migrate();
                     auditChain.initialize();
@@ -129,6 +133,38 @@ public class DatabaseInitializer implements SmartInitializingSingleton {
         jdbc.execute("ALTER TABLE users ADD COLUMN enrollment_status VARCHAR(16) NULL "
                 + "COMMENT '学籍状态 在读/休学/毕业' AFTER student_no");
         jdbc.update("UPDATE users SET enrollment_status = '在读' WHERE role = 'STUDENT'");
+    }
+
+    /** 种子院系的英文名（与 src/mock/seedData.js 一致）：id → { 英文全称, 英文简称 } */
+    static final Map<String, List<String>> SEED_DEPARTMENT_EN = Map.of(
+            "DEPT_CS", List.of("School of Computer Science and Technology", "Computer Science"),
+            "DEPT_MATH", List.of("School of Mathematical Sciences", "Mathematics"),
+            "DEPT_ECON", List.of("School of Economics and Management", "Economics & Management"),
+            "DEPT_OFFICE", List.of("University Administration and Teaching Support", "University Office"));
+
+    /** 双语：老库 departments 缺少 name_en、short_name_en 时补列，并为种子院系回填英文名（只填空值，幂等） */
+    public void ensureDepartmentEnglishColumns() {
+        if (!columnExists("departments", "name_en")) {
+            log.info("departments 表缺少 name_en 列（旧版本创建），自动补列");
+            jdbc.execute("ALTER TABLE departments ADD COLUMN name_en VARCHAR(128) NULL COMMENT '英文全称' AFTER short_name");
+        }
+        if (!columnExists("departments", "short_name_en")) {
+            log.info("departments 表缺少 short_name_en 列（旧版本创建），自动补列");
+            jdbc.execute("ALTER TABLE departments ADD COLUMN short_name_en VARCHAR(64) NULL COMMENT '英文简称' AFTER name_en");
+        }
+        SEED_DEPARTMENT_EN.forEach((id, en) -> {
+            jdbc.update("UPDATE departments SET name_en = ? WHERE id = ? AND (name_en IS NULL OR name_en = '')",
+                    en.get(0), id);
+            jdbc.update("UPDATE departments SET short_name_en = ? WHERE id = ? AND (short_name_en IS NULL OR short_name_en = '')",
+                    en.get(1), id);
+        });
+    }
+
+    private boolean columnExists(String table, String column) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
+                        + "AND table_name = ? AND column_name = ?", Integer.class, table, column);
+        return count != null && count > 0;
     }
 
     private boolean usersTableExists() {

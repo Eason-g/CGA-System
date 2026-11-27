@@ -18,10 +18,10 @@ export function createSeedData() {
     },
 
     departments: [
-      { id: 'DEPT_CS', name: '计算机科学与技术学院', shortName: '计算机学院', quotaLimit: 22 },
-      { id: 'DEPT_MATH', name: '数学科学学院', shortName: '数学学院', quotaLimit: 14 },
-      { id: 'DEPT_ECON', name: '经济管理学院', shortName: '经管学院', quotaLimit: 12 },
-      { id: 'DEPT_OFFICE', name: '校级行政与教学保障部', shortName: '校级机关', quotaLimit: 12 }
+      { id: 'DEPT_CS', name: '计算机科学与技术学院', shortName: '计算机学院', nameEn: 'School of Computer Science and Technology', shortNameEn: 'Computer Science', quotaLimit: 22 },
+      { id: 'DEPT_MATH', name: '数学科学学院', shortName: '数学学院', nameEn: 'School of Mathematical Sciences', shortNameEn: 'Mathematics', quotaLimit: 14 },
+      { id: 'DEPT_ECON', name: '经济管理学院', shortName: '经管学院', nameEn: 'School of Economics and Management', shortNameEn: 'Economics & Management', quotaLimit: 12 },
+      { id: 'DEPT_OFFICE', name: '校级行政与教学保障部', shortName: '校级机关', nameEn: 'University Administration and Teaching Support', shortNameEn: 'University Office', quotaLimit: 12 }
     ],
 
     // 6 Preset Demo Accounts + Supporting Accounts for Multi-Dept & Isolation Demos

@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import edu.cga.common.BiText;
 import edu.cga.common.Num;
 import edu.cga.domain.entity.Budget;
 import edu.cga.domain.entity.Contract;
@@ -25,6 +26,9 @@ import edu.cga.domain.entity.User;
  * 全部是纯函数：入参是 Service 已经从数据库取出（并按需加锁）的数据，这里不访问数据库。
  * 返回对象的字段名与中文文案与 JS 版逐字一致，前端仍用 JS 版做提前提示，两边口径相同。
  * 文件末尾的“薪酬与预算联动”是 P0 新增规则，mock 里没有对应函数。
+ * <p>
+ * 双语（docs/双语设计.md 第 3 节）：校验项带 labelEn/detailEn，录用、建岗复核带 errorsEn，工时填报带 messageEn，
+ * 英文同样与 JS 版逐字一致，由 RuleEngineEnParityTest 对照 scripts/gen-rule-en-parity.mjs 生成的 JS 输出核对。
  */
 public final class RuleEngine {
 
@@ -60,6 +64,26 @@ public final class RuleEngine {
             "HIRED", "已录用",
             "REJECTED", "未录用");
 
+    /** 岗位状态英文（同 JS JOB_STATUS_MAP 的 labelEn） */
+    public static final Map<String, String> JOB_STATUS_LABELS_EN = Map.of(
+            "DRAFT", "Draft",
+            "PENDING_DEPT_REVIEW", "Pending department review",
+            "PENDING_INTL_REVIEW", "Pending International Office co-signing",
+            "PENDING_SCHOOL_REVIEW", "Pending university final review",
+            "PUBLISHED", "Published",
+            "REJECTED", "Rejected",
+            "CLOSED", "Closed (positions filled)");
+
+    /** 申请状态英文（同 JS APP_STATUS_MAP 的 labelEn） */
+    public static final Map<String, String> APP_STATUS_LABELS_EN = Map.of(
+            "SUBMITTED", "Awaiting mentor screening",
+            "PENDING_SPECIAL_APPROVAL", "Awaiting special approval",
+            "SPECIAL_APPROVED", "Special approval granted, awaiting screening",
+            "SPECIAL_REJECTED", "Special approval rejected",
+            "INTERVIEW_SCHEDULED", "Interview scheduled",
+            "HIRED", "Hired",
+            "REJECTED", "Not hired");
+
     /** 可以录用的申请状态（同 JS HIREABLE_APP_STATUSES） */
     public static final List<String> HIREABLE_APP_STATUSES = List.of("SUBMITTED", "SPECIAL_APPROVED", "INTERVIEW_SCHEDULED");
 
@@ -86,11 +110,15 @@ public final class RuleEngine {
     public record JobPublishCheck(boolean ok, BigDecimal estimatedCost, BigDecimal availableBudget,
                                   BigDecimal remainingAfter, BigDecimal deficit, boolean budgetExceeded,
                                   Budget budget, QuotaInfo quotaInfo, boolean quotaExceeded, int quotaDeficit,
-                                  List<String> errors) {
+                                  List<String> errors, List<String> errorsEn) {
     }
 
-    /** 单项合规校验；overridable=false 表示硬性条件，不允许通过特批绕过 */
-    public record Check(String key, String label, boolean passed, boolean overridable, String detail) {
+    /**
+     * 单项合规校验；overridable=false 表示硬性条件，不允许通过特批绕过。
+     * labelEn、detailEn 为英文文案（与 JS 版逐字一致），不论请求语言都输出。
+     */
+    public record Check(String key, String label, boolean passed, boolean overridable, String detail,
+                        String labelEn, String detailEn) {
     }
 
     /**
@@ -100,17 +128,17 @@ public final class RuleEngine {
     public record ApplicationCheck(boolean passed, boolean alreadyApplied, JobApplication existingApp,
                                    boolean quotaFull, List<Check> checks, int currentHours, int jobHours,
                                    int projectedHours, int maxHours, boolean canSpecialApprove,
-                                   String specialBlockedReason, List<Check> hints) {
+                                   String specialBlockedReason, List<Check> hints, String specialBlockedReasonEn) {
     }
 
-    /** validateHire 的结果 */
+    /** validateHire 的结果；errorsEn 与 errors 一一对应 */
     public record HireCheck(boolean ok, List<String> errors, int currentHours, int jobHours, int projectedHours,
-                            int maxHours, boolean hoursOverridden) {
+                            int maxHours, boolean hoursOverridden, List<String> errorsEn) {
     }
 
     /** validateTimesheetSubmission 的结果 */
     public record TimesheetCheck(boolean ok, BigDecimal existingHours, BigDecimal projectedHours, int maxHours,
-                                 String message) {
+                                 String message, String messageEn) {
     }
 
     /** gradeFromScore 的结果 */
@@ -119,7 +147,7 @@ public final class RuleEngine {
 
     /** 薪酬预算校验结果（P0 新增） */
     public record PayrollBudgetCheck(boolean ok, BigDecimal amount, BigDecimal reserveRemaining,
-                                     BigDecimal budgetAvailable, String reason) {
+                                     BigDecimal budgetAvailable, String reason, String reasonEn) {
     }
 
     // ================================================================== 预算与名额
@@ -182,19 +210,25 @@ public final class RuleEngine {
         int quotaDeficit = Math.max(0, requestedQuota - quotaInfo.remaining());
 
         List<String> errors = new ArrayList<>();
+        List<String> errorsEn = new ArrayList<>();
         if (budget == null) {
             errors.add("请选择有效的经费来源账号");
+            errorsEn.add("Please select a valid funding account");
         }
         if (budget != null && budgetExceeded) {
             errors.add("预计总支出 ¥" + Num.locale(estimatedCost) + " 超出可用预算 ¥" + Num.locale(deficit)
                     + "，系统已拦截发布");
+            errorsEn.add("Estimated total cost ¥" + Num.locale(estimatedCost) + " exceeds the available budget by ¥"
+                    + Num.locale(deficit) + "; publishing has been blocked");
         }
         if (quotaExceeded) {
             errors.add("招聘人数 " + requestedQuota + " 人超出院系剩余名额 " + quotaInfo.remaining() + " 人，系统已拦截发布");
+            errorsEn.add("Headcount of " + requestedQuota + " exceeds the department's remaining quota of "
+                    + quotaInfo.remaining() + "; publishing has been blocked");
         }
         return new JobPublishCheck(errors.isEmpty(), estimatedCost, availableBudget,
                 availableBudget.subtract(estimatedCost), deficit, budgetExceeded, budget, quotaInfo,
-                quotaExceeded, quotaDeficit, errors);
+                quotaExceeded, quotaDeficit, errors, errorsEn);
     }
 
     /**
@@ -340,28 +374,37 @@ public final class RuleEngine {
 
         if (today != null && job.getDeadline() != null && job.getDeadline().isBefore(today)) {
             checks.add(new Check("deadline", "申请截止日期", false, false,
-                    "已过申请截止日期（" + job.getDeadline() + "）"));
+                    "已过申请截止日期（" + job.getDeadline() + "）",
+                    "Application deadline", "The application deadline has passed (" + job.getDeadline() + ")"));
         }
 
         // 0. 学籍状态（P2 B.2）：必须在读，硬性条件不可特批；在读时不额外列出，保持原有校验项顺序
-        String enrollmentError = checkEnrollment(student);
+        BiText enrollmentError = enrollmentText(student);
         if (enrollmentError != null) {
-            checks.add(new Check("enrollment", "学籍状态校验（在读）", false, false, enrollmentError));
+            checks.add(new Check("enrollment", "学籍状态校验（在读）", false, false, enrollmentError.zh(),
+                    "Enrollment status check (enrolled)", enrollmentError.en()));
         }
 
         if (Boolean.TRUE.equals(student.getIsInternational())) {
             // 1. 签证
             boolean visaOk = hasValidVisa(student, today);
             String expiry = student.getVisaExpiry() != null ? student.getVisaExpiry().toString() : "未登记";
+            String expiryEn = student.getVisaExpiry() != null ? student.getVisaExpiry().toString() : "not registered";
             checks.add(new Check("visa", "签证类型校验（有效学习居留许可）", visaOk, false,
                     visaOk ? student.getVisaType() + "有效（有效期至 " + expiry + "）"
-                            : "未检测到有效学习类居留许可，禁止从事校内助教/助研活动"));
+                            : "未检测到有效学习类居留许可，禁止从事校内助教/助研活动",
+                    "Visa type check (valid study residence permit)",
+                    visaOk ? student.getVisaType() + " valid (expiry date: " + expiryEn + ")"
+                            : "No valid study residence permit found; on-campus teaching/research assistant work is not permitted"));
 
             // 2. 岗位是否面向国际生
             boolean allowIntlOk = allowsInternationalEmployment(job);
             checks.add(new Check("allowIntl", "岗位国际生开放资格校验", allowIntlOk, false,
                     allowIntlOk ? "该岗位已通过国际生办会签，面向国际学生开放"
-                            : "该岗位未面向国际学生开放（仅限中国籍学生申请）"));
+                            : "该岗位未面向国际学生开放（仅限中国籍学生申请）",
+                    "Position open to international students",
+                    allowIntlOk ? "This position has been co-signed by the International Office and is open to international students"
+                            : "This position is not open to international students (Chinese students only)"));
 
             // 3. 签证有效期覆盖预计聘期（提示性，不拦截；录用时由 validateHire 硬拦截）
             if (today != null && visaOk) {
@@ -369,7 +412,11 @@ public final class RuleEngine {
                 hints.add(new Check("visaPeriod", "签证有效期覆盖聘期（提示）", covered, false,
                         covered ? "签证有效期至 " + expiry + "，覆盖预计聘期（至 " + end + "）"
                                 : "签证有效期至 " + expiry + "，早于预计聘期结束日 " + end
-                                + "，录用时将被系统拦截，请尽快办理续签并上传新的签证材料"));
+                                + "，录用时将被系统拦截，请尽快办理续签并上传新的签证材料",
+                        "Visa validity covers employment period (notice)",
+                        covered ? "Visa valid until " + expiryEn + ", covering the expected employment period (until " + end + ")"
+                                : "Visa valid until " + expiryEn + ", before the expected employment end date " + end
+                                + "; hiring will be blocked by the system. Please renew your visa and upload the new visa documents as soon as possible"));
             }
         }
 
@@ -381,12 +428,17 @@ public final class RuleEngine {
             boolean langOk = Boolean.TRUE.equals(student.getLanguageValid()) && stuScore.compareTo(reqScore) >= 0;
             String requirement = Objects.toString(extra.get("languageRequirement"), "");
             String cert = notBlank(student.getLanguageCert()) ? student.getLanguageCert() : "未提交";
+            String certEn = notBlank(student.getLanguageCert()) ? student.getLanguageCert() : "not submitted";
             // 新上传的语言证明在国际生办核验前视为未通过（可特批）
             boolean pending = LANG_CERT_PENDING.equals(student.getLanguageCertStatus());
             checks.add(new Check("lang", "语言能力证明校验", langOk, true,
                     langOk ? "已认证 " + student.getLanguageCert() + "，满足岗位要求（" + requirement + "）"
                             : pending ? "语言证明已提交，待国际生办核验（核验前视为未通过），岗位要求 " + requirement
-                            : "当前认证 " + cert + "（等效 " + Num.plain(stuScore) + "），低于岗位最低要求 " + requirement));
+                            : "当前认证 " + cert + "（等效 " + Num.plain(stuScore) + "），低于岗位最低要求 " + requirement,
+                    "Language certificate check",
+                    langOk ? "Verified " + student.getLanguageCert() + ", meets the position requirement (" + requirement + ")"
+                            : pending ? "Language certificate submitted, awaiting International Office verification (treated as not passed until verified); position requires " + requirement
+                            : "Current certificate " + certEn + " (equivalent " + Num.plain(stuScore) + "), below the position minimum " + requirement));
         }
 
         // 跨岗累计周工时（国际生、国内生都校验）
@@ -395,7 +447,12 @@ public final class RuleEngine {
                 hoursOk ? "当前已占 " + currentHours + "h + 本岗 " + jobHours + "h = " + projectedHours + "h ≤ 上限 "
                         + maxHours + "h/周"
                         : "当前已占 " + currentHours + "h + 本岗 " + jobHours + "h = " + projectedHours + "h > 上限 "
-                        + maxHours + "h/周（超出 " + (projectedHours - maxHours) + "h）"));
+                        + maxHours + "h/周（超出 " + (projectedHours - maxHours) + "h）",
+                "Cross-job weekly hours check",
+                hoursOk ? "Currently allocated " + currentHours + "h + this position " + jobHours + "h = " + projectedHours
+                        + "h ≤ limit " + maxHours + "h/week"
+                        : "Currently allocated " + currentHours + "h + this position " + jobHours + "h = " + projectedHours
+                        + "h > limit " + maxHours + "h/week (over by " + (projectedHours - maxHours) + "h)"));
 
         boolean allPassed = checks.stream().allMatch(Check::passed) && existingApp == null && !quotaFull;
         List<Check> failed = checks.stream().filter(c -> !c.passed()).toList();
@@ -403,20 +460,27 @@ public final class RuleEngine {
         // 只有可特批项（工时、语言）未通过时才能发起特批；签证、岗位开放资格属于硬性条件
         boolean canSpecialApprove = existingApp == null && !quotaFull && !failed.isEmpty() && hardFailures.isEmpty();
         String specialBlockedReason = "";
+        String specialBlockedReasonEn = "";
         if (!canSpecialApprove) {
             if (existingApp != null) {
                 specialBlockedReason = "已申请过该岗位";
+                specialBlockedReasonEn = "You have already applied for this position";
             } else if (quotaFull) {
                 specialBlockedReason = "该岗位名额已招满";
+                specialBlockedReasonEn = "This position's quota is full";
             } else if (failed.isEmpty()) {
                 specialBlockedReason = "合规校验已通过，无需特批";
+                specialBlockedReasonEn = "All compliance checks passed; no special approval is needed";
             } else {
                 specialBlockedReason = String.join("、", hardFailures.stream().map(Check::label).toList())
                         + "未通过，属于硬性条件，不可特批";
+                specialBlockedReasonEn = "Not passed: " + String.join(", ", hardFailures.stream().map(Check::labelEn).toList())
+                        + " (mandatory requirement, special approval not allowed)";
             }
         }
         return new ApplicationCheck(allPassed, existingApp != null, existingApp, quotaFull, checks, currentHours,
-                jobHours, projectedHours, maxHours, canSpecialApprove, specialBlockedReason, hints);
+                jobHours, projectedHours, maxHours, canSpecialApprove, specialBlockedReason, hints,
+                specialBlockedReasonEn);
     }
 
     // ================================================================== 录用
@@ -440,29 +504,38 @@ public final class RuleEngine {
         LocalDate start = contractEndDate != null
                 ? contractEndDate.minusWeeks(Math.max(1, Num.orZero(job.getWeeks()))) : null;
         List<String> errors = new ArrayList<>();
+        List<String> errorsEn = new ArrayList<>();
         if (!HIREABLE_APP_STATUSES.contains(app.getStatus())) {
             String label = APP_STATUS_LABELS.getOrDefault(app.getStatus(), app.getStatus());
+            String labelEn = APP_STATUS_LABELS_EN.getOrDefault(app.getStatus(), app.getStatus());
             errors.add("申请当前状态为「" + label + "」，不能录用");
+            errorsEn.add("The application status is \"" + labelEn + "\"; cannot hire");
         }
         if (Num.orZero(job.getHiredCount()) >= Num.orZero(job.getQuota())) {
             errors.add("该岗位招聘名额已满，无法继续录用");
+            errorsEn.add("This position's hiring quota is full; no further hires are allowed");
         }
         // 学籍状态必须为在读（P2 B.2，硬性条件，特批也不能放行）
         if (checkEnrollment(student) != null) {
             errors.add("该学生当前学籍状态为「" + enrollmentStatusOf(student) + "」，仅在读学生可录用（不可特批）");
+            errorsEn.add("This student's current enrollment status is \"" + enrollmentStatusEn(enrollmentStatusOf(student))
+                    + "\"; only enrolled students can be hired (special approval not allowed)");
         }
         if (Boolean.TRUE.equals(student.getIsInternational())) {
             if (!hasValidVisa(student, null)) {
                 errors.add("该国际生无有效学习类居留许可，不能录用");
+                errorsEn.add("This international student has no valid study residence permit; cannot hire");
             }
             if (!allowsInternationalEmployment(job)) {
                 errors.add("该岗位未面向国际学生开放，不能录用国际生");
+                errorsEn.add("This position is not open to international students; international students cannot be hired");
             }
             // 签证有效期必须覆盖整个聘期（硬性条件，特批也不能放行）
             if (contractEndDate != null && Boolean.TRUE.equals(student.getVisaValid())) {
-                String coverageError = checkVisaCoverage(student, contractEndDate);
+                BiText coverageError = visaCoverageText(student, contractEndDate);
                 if (coverageError != null) {
-                    errors.add(coverageError);
+                    errors.add(coverageError.zh());
+                    errorsEn.add(coverageError.en());
                 }
             }
         }
@@ -482,9 +555,13 @@ public final class RuleEngine {
             } else {
                 errors.add("录用后跨岗累计周工时将达 " + projectedHours + "h（已占 " + currentHours + "h + 本岗 " + jobHours
                         + "h），超出上限 " + maxHours + "h/周，系统已拦截录用");
+                errorsEn.add("After hiring, cross-job weekly hours would reach " + projectedHours + "h (allocated "
+                        + currentHours + "h + this position " + jobHours + "h), exceeding the limit of " + maxHours
+                        + "h/week; hiring has been blocked");
             }
         }
-        return new HireCheck(errors.isEmpty(), errors, currentHours, jobHours, projectedHours, maxHours, hoursOverridden);
+        return new HireCheck(errors.isEmpty(), errors, currentHours, jobHours, projectedHours, maxHours, hoursOverridden,
+                errorsEn);
     }
 
     // ================================================================== 学籍状态（P2 B.2）
@@ -510,15 +587,25 @@ public final class RuleEngine {
 
     /** 合规复核用于合同生效及履约，使用当前学籍与指定期间的签证覆盖。 */
     public static String checkWorkingEligibility(User student, LocalDate through) {
+        BiText t = workingEligibilityText(student, through);
+        return t == null ? null : t.zh();
+    }
+
+    /** 同 {@link #checkWorkingEligibility}，同时给出中英文；通过返回 null */
+    public static BiText workingEligibilityText(User student, LocalDate through) {
         if (checkEnrollment(student) != null) {
-            return "当前学籍状态为「" + enrollmentStatusOf(student) + "」，仅在读学生可办理聘用或工时";
+            return BiText.of("当前学籍状态为「" + enrollmentStatusOf(student) + "」，仅在读学生可办理聘用或工时",
+                    "Current enrollment status is \"" + enrollmentStatusEn(enrollmentStatusOf(student))
+                            + "\"; only enrolled students can be employed or log working hours");
         }
         if (Boolean.TRUE.equals(student.getIsInternational())) {
             if (!hasValidVisa(student, null)) {
-                return "该国际生无有效学习类居留许可";
+                return BiText.of("该国际生无有效学习类居留许可",
+                        "This international student has no valid study residence permit");
             }
             if (through == null || student.getVisaExpiry() == null || student.getVisaExpiry().isBefore(through)) {
-                return "签证（居留许可）未覆盖办理日期或聘期";
+                return BiText.of("签证（居留许可）未覆盖办理日期或聘期",
+                        "The visa (residence permit) does not cover the processing date or the employment period");
             }
         }
         return null;
@@ -530,13 +617,32 @@ public final class RuleEngine {
         return s == null || s.isBlank() ? ENROLLMENT_ACTIVE : s.trim();
     }
 
+    /** 学籍状态英文（同 JS ENROLLMENT_STATUS_EN） */
+    public static final Map<String, String> ENROLLMENT_STATUS_EN = Map.of(
+            "在读", "Enrolled",
+            "休学", "On leave",
+            "毕业", "Graduated");
+
+    /** 学籍状态的英文；未知状态原样返回 */
+    public static String enrollmentStatusEn(String status) {
+        return ENROLLMENT_STATUS_EN.getOrDefault(status, status);
+    }
+
     /** 学籍状态为在读返回 null，否则返回拦截文案（同 JS checkEnrollment） */
     public static String checkEnrollment(User student) {
+        BiText t = enrollmentText(student);
+        return t == null ? null : t.zh();
+    }
+
+    /** 同 {@link #checkEnrollment}，同时给出中英文（英文同 JS checkEnrollmentEn） */
+    public static BiText enrollmentText(User student) {
         String s = enrollmentStatusOf(student);
         if (ENROLLMENT_ACTIVE.equals(s)) {
             return null;
         }
-        return "当前学籍状态为「" + s + "」，仅在读学生可申请三助岗位（硬性条件，不可特批）";
+        return BiText.of("当前学籍状态为「" + s + "」，仅在读学生可申请三助岗位（硬性条件，不可特批）",
+                "Current enrollment status is \"" + enrollmentStatusEn(s)
+                        + "\"; only enrolled students can apply for assistantship positions (mandatory requirement, special approval not allowed)");
     }
 
     // ================================================================== 合规强化（P1 第三批）
@@ -566,12 +672,22 @@ public final class RuleEngine {
      * 未登记有效期同样视为不覆盖。
      */
     public static String checkVisaCoverage(User student, LocalDate endDate) {
+        BiText t = visaCoverageText(student, endDate);
+        return t == null ? null : t.zh();
+    }
+
+    /** 同 {@link #checkVisaCoverage}，同时给出中英文（英文同 JS checkVisaCoverageEn） */
+    public static BiText visaCoverageText(User student, LocalDate endDate) {
         LocalDate expiry = student.getVisaExpiry();
         if (expiry == null) {
-            return "该国际生未登记签证有效期，无法确认覆盖聘期结束日 " + endDate + "，不能录用（不可特批）";
+            return BiText.of("该国际生未登记签证有效期，无法确认覆盖聘期结束日 " + endDate + "，不能录用（不可特批）",
+                    "This international student has no registered visa expiry date, so coverage through the employment end date "
+                            + endDate + " cannot be confirmed; cannot hire (special approval not allowed)");
         }
         if (expiry.isBefore(endDate)) {
-            return "该国际生签证有效期至 " + expiry + "，早于聘期结束日 " + endDate + "，签证须覆盖整个聘期，不能录用（不可特批）";
+            return BiText.of("该国际生签证有效期至 " + expiry + "，早于聘期结束日 " + endDate + "，签证须覆盖整个聘期，不能录用（不可特批）",
+                    "This international student's visa is valid until " + expiry + ", before the employment end date "
+                            + endDate + "; the visa must cover the entire employment period; cannot hire (special approval not allowed)");
         }
         return null;
     }
@@ -599,15 +715,20 @@ public final class RuleEngine {
         BigDecimal projectedHours = existingHours.add(hoursNum);
 
         if (hoursNum.signum() <= 0) {
-            return new TimesheetCheck(false, existingHours, projectedHours, maxHours, "填报工时必须大于 0 小时");
+            return new TimesheetCheck(false, existingHours, projectedHours, maxHours, "填报工时必须大于 0 小时",
+                    "Reported hours must be greater than 0");
         }
         if (projectedHours.compareTo(BigDecimal.valueOf(maxHours)) > 0) {
             return new TimesheetCheck(false, existingHours, projectedHours, maxHours,
                     "第 " + weekNo + " 周跨岗累计工时将达 " + Num.plain(projectedHours) + "h（已报 " + Num.plain(existingHours)
-                            + "h + 本次 " + Num.plain(hoursNum) + "h），超出学校红线 " + maxHours + "h/周，系统已拦截提交！");
+                            + "h + 本次 " + Num.plain(hoursNum) + "h），超出学校红线 " + maxHours + "h/周，系统已拦截提交！",
+                    "Cross-job hours for week " + weekNo + " would reach " + Num.plain(projectedHours) + "h (already reported "
+                            + Num.plain(existingHours) + "h + this entry " + Num.plain(hoursNum)
+                            + "h), exceeding the university limit of " + maxHours + "h/week; submission has been blocked!");
         }
         return new TimesheetCheck(true, existingHours, projectedHours, maxHours,
-                "校验通过：第 " + weekNo + " 周跨岗累计 " + Num.plain(projectedHours) + "h / " + maxHours + "h");
+                "校验通过：第 " + weekNo + " 周跨岗累计 " + Num.plain(projectedHours) + "h / " + maxHours + "h",
+                "Check passed: week " + weekNo + " cross-job total " + Num.plain(projectedHours) + "h / " + maxHours + "h");
     }
 
     // ================================================================== 考核
@@ -661,7 +782,10 @@ public final class RuleEngine {
         String reason = ok ? "" : budget == null ? "关联经费池不存在"
                 : "核算金额 ¥" + Num.locale(amount) + " 超出岗位剩余预留 ¥" + Num.locale(reserve)
                 + " 与经费可用额 ¥" + Num.locale(available) + " 之和";
-        return new PayrollBudgetCheck(ok, amount, reserve, available, reason);
+        String reasonEn = ok ? "" : budget == null ? "The linked budget pool does not exist"
+                : "Payroll amount ¥" + Num.locale(amount) + " exceeds the position's remaining reserve ¥"
+                + Num.locale(reserve) + " plus the available budget ¥" + Num.locale(available);
+        return new PayrollBudgetCheck(ok, amount, reserve, available, reason, reasonEn);
     }
 
     /**

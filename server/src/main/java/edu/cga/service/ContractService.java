@@ -1,5 +1,6 @@
 package edu.cga.service;
 
+import edu.cga.common.BiText;
 import edu.cga.common.BizException;
 import edu.cga.common.TimeService;
 import edu.cga.domain.entity.Contract;
@@ -67,15 +68,17 @@ public class ContractService {
             throw BizException.badRequest("签名数据格式不正确，请重新手写签名");
         }
         if (con.getEndDate() != null && con.getEndDate().isBefore(time.today())) {
-            throw BizException.badRequest("聘用协议已过期");
+            throw BizException.badRequest("聘用协议已过期", "The employment contract has expired");
         }
-        String eligibility = RuleEngine.checkWorkingEligibility(student, con.getEndDate());
+        BiText eligibility = RuleEngine.workingEligibilityText(student, con.getEndDate());
         if (eligibility != null) {
             throw BizException.forbidden(eligibility);
         }
         boolean intl = Boolean.TRUE.equals(student.getIsInternational());
         if (intl && !complianceAgreed) {
-            throw BizException.badRequest("国际生必须勾选《国际生合法工时合规声明》方可生效");
+            throw BizException.badRequest("国际生必须勾选《国际生合法工时合规声明》方可生效",
+                    "International students must tick the International Student Legal Working Hours Compliance Declaration"
+                            + " for the contract to take effect");
         }
 
         // 签署前按聘期复核跨岗工时；超限时只认已通过的特批，且不超过特批时记录的工时（与录用复核同一口径）
@@ -84,7 +87,9 @@ public class ContractService {
                 contractMapper.selectAllocatingByStudent(student.getId()), student.getId(),
                 con.getStartDate(), con.getEndDate());
         if (peak > limit && !withinApprovedSpecialCeiling(con, peak)) {
-            throw BizException.forbidden("跨岗累计周工时 " + peak + "h 超出上限 " + limit + "h/周，且无对应特批，不能签署");
+            throw BizException.forbidden("跨岗累计周工时 " + peak + "h 超出上限 " + limit + "h/周，且无对应特批，不能签署",
+                    "Cross-job weekly hours of " + peak + "h exceed the limit of " + limit
+                            + "h/week with no matching special approval; cannot sign");
         }
 
         con.setStatus("ACTIVE");

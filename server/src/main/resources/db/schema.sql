@@ -33,6 +33,8 @@ CREATE TABLE departments (
   id           VARCHAR(32)  NOT NULL COMMENT '院系ID',
   name         VARCHAR(64)  NOT NULL COMMENT '院系全称',
   short_name   VARCHAR(32)  NOT NULL COMMENT '简称',
+  name_en      VARCHAR(128) NULL COMMENT '英文全称',
+  short_name_en VARCHAR(64) NULL COMMENT '英文简称',
   quota_limit  INT          NOT NULL DEFAULT 0 COMMENT '三助岗位名额上限',
   PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='院系';
