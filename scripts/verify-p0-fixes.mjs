@@ -1,7 +1,8 @@
 // 复现并验证三个 P0 漏洞的修复：node scripts/verify-p0-fixes.mjs
 // 可用 SRC_DIR 指向另一份 src（例如修复前的版本）做对照。
 import { registerHooks } from 'node:module'
-import { pathToFileURL } from 'node:url'
+import { pathToFileURL, fileURLToPath } from 'node:url'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 
 const srcDir = path.resolve(process.env.SRC_DIR || new URL('../src', import.meta.url).pathname.replace(/^\/(\w:)/, '$1'))
@@ -11,7 +12,12 @@ const srcUrl = pathToFileURL(srcDir + path.sep)
 registerHooks({
   resolve(spec, ctx, next) {
     let target = spec.startsWith('@/') ? new URL(spec.slice(2), srcUrl).href : spec
-    if ((spec.startsWith('@/') || spec.startsWith('.')) && !/\.\w+$/.test(spec)) target += '.js'
+    const fromSrc = spec.startsWith('@/') || (spec.startsWith('.') && (ctx.parentURL || '').startsWith(srcUrl.href))
+    if (fromSrc && !/\.\w+$/.test(spec)) {
+      // 省略扩展名：优先 xxx.js，其次目录下的 index.js（与 Vite 的解析规则一致）
+      const base = spec.startsWith('@/') ? target : new URL(spec, ctx.parentURL).href
+      target = existsSync(fileURLToPath(base + '.js')) ? base + '.js' : base + '/index.js'
+    }
     return next(target, ctx)
   }
 })
