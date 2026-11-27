@@ -18,6 +18,9 @@ public class IntegrationProperties {
     /** 学校名称，由 GET /api/public/site 返回给前端登录页、侧栏、归档页 */
     private String schoolName = "示范高校";
 
+    /** 学校英文名称，英文界面使用（app.school-name-en） */
+    private String schoolNameEn = "Demo University";
+
     private Sso sso = new Sso();
     private Integration integration = new Integration();
 

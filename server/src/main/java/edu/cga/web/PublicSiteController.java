@@ -35,6 +35,7 @@ public class PublicSiteController {
         ssoInfo.put("mock", "mock".equals(sso.getProvider()));
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("schoolName", props.getSchoolName());
+        data.put("schoolNameEn", props.getSchoolNameEn());
         data.put("sso", ssoInfo);
         return ApiResponse.ok(data);
     }

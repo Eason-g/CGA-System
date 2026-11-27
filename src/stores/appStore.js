@@ -61,7 +61,8 @@ export const useAppStore = defineStore('app', () => {
 
   // P2 B.4：校名与统一认证开关来自后端配置（GET /api/public/site），不再在前端维护高校名单
   const site = ref(DEFAULT_SITE)
-  const schoolName = computed(() => site.value?.schoolName || DEFAULT_SITE.schoolName)
+  // 英文界面优先用后端配置的 schoolNameEn（localized 取 xxxEn，缺失时退回中文）
+  const schoolName = computed(() => localized(site.value, 'schoolName') || DEFAULT_SITE.schoolName)
   let sitePromise = null
 
   function loadSite() {
